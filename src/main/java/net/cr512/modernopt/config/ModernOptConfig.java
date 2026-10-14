@@ -18,8 +18,8 @@ public final class ModernOptConfig {
 
     static {
         BUILDER.push("general");
-        // Off by default until the new render pipeline is complete and validated in-game.
-        ENABLED = BUILDER.comment("Master switch. Experimental rendering is disabled by default.").define("enabled", false);
+        // The pipeline is inert at default settings (native resolution, AA off), so the master switch can be enabled safely.
+        ENABLED = BUILDER.comment("Master switch for ModernOPT rendering features.").define("enabled", true);
         BUILDER.pop();
         BUILDER.push("rendering");
         RENDER_SCALE_PERCENT = BUILDER.comment("Internal render resolution as a percentage of the window size.").defineInRange("renderScalePercent", 100, 25, 100);
