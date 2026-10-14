@@ -36,6 +36,10 @@ public final class MultisampleRenderTarget extends RenderTarget {
     @Override
     public void createBuffers(int width, int height, boolean clearError) {
         if (width <= 0 || height <= 0) throw new IllegalArgumentException("Invalid MSAA target size");
+        int maxSamples = GL11.glGetInteger(GL30.GL_MAX_SAMPLES);
+        if (samples > maxSamples) {
+            throw new IllegalArgumentException("Requested MSAA " + samples + "x but this driver supports at most " + maxSamples + " samples");
+        }
 
         int previousFramebuffer = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
         int previousRenderbuffer = GL11.glGetInteger(GL30.GL_RENDERBUFFER_BINDING);
