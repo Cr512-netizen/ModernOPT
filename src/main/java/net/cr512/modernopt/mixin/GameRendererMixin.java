@@ -238,10 +238,11 @@ public abstract class GameRendererMixin {
                     BufferBuilder builder = Tesselator.getInstance().begin(
                         VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX
                     );
-                    builder.addVertex(0.0F, 0.0F, 0.0F).setUv(0.0F, 0.0F);
-                    builder.addVertex(0.0F, height, 0.0F).setUv(0.0F, 1.0F);
-                    builder.addVertex(width, height, 0.0F).setUv(1.0F, 1.0F);
-                    builder.addVertex(width, 0.0F, 0.0F).setUv(1.0F, 0.0F);
+                    // Framebuffer textures are bottom-left-origin; the destination quad is top-left-origin.
+                    builder.addVertex(0.0F, 0.0F, 0.0F).setUv(0.0F, 1.0F);
+                    builder.addVertex(0.0F, height, 0.0F).setUv(0.0F, 0.0F);
+                    builder.addVertex(width, height, 0.0F).setUv(1.0F, 0.0F);
+                    builder.addVertex(width, 0.0F, 0.0F).setUv(1.0F, 1.0F);
                     BufferUploader.drawWithShader(builder.build());
                 }
             } else if (this.modernopt$active && this.modernopt$msaaActive) {
