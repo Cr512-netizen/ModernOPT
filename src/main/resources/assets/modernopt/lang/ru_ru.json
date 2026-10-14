@@ -54,5 +54,10 @@
   "modernopt.sodium.page.rendering": "ModernOPT",
   "modernopt.sodium.group.safety": "Безопасность",
   "modernopt.sodium.group.upscaling": "Масштабирование",
-  "modernopt.sodium.group.anti_aliasing": "Сглаживание"
+  "modernopt.sodium.group.anti_aliasing": "Сглаживание",
+  "modernopt.sodium.group.iris": "Шейдерпаки Iris",
+  "modernopt.option.irisShadowScale": "Масштабировать карты теней Iris",
+  "modernopt.option.irisShadowScale.desc": "Экспериментально. Уменьшает разрешение карт теней шейдерпака Iris; по умолчанию выключено для совместимости.",
+  "modernopt.option.irisShadowScalePercent": "Разрешение карт теней",
+  "modernopt.option.irisShadowScalePercent.desc": "Доля от разрешения, заданного шейдерпаком. 75% означает примерно 56% исходного числа пикселей теней."
 }
