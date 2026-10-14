@@ -1,0 +1,66 @@
+{
+  "vertex": "modernopt:position_tex",
+  "fragment": "modernopt:easu",
+  "samplers": [
+    {
+      "name": "InSampler"
+    }
+  ],
+  "uniforms": [
+    {
+      "name": "ModelViewMat",
+      "type": "matrix4x4",
+      "count": 16,
+      "values": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "ProjMat",
+      "type": "matrix4x4",
+      "count": 16,
+      "values": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "OutputSize",
+      "type": "float",
+      "count": 2,
+      "values": [
+        1920,
+        1080
+      ]
+    }
+  ]
+}
