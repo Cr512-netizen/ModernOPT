@@ -3,6 +3,8 @@ package net.cr512.modernopt.render;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.PostChain;
+import net.cr512.modernopt.mixin.LevelRendererAccessor;
+import net.cr512.modernopt.mixin.PostChainAccessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,9 +28,9 @@ public final class RenderTargetLifecycle {
 
             // Use PostChain.resize rather than resizing its targets individually:
             // vanilla recalculates the chain's orthographic matrix in this method.
-            PostChain entityEffect = minecraft.levelRenderer.entityEffect;
-            if (entityEffect != null && entityEffect.fullSizedTargets != null) {
-                boolean resizeChain = entityEffect.fullSizedTargets.stream().anyMatch(target ->
+            PostChain entityEffect = ((LevelRendererAccessor) (Object) minecraft.levelRenderer).modernopt$getEntityEffect();
+            if (entityEffect != null && ((PostChainAccessor) (Object) entityEffect).modernopt$getFullSizedTargets() != null) {
+                boolean resizeChain = ((PostChainAccessor) (Object) entityEffect).modernopt$getFullSizedTargets().stream().anyMatch(target ->
                     target != null && (target.width != width || target.height != height)
                 );
                 if (resizeChain) {
