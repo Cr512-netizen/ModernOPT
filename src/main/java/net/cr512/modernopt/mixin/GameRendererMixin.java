@@ -60,6 +60,7 @@ public abstract class GameRendererMixin {
             case 2 -> 2;
             case 4 -> 4;
             case 8 -> 8;
+            case 16 -> 16;
             default -> 0;
         };
     }
@@ -110,7 +111,15 @@ public abstract class GameRendererMixin {
             try {
                 if (this.modernopt$msaaTarget == null || this.modernopt$allocatedSamples != samples) {
                     if (this.modernopt$msaaTarget != null) this.modernopt$msaaTarget.destroyBuffers();
-                    this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, samples, Minecraft.ON_OSX);
+                    this.modernopt$msaaTarget = null;
+                    try {
+                        this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, samples, Minecraft.ON_OSX);
+                    } catch (RuntimeException | LinkageError requestedModeUnavailable) {
+                        if (samples != 16) throw requestedModeUnavailable;
+                        // 16x is optional hardware support; retry with the broadly supported 8x mode.
+                        samples = 8;
+                        this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, samples, Minecraft.ON_OSX);
+                    }
                     this.modernopt$allocatedSamples = samples;
                 } else if (this.modernopt$msaaTarget.width != width || this.modernopt$msaaTarget.height != height) {
                     this.modernopt$msaaTarget.resize(width, height, Minecraft.ON_OSX);
@@ -119,6 +128,9 @@ public abstract class GameRendererMixin {
                 this.modernopt$msaaActive = true;
             } catch (RuntimeException | LinkageError msaaUnavailable) {
                 // Unsupported sample counts/framebuffer formats must not break world rendering.
+                if (this.modernopt$msaaTarget != null) this.modernopt$msaaTarget.destroyBuffers();
+                this.modernopt$msaaTarget = null;
+                this.modernopt$allocatedSamples = 0;
                 this.modernopt$msaaActive = false;
                 this.modernopt$worldTarget = null;
             }
