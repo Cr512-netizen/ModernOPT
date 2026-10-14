@@ -1,0 +1,21 @@
+{
+  "modernopt.screen.title": "Настройки ModernOPT",
+  "modernopt.screen.subtitle": "УПРАВЛЕНИЕ РЕНДЕРОМ  •  MINECRAFT 1.21.1",
+  "modernopt.screen.general": "Общие",
+  "modernopt.screen.upscalers": "Апскейлеры",
+  "modernopt.screen.aa": "Сглаживание",
+  "modernopt.option.enabled": "Включить ModernOPT",
+  "modernopt.option.enabled.desc": "Главный переключатель всех функций рендеринга.",
+  "modernopt.option.scale": "Масштаб рендера",
+  "modernopt.option.scale.desc": "Меньшее разрешение может повысить FPS.",
+  "modernopt.option.upscaler": "Апскейлер",
+  "modernopt.option.upscaler.desc": "Выберите способ восстановления изображения мира.",
+  "modernopt.option.ssaa": "SSAA · 2×",
+  "modernopt.option.ssaa.desc": "Высокое качество; в 4 раза больше пикселей.",
+  "modernopt.option.fxaa": "FXAA",
+  "modernopt.option.fxaa.desc": "Лёгкое сглаживание; отключается с шейдерами Iris.",
+  "modernopt.option.msaa": "MSAA",
+  "modernopt.option.msaa.desc": "Мультисэмплинг; пропускается, если не поддерживается.",
+  "modernopt.value.on": "ВКЛ",
+  "modernopt.value.off": "ВЫКЛ"
+}

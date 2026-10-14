@@ -1,0 +1,21 @@
+{
+  "modernopt.screen.title": "ModernOPT Settings",
+  "modernopt.screen.subtitle": "RENDER CONTROL  •  MINECRAFT 1.21.1",
+  "modernopt.screen.general": "General",
+  "modernopt.screen.upscalers": "Upscalers",
+  "modernopt.screen.aa": "Anti-aliasing",
+  "modernopt.option.enabled": "Enable ModernOPT",
+  "modernopt.option.enabled.desc": "Master switch for all ModernOPT rendering features.",
+  "modernopt.option.scale": "Render scale",
+  "modernopt.option.scale.desc": "Lower resolution can improve performance.",
+  "modernopt.option.upscaler": "Upscaler",
+  "modernopt.option.upscaler.desc": "Choose how the world image is reconstructed.",
+  "modernopt.option.ssaa": "SSAA · 2×",
+  "modernopt.option.ssaa.desc": "High quality; renders 4× as many pixels.",
+  "modernopt.option.fxaa": "FXAA",
+  "modernopt.option.fxaa.desc": "Lightweight edge smoothing; skipped with Iris shaders.",
+  "modernopt.option.msaa": "MSAA",
+  "modernopt.option.msaa.desc": "Multisample anti-aliasing; skipped when unsupported.",
+  "modernopt.value.on": "ON",
+  "modernopt.value.off": "OFF"
+}
