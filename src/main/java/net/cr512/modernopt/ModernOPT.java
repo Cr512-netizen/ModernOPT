@@ -38,18 +38,17 @@ public final class ModernOPT {
         }
 
         int y = screen.height - 28;
-        ModernOptTabButton toggle = new ModernOptTabButton(
+        ModernOptTabButton[] toggleRef = new ModernOptTabButton[1];
+        toggleRef[0] = new ModernOptTabButton(
             screen.width / 2 - 212, y, 132, 22, sodiumToggleLabel(),
             ModernOptConfig.ENABLED.get(), () -> {
                 boolean enabled = !ModernOptConfig.ENABLED.get();
                 ModernOptConfig.ENABLED.set(enabled);
                 ModernOptConfig.SPEC.save();
-                toggleLabelRefreshPlaceholder();
+                toggleRef[0].setMessage(sodiumToggleLabel());
+                toggleRef[0].setSelected(enabled);
             });
-        // Keep the widget label and selected accent in sync with the master switch.
-        // The callback is replaced below through a small state holder to avoid
-        // coupling this integration to Sodium's internal widget classes.
-        event.addListener(toggle);
+        event.addListener(toggleRef[0]);
 
         ModernOptTabButton settings = new ModernOptTabButton(
             screen.width / 2 + 80, y, 132, 22,
@@ -61,10 +60,5 @@ public final class ModernOPT {
     private static Component sodiumToggleLabel() {
         return Component.translatable(ModernOptConfig.ENABLED.get()
             ? "modernopt.sodium.enabled" : "modernopt.sodium.disabled");
-    }
-
-    private static void toggleLabelRefreshPlaceholder() {
-        // Intentionally empty placeholder; the widget callback is updated in the
-        // following implementation step.
     }
 }
