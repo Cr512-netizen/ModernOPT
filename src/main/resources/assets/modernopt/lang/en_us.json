@@ -24,7 +24,7 @@
   "modernopt.option.fxaa": "FXAA",
   "modernopt.option.fxaa.desc": "Post-process anti-aliasing. Mutually exclusive with SSAA and MSAA.",
   "modernopt.option.msaa": "MSAA",
-  "modernopt.option.msaa.desc": "Multisample anti-aliasing at 2x, 4x, 8x, or 16x. Mutually exclusive with FXAA and SSAA."
+  "modernopt.option.msaa.desc": "Multisample anti-aliasing at 2x, 4x, 8x, or 16x. Mutually exclusive with FXAA and SSAA.",
   "modernopt.value.on": "ON",
   "modernopt.value.off": "OFF",
   "modernopt.sodium.open": "ModernOPT Settings",
