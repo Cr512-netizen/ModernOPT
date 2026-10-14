@@ -6,7 +6,6 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.Vec3;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -115,20 +114,28 @@ public final class ModernOptBenchmarkScreen extends Screen {
         }
 
         int routeTick = this.elapsedTicks - WARMUP_TICKS;
-        int segment = Math.min(SEGMENTS - 1, routeTick / TICKS_PER_SEGMENT);
         if (routeTick > SEGMENTS * TICKS_PER_SEGMENT) {
             finishRun(false);
             return;
         }
 
+        int routeIndex = routeTick - 1;
+        int segment = Math.min(SEGMENTS - 1, routeIndex / TICKS_PER_SEGMENT);
         float yaw = this.startYaw + segment * 45F;
         player.setYRot(yaw);
         player.setXRot(PITCHES[segment]);
-        double distance = (routeTick % TICKS_PER_SEGMENT) * SPEED_PER_TICK;
-        double totalDistance = segment * TICKS_PER_SEGMENT * SPEED_PER_TICK + distance;
+
+        double x = this.startX;
+        double z = this.startZ;
+        for (int completed = 0; completed < segment; completed++) {
+            double previousRadians = Math.toRadians(this.startYaw + completed * 45F);
+            x -= Math.sin(previousRadians) * TICKS_PER_SEGMENT * SPEED_PER_TICK;
+            z += Math.cos(previousRadians) * TICKS_PER_SEGMENT * SPEED_PER_TICK;
+        }
+        double segmentDistance = (routeIndex % TICKS_PER_SEGMENT + 1) * SPEED_PER_TICK;
         double radians = Math.toRadians(yaw);
-        double x = this.startX - Math.sin(radians) * totalDistance;
-        double z = this.startZ + Math.cos(radians) * totalDistance;
+        x -= Math.sin(radians) * segmentDistance;
+        z += Math.cos(radians) * segmentDistance;
         double altitude = this.startY + 16.0 + Math.sin(routeTick / 24.0) * 5.0;
         player.setPos(x, altitude, z);
     }
