@@ -26,7 +26,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin {
-    @Shadow(remap = false) @Final private Minecraft minecraft;
+    @Shadow @Final private Minecraft minecraft;
 
     @Unique private RenderTarget modernopt$originalTarget;
     @Unique private TextureTarget modernopt$scaledTarget;
@@ -66,7 +66,7 @@ public abstract class GameRendererMixin {
         };
     }
 
-    @Inject(method = "renderLevel", at = @At("HEAD"), remap = false)
+    @Inject(method = "renderLevel", at = @At("HEAD"))
     private void modernopt$beginWorldPass(CallbackInfo ci) {
         this.modernopt$active = false;
         this.modernopt$scalingActive = false;
@@ -175,7 +175,7 @@ public abstract class GameRendererMixin {
         this.modernopt$active = true;
     }
 
-    @Inject(method = "renderLevel", at = @At("RETURN"), remap = false)
+    @Inject(method = "renderLevel", at = @At("RETURN"))
     private void modernopt$endWorldPass(CallbackInfo ci) {
         if (!this.modernopt$active && !this.modernopt$fxaaOnly) return;
 
