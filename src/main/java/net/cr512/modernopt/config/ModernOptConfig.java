@@ -9,6 +9,7 @@ public final class ModernOptConfig {
     public static final ModConfigSpec.IntValue UPSCALER_MODE;
     public static final ModConfigSpec.BooleanValue FXAA_ENABLED;
     public static final ModConfigSpec.IntValue MSAA_SAMPLES;
+    public static final ModConfigSpec.BooleanValue SSAA_ENABLED;
     public static final ModConfigSpec SPEC;
 
     static {
@@ -20,6 +21,7 @@ public final class ModernOptConfig {
         UPSCALER_MODE = BUILDER.comment("Upscaler: 0 = FSR1 (EASU + RCAS), 1 = Bilinear, 2 = Nearest Neighbor, 3 = SoftScale (soft Gaussian reconstruction).").defineInRange("upscalerMode", 0, 0, 3);
         FXAA_ENABLED = BUILDER.comment("Enable FXAA on the world image. Automatically skipped while an Iris shader pack is active.").define("fxaaEnabled", false);
         MSAA_SAMPLES = BUILDER.comment("World multisample anti-aliasing: 0 = off, 2 = 2x, 4 = 4x, 8 = 8x. Automatically skipped with Iris shader packs.").defineInRange("msaaSamples", 0, 0, 8);
+        SSAA_ENABLED = BUILDER.comment("Render the world at 2x width and height, then downsample 4 samples per output pixel. Overrides render scale and MSAA.").define("ssaaEnabled", false);
         BUILDER.pop();
         SPEC = BUILDER.build();
     }

@@ -26,6 +26,7 @@ public final class Fsr1Renderer {
     private static ShaderInstance nearest;
     private static ShaderInstance softscale;
     private static ShaderInstance fxaa;
+    private static ShaderInstance ssaaDownsample;
     private static TextureTarget intermediate;
     private static TextureTarget fxaaIntermediate;
 
@@ -39,6 +40,7 @@ public final class Fsr1Renderer {
             event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "nearest"), DefaultVertexFormat.POSITION_TEX), shader -> nearest = shader);
             event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "softscale"), DefaultVertexFormat.POSITION_TEX), shader -> softscale = shader);
             event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "fxaa"), DefaultVertexFormat.POSITION_TEX), shader -> fxaa = shader);
+            event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "ssaa_downsample"), DefaultVertexFormat.POSITION_TEX), shader -> ssaaDownsample = shader);
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to register ModernOPT upscaler shaders", exception);
         }
@@ -114,6 +116,31 @@ public final class Fsr1Renderer {
             drawPass(output, fxaaIntermediate, fxaa, width, height, false);
             // At native resolution bilinear sampling is a direct texel copy.
             drawPass(fxaaIntermediate, output, bilinear, width, height, false);
+            return true;
+        } catch (RuntimeException | LinkageError exception) {
+            return false;
+        } finally {
+            RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
+            RenderSystem.depthMask(true);
+            RenderSystem.enableDepthTest();
+            RenderSystem.enableBlend();
+            RenderSystem.setProjectionMatrix(oldProjection, oldSorting);
+            output.bindWrite(true);
+            RenderSystem.viewport(0, 0, width, height);
+        }
+    }
+
+
+    /** Downsamples a 2x-per-axis supersampled world image using a 2x2 box filter. */
+    public static boolean downsampleSsaa(RenderTarget input, RenderTarget output) {
+        if (input == null || output == null || ssaaDownsample == null) return false;
+        if (input.width != output.width * 2 || input.height != output.height * 2) return false;
+        int width = output.width;
+        int height = output.height;
+        Matrix4f oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
+        VertexSorting oldSorting = RenderSystem.getVertexSorting();
+        try {
+            drawPass(input, output, ssaaDownsample, width, height, false);
             return true;
         } catch (RuntimeException | LinkageError exception) {
             return false;
