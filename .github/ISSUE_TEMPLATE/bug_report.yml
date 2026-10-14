@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a reproducible ModernOPT problem
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, search existing issues. Do not include passwords, access tokens, account identifiers, private server addresses, or other sensitive data.
+  - type: input
+    id: minecraft
+    attributes:
+      label: Minecraft version
+      placeholder: "1.21.1"
+    validations:
+      required: true
+  - type: input
+    id: neoforge
+    attributes:
+      label: NeoForge version
+    validations:
+      required: true
+  - type: input
+    id: modernopt
+    attributes:
+      label: ModernOPT version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and mod versions
+      description: OS, GPU/driver, Sodium, Iris, shader pack, and other rendering mods.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. ... 2. ... 3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Redact private data before posting. You may link a sanitized crash report.
+    validations:
+      required: false
