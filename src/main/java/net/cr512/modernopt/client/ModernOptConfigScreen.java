@@ -38,8 +38,15 @@ public final class ModernOptConfigScreen extends Screen {
 
         int rowY = 91;
         switch (page) {
-            case 0 -> addToggleCard(rowY, "modernopt.option.enabled", "modernopt.option.enabled.desc",
-                ModernOptConfig.ENABLED, "modernopt.value.on", "modernopt.value.off");
+            case 0 -> {
+                addToggleCard(rowY, "modernopt.option.enabled", "modernopt.option.enabled.desc",
+                    ModernOptConfig.ENABLED, "modernopt.value.on", "modernopt.value.off");
+                Button benchmark = Button.builder(Component.translatable("modernopt.benchmark.run"),
+                        button -> ModernOptBenchmarkScreen.tryStart(this))
+                    .bounds(this.width / 2 + 68, rowY + 42, 112, 18)
+                    .build();
+                addRenderableWidget(benchmark);
+            }
             case 1 -> {
                 addScaleSlider(rowY, "modernopt.option.scale", "modernopt.option.scale.desc");
                 addCycleCard(rowY + 74, "modernopt.option.upscaler", "modernopt.option.upscaler.desc",
