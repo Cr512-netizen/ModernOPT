@@ -96,17 +96,18 @@ public final class Fsr1Renderer {
         if (effectiveMode >= 1 && effectiveMode <= 3 && simpleShader == null) return false;
         if (mode < 0 || mode > 3) return false;
 
-        if (useFsr1) {
-            if (intermediate == null) {
-                intermediate = new TextureTarget(width, height, true, Minecraft.ON_OSX);
-            } else if (intermediate.width != width || intermediate.height != height) {
-                intermediate.resize(width, height, Minecraft.ON_OSX);
-            }
-        }
-
         Matrix4f oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
         VertexSorting oldSorting = RenderSystem.getVertexSorting();
         try {
+            // Allocation and resize are inside the guarded block: unsupported framebuffer
+            // formats must fall back to the caller's safe blit instead of crashing the pass.
+            if (useFsr1) {
+                if (intermediate == null) {
+                    intermediate = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+                } else if (intermediate.width != width || intermediate.height != height) {
+                    intermediate.resize(width, height, Minecraft.ON_OSX);
+                }
+            }
             if (useFsr1) {
                 drawPass(input, intermediate, easu, width, height, true);
                 drawPass(intermediate, output, rcas, width, height, false);
@@ -137,15 +138,14 @@ public final class Fsr1Renderer {
         int height = output.height;
         if (width <= 0 || height <= 0) return false;
 
-        if (fxaaIntermediate == null) {
-            fxaaIntermediate = new TextureTarget(width, height, true, Minecraft.ON_OSX);
-        } else if (fxaaIntermediate.width != width || fxaaIntermediate.height != height) {
-            fxaaIntermediate.resize(width, height, Minecraft.ON_OSX);
-        }
-
         Matrix4f oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
         VertexSorting oldSorting = RenderSystem.getVertexSorting();
         try {
+            if (fxaaIntermediate == null) {
+                fxaaIntermediate = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+            } else if (fxaaIntermediate.width != width || fxaaIntermediate.height != height) {
+                fxaaIntermediate.resize(width, height, Minecraft.ON_OSX);
+            }
             drawPass(output, fxaaIntermediate, fxaa, width, height, false);
             // At native resolution bilinear sampling is a direct texel copy.
             drawPass(fxaaIntermediate, output, bilinear, width, height, false);
