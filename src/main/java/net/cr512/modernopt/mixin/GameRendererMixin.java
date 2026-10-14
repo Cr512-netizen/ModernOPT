@@ -41,6 +41,7 @@ public abstract class GameRendererMixin {
     @Unique private boolean modernopt$msaaActive;
     @Unique private boolean modernopt$ssaaActive;
     @Unique private boolean modernopt$fxaaOnly;
+    @Unique private boolean modernopt$auxTargetsAdjusted;
     @Unique private int modernopt$allocatedSamples;
     @Unique private int modernopt$failedMsaaRequest;
 
@@ -83,12 +84,12 @@ public abstract class GameRendererMixin {
         int nativeWidth = nativeTarget.width;
         int nativeHeight = nativeTarget.height;
         if (!ModernOptConfig.ENABLED.get() || this.minecraft.level == null) {
-            RenderTargetLifecycle.syncWorldTargets(this.minecraft, nativeWidth, nativeHeight);
+            modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
             return;
         }
         // Keep the existing safe bypass: don't replace targets underneath Iris' shader pipeline.
         if (modernopt$shaderPackInUse()) {
-            RenderTargetLifecycle.syncWorldTargets(this.minecraft, nativeWidth, nativeHeight);
+            modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
             return;
         }
 
@@ -99,7 +100,7 @@ public abstract class GameRendererMixin {
         int samples = modernopt$requestedSamples();
         if (samples == this.modernopt$failedMsaaRequest) samples = 0;
         if (!scalingRequested && !ssaaRequested && !fxaaRequested && samples == 0) {
-            RenderTargetLifecycle.syncWorldTargets(this.minecraft, nativeWidth, nativeHeight);
+            modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
             return;
         }
 
@@ -124,16 +125,20 @@ public abstract class GameRendererMixin {
         this.modernopt$scalingActive = width != targetWidth || height != targetHeight;
         if (this.modernopt$scalingActive) {
             RenderScalePhase.begin(width, height, targetWidth, targetHeight);
-        }
-        if (!RenderTargetLifecycle.syncWorldTargets(this.minecraft, width, height)) {
-            RenderScalePhase.end();
-            RenderTargetLifecycle.syncWorldTargets(this.minecraft, targetWidth, targetHeight);
-            width = targetWidth;
-            height = targetHeight;
-            scalingRequested = false;
-            ssaaRequested = false;
-            samples = 0;
-            this.modernopt$scalingActive = false;
+            if (!RenderTargetLifecycle.syncWorldTargets(this.minecraft, width, height)) {
+                RenderScalePhase.end();
+                modernopt$restoreAuxiliaryTargets(targetWidth, targetHeight);
+                width = targetWidth;
+                height = targetHeight;
+                scalingRequested = false;
+                ssaaRequested = false;
+                samples = 0;
+                this.modernopt$scalingActive = false;
+            } else {
+                this.modernopt$auxTargetsAdjusted = true;
+            }
+        } else {
+            modernopt$restoreAuxiliaryTargets(targetWidth, targetHeight);
         }
         this.modernopt$ssaaActive = ssaaRequested;
 
@@ -202,6 +207,14 @@ public abstract class GameRendererMixin {
         this.modernopt$worldTarget.bindWrite(true);
         ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$worldTarget);
         this.modernopt$active = true;
+    }
+
+    @Unique
+    private void modernopt$restoreAuxiliaryTargets(int width, int height) {
+        if (!this.modernopt$auxTargetsAdjusted) return;
+        if (RenderTargetLifecycle.syncWorldTargets(this.minecraft, width, height)) {
+            this.modernopt$auxTargetsAdjusted = false;
+        }
     }
 
     @Inject(method = "renderLevel", at = @At("RETURN"))
