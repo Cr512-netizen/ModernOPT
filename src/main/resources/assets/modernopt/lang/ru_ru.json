@@ -15,7 +15,7 @@
   "modernopt.option.fxaa": "FXAA",
   "modernopt.option.fxaa.desc": "Лёгкое сглаживание; отключается с шейдерами Iris.",
   "modernopt.option.msaa": "MSAA",
-  "modernopt.option.msaa.desc": "Мультисэмплинг; пропускается, если не поддерживается.",
+  "modernopt.option.msaa.desc": "MSAA 2×–16×; при отсутствии 16× используется 8×. SSAA имеет приоритет.",
   "modernopt.value.on": "ВКЛ",
   "modernopt.value.off": "ВЫКЛ",
   "modernopt.sodium.open": "Настройки ModernOPT",
