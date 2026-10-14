@@ -18,5 +18,19 @@
   "modernopt.option.msaa.desc": "Multisample anti-aliasing; skipped when unsupported.",
   "modernopt.value.on": "ON",
   "modernopt.value.off": "OFF",
-  "modernopt.sodium.open": "ModernOPT Settings"
+  "modernopt.sodium.open": "ModernOPT Settings",
+  "modernopt.sodium.enabled": "ModernOPT: ON",
+  "modernopt.sodium.disabled": "ModernOPT: OFF",
+  "modernopt.benchmark.run": "Run benchmark",
+  "modernopt.benchmark.title": "ModernOPT Benchmark",
+  "modernopt.benchmark.requirements": "Benchmark requires a local single-player world and Spectator mode.",
+  "modernopt.benchmark.cancel": "Cancel benchmark",
+  "modernopt.benchmark.warmup": "Warm-up · rotating camera",
+  "modernopt.benchmark.segment": "Route segment %s/%s",
+  "modernopt.benchmark.progress": "Progress: %s / %s ticks",
+  "modernopt.benchmark.samples": "Measured frames: %s",
+  "modernopt.benchmark.waiting": "Collecting frame-time samples...",
+  "modernopt.benchmark.stats": "Average FPS: %s  ·  1%% low: %s  ·  worst ms: %s",
+  "modernopt.benchmark.finished": "Benchmark finished",
+  "modernopt.benchmark.saved": "CSV report saved in modernopt-benchmarks/"
 }
