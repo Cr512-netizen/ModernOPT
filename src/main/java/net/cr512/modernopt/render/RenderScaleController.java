@@ -6,9 +6,12 @@ import net.cr512.modernopt.config.ModernOptConfig;
 public final class RenderScaleController {
     private static final int MIN_WIDTH = 320;
     private static final int MIN_HEIGHT = 180;
-    private static final long ADJUST_INTERVAL_NANOS = 1_000_000_000L;
+    private static final long ADJUST_INTERVAL_NANOS = 1_500_000_000L;
     private static final int SCALE_STEP = 2;
-    private static final double DEAD_BAND = 0.06;
+    private static final int REQUIRED_SAMPLES = 3;
+    private static int belowTargetSamples;
+    private static int aboveTargetSamples;
+    private static final double DEAD_BAND = 0.10;
     private static int effectivePercent = -1;
     private static long lastAdjustmentNanos;
     private static int lastTargetFps = -1;
@@ -34,6 +37,8 @@ public final class RenderScaleController {
             wasDynamic = false;
             effectivePercent = -1;
             lastAdjustmentNanos = 0L;
+            belowTargetSamples = 0;
+            aboveTargetSamples = 0;
             return;
         }
         ensureInitialized();
@@ -47,8 +52,14 @@ public final class RenderScaleController {
         lastAdjustmentNanos = now;
         if (measuredFps <= 0) return;
         double ratio = measuredFps / (double) target;
-        if (ratio < 1.0 - DEAD_BAND) effectivePercent = Math.max(min, effectivePercent - SCALE_STEP);
-        else if (ratio > 1.0 + DEAD_BAND) effectivePercent = Math.min(max, effectivePercent + SCALE_STEP);
+        if (ratio < 1.0 - DEAD_BAND) { belowTargetSamples++; aboveTargetSamples = 0; }
+        else if (ratio > 1.0 + DEAD_BAND) { aboveTargetSamples++; belowTargetSamples = 0; }
+        else { belowTargetSamples = 0; aboveTargetSamples = 0; return; }
+        if (belowTargetSamples < REQUIRED_SAMPLES && aboveTargetSamples < REQUIRED_SAMPLES) return;
+        if (belowTargetSamples >= REQUIRED_SAMPLES) effectivePercent = Math.max(min, effectivePercent - SCALE_STEP);
+        else if (aboveTargetSamples >= REQUIRED_SAMPLES) effectivePercent = Math.min(max, effectivePercent + SCALE_STEP);
+        belowTargetSamples = 0;
+        aboveTargetSamples = 0;
     }
 
     public static int scaledWidth(int windowWidth) { return scaledDimension(windowWidth, effectivePercent(), MIN_WIDTH); }
