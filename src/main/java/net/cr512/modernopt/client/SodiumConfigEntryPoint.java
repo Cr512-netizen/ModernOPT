@@ -40,7 +40,7 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setBinding(ModernOptConfig.ENABLED::set, ModernOptConfig.ENABLED::get)
                         .setStorageHandler(storage)
                         .setDefaultValue(false)
-                        .setEnabled(false))
+                        .setEnabled(true))
                 )
                 .addOptionGroup(builder.createOptionGroup()
                     .setName(Component.translatable("modernopt.sodium.group.upscaling"))
@@ -52,7 +52,7 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setBinding(ModernOptConfig.RENDER_SCALE_PERCENT::set, ModernOptConfig.RENDER_SCALE_PERCENT::get)
                         .setStorageHandler(storage)
                         .setDefaultValue(100)
-                        .setEnabled(false))
+                        .setEnabled(true))
                     .addOption(builder.createIntegerOption(UPSCALER_ID)
                         .setName(Component.translatable("modernopt.option.upscaler"))
                         .setTooltip(Component.translatable("modernopt.option.upscaler.desc"))
@@ -61,14 +61,14 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setBinding(ModernOptConfig.UPSCALER_MODE::set, ModernOptConfig.UPSCALER_MODE::get)
                         .setStorageHandler(storage)
                         .setDefaultValue(1)
-                        .setEnabled(false))
+                        .setEnabled(true))
                     .addOption(builder.createBooleanOption(DYNAMIC_ID)
                         .setName(Component.translatable("modernopt.option.dynamic"))
                         .setTooltip(Component.translatable("modernopt.option.dynamic.desc"))
                         .setBinding(ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED::set, ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED::get)
                         .setStorageHandler(storage)
                         .setDefaultValue(false)
-                        .setEnabled(false))
+                        .setEnabled(true))
                     .addOption(builder.createIntegerOption(TARGET_FPS_ID)
                         .setName(Component.translatable("modernopt.option.targetfps"))
                         .setRange(30, 540, 10)
@@ -76,7 +76,7 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setBinding(ModernOptConfig.DYNAMIC_TARGET_FPS::set, ModernOptConfig.DYNAMIC_TARGET_FPS::get)
                         .setStorageHandler(storage)
                         .setDefaultValue(120)
-                        .setEnabled(false))
+                        .setEnabled(true))
                     .addOption(builder.createIntegerOption(MIN_SCALE_ID)
                         .setName(Component.translatable("modernopt.option.minScale"))
                         .setRange(25, 100, 5)
@@ -84,7 +84,7 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setBinding(ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT::set, ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT::get)
                         .setStorageHandler(storage)
                         .setDefaultValue(50)
-                        .setEnabled(false))
+                        .setEnabled(true))
                     .addOption(builder.createIntegerOption(MAX_SCALE_ID)
                         .setName(Component.translatable("modernopt.option.maxScale"))
                         .setRange(25, 100, 5)
@@ -92,7 +92,7 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setBinding(ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT::set, ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT::get)
                         .setStorageHandler(storage)
                         .setDefaultValue(100)
-                        .setEnabled(false))
+                        .setEnabled(true))
                 )
                 .addOptionGroup(builder.createOptionGroup()
                     .setName(Component.translatable("modernopt.sodium.group.anti_aliasing"))
@@ -102,23 +102,43 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setBinding(ModernOptConfig.FXAA_ENABLED::set, ModernOptConfig.FXAA_ENABLED::get)
                         .setStorageHandler(storage)
                         .setDefaultValue(false)
-                        .setEnabled(false))
+                        .setEnabled(true))
                     .addOption(builder.createBooleanOption(SSAA_ID)
                         .setName(Component.translatable("modernopt.option.ssaa"))
                         .setTooltip(Component.translatable("modernopt.option.ssaa.desc"))
                         .setBinding(ModernOptConfig.SSAA_ENABLED::set, ModernOptConfig.SSAA_ENABLED::get)
                         .setStorageHandler(storage)
                         .setDefaultValue(false)
-                        .setEnabled(false))
+                        .setEnabled(true))
                     .addOption(builder.createIntegerOption(MSAA_ID)
                         .setName(Component.translatable("modernopt.option.msaa"))
                         .setTooltip(Component.translatable("modernopt.option.msaa.desc"))
-                        .setRange(0, 16, 2)
-                        .setValueFormatter(value -> Component.literal(value == 0 ? "Off" : value + "x"))
-                        .setBinding(ModernOptConfig.MSAA_SAMPLES::set, ModernOptConfig.MSAA_SAMPLES::get)
+                        // Use a five-step slider so unsupported values such as 6x or 10x
+                        // cannot be selected. The config continues to store real sample counts.
+                        .setRange(0, 4, 1)
+                        .setValueFormatter(value -> Component.literal(switch (value) {
+                            case 1 -> "2x";
+                            case 2 -> "4x";
+                            case 3 -> "8x";
+                            case 4 -> "16x";
+                            default -> "Off";
+                        }))
+                        .setBinding(value -> ModernOptConfig.MSAA_SAMPLES.set(switch (value) {
+                            case 1 -> 2;
+                            case 2 -> 4;
+                            case 3 -> 8;
+                            case 4 -> 16;
+                            default -> 0;
+                        }), () -> switch (ModernOptConfig.MSAA_SAMPLES.get()) {
+                            case 2 -> 1;
+                            case 4 -> 2;
+                            case 8 -> 3;
+                            case 16 -> 4;
+                            default -> 0;
+                        })
                         .setStorageHandler(storage)
                         .setDefaultValue(0)
-                        .setEnabled(false))
+                        .setEnabled(true))
                 )
             );
     }
