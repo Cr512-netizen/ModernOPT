@@ -7,8 +7,17 @@ group = mod_group_id
 base { archivesName = mod_id }
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
+repositories {
+    maven {
+        name = "CaffeineMC"
+        url = "https://maven.caffeinemc.net/releases"
+    }
+}
+
 dependencies {
     compileOnly 'org.spongepowered:mixin:0.8.7'
+    // Sodium 0.8.13 for Minecraft 1.21.1 provides the supported third-party config API.
+    compileOnly 'net.caffeinemc:sodium-neoforge-api:0.8.13+mc1.21.1'
 }
 
 neoForge {
