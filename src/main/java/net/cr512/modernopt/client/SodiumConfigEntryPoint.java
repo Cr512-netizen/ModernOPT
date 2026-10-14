@@ -2,6 +2,7 @@ package net.cr512.modernopt.client;
 
 import net.caffeinemc.mods.sodium.api.config.ConfigEntryPoint;
 import net.caffeinemc.mods.sodium.api.config.ConfigEntryPointForge;
+import net.caffeinemc.mods.sodium.api.config.StorageEventHandler;
 import net.caffeinemc.mods.sodium.api.config.structure.ConfigBuilder;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.minecraft.network.chat.Component;
@@ -26,7 +27,7 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
 
     @Override
     public void registerConfigLate(ConfigBuilder builder) {
-        var storage = this::save;
+        StorageEventHandler storage = this::save;
         builder.registerOwnModOptions()
             .setName("ModernOPT")
             .addPage(builder.createOptionPage()
