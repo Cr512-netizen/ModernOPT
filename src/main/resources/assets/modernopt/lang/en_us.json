@@ -15,7 +15,7 @@
   "modernopt.option.fxaa": "FXAA",
   "modernopt.option.fxaa.desc": "Lightweight edge smoothing; skipped with Iris shaders.",
   "modernopt.option.msaa": "MSAA",
-  "modernopt.option.msaa.desc": "Multisample anti-aliasing; skipped when unsupported.",
+  "modernopt.option.msaa.desc": "MSAA 2×–16×; 16× falls back to 8× if unsupported. SSAA takes priority.",
   "modernopt.value.on": "ON",
   "modernopt.value.off": "OFF",
   "modernopt.sodium.open": "ModernOPT Settings",
