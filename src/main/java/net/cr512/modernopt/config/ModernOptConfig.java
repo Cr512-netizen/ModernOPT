@@ -18,18 +18,19 @@ public final class ModernOptConfig {
 
     static {
         BUILDER.push("general");
-        ENABLED = BUILDER.comment("Master switch. When false, ModernOPT rendering features must not intervene.").define("enabled", true);
+        // Off by default until the new render pipeline is complete and validated in-game.
+        ENABLED = BUILDER.comment("Master switch. Experimental rendering is disabled by default.").define("enabled", false);
         BUILDER.pop();
         BUILDER.push("rendering");
         RENDER_SCALE_PERCENT = BUILDER.comment("Internal render resolution as a percentage of the window size.").defineInRange("renderScalePercent", 100, 25, 100);
-        UPSCALER_MODE = BUILDER.comment("Upscaler: 0 = FSR1 (EASU + RCAS), 1 = Bilinear, 2 = Nearest Neighbor, 3 = SoftScale (soft Gaussian reconstruction).").defineInRange("upscalerMode", 0, 0, 3);
-        FXAA_ENABLED = BUILDER.comment("Enable FXAA on the world image. Automatically skipped while an Iris shader pack is active.").define("fxaaEnabled", false);
-        MSAA_SAMPLES = BUILDER.comment("World multisample anti-aliasing: 0 = off, 2 = 2x, 4 = 4x, 8 = 8x, 16 = 16x. 16x falls back to 8x if unsupported. Automatically skipped with Iris shader packs.").defineInRange("msaaSamples", 0, 0, 16);
-        SSAA_ENABLED = BUILDER.comment("Render the world at 2x width and height, then downsample 4 samples per output pixel. Overrides render scale and MSAA.").define("ssaaEnabled", false);
-        DYNAMIC_RESOLUTION_ENABLED = BUILDER.comment("Automatically adjust world render resolution to approach the target FPS.").define("dynamicResolutionEnabled", false);
-        DYNAMIC_MIN_SCALE_PERCENT = BUILDER.comment("Lowest allowed dynamic world render scale.").defineInRange("dynamicMinScalePercent", 50, 25, 100);
-        DYNAMIC_MAX_SCALE_PERCENT = BUILDER.comment("Highest allowed dynamic world render scale.").defineInRange("dynamicMaxScalePercent", 100, 25, 100);
-        DYNAMIC_TARGET_FPS = BUILDER.comment("Target FPS for dynamic resolution, from 30 to 540.").defineInRange("dynamicTargetFps", 120, 30, 540);
+        UPSCALER_MODE = BUILDER.comment("Upscaler: 0 = FSR1, 1 = Bilinear, 2 = Nearest Neighbor, 3 = SoftScale.").defineInRange("upscalerMode", 1, 0, 3);
+        FXAA_ENABLED = BUILDER.define("fxaaEnabled", false);
+        MSAA_SAMPLES = BUILDER.comment("0 = off, otherwise 2, 4, 8, or 16 samples.").defineInRange("msaaSamples", 0, 0, 16);
+        SSAA_ENABLED = BUILDER.define("ssaaEnabled", false);
+        DYNAMIC_RESOLUTION_ENABLED = BUILDER.define("dynamicResolutionEnabled", false);
+        DYNAMIC_MIN_SCALE_PERCENT = BUILDER.defineInRange("dynamicMinScalePercent", 50, 25, 100);
+        DYNAMIC_MAX_SCALE_PERCENT = BUILDER.defineInRange("dynamicMaxScalePercent", 100, 25, 100);
+        DYNAMIC_TARGET_FPS = BUILDER.defineInRange("dynamicTargetFps", 120, 30, 540);
         BUILDER.pop();
         SPEC = BUILDER.build();
     }
