@@ -3,7 +3,7 @@ package net.cr512.modernopt.render;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import net.cr512.modernopt.mixin.RenderTargetAccessor;
-import net.minecraft.client.Minecraft;
+import com.mojang.blaze3d.systems.RenderSystem;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
@@ -87,12 +87,11 @@ public final class MultisampleRenderTarget extends RenderTarget {
     @Override
     public void bindWrite(boolean setViewport) {
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, multisampleFramebuffer);
-        if (setViewport) org.lwjgl.opengl.GL11.glViewport(0, 0, width, height);
+        if (setViewport) RenderSystem.viewport(0, 0, width, height);
     }
 
     @Override
     public void setFilterMode(int filterMode) {
-        this.filterMode = filterMode;
         if (resolvedTarget != null) resolvedTarget.setFilterMode(filterMode);
     }
 
