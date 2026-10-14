@@ -25,7 +25,9 @@ public final class Fsr1Renderer {
     private static ShaderInstance bilinear;
     private static ShaderInstance nearest;
     private static ShaderInstance softscale;
+    private static ShaderInstance fxaa;
     private static TextureTarget intermediate;
+    private static TextureTarget fxaaIntermediate;
 
     private Fsr1Renderer() {}
 
@@ -36,6 +38,7 @@ public final class Fsr1Renderer {
             event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "bilinear"), DefaultVertexFormat.POSITION_TEX), shader -> bilinear = shader);
             event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "nearest"), DefaultVertexFormat.POSITION_TEX), shader -> nearest = shader);
             event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "softscale"), DefaultVertexFormat.POSITION_TEX), shader -> softscale = shader);
+            event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "fxaa"), DefaultVertexFormat.POSITION_TEX), shader -> fxaa = shader);
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to register ModernOPT upscaler shaders", exception);
         }
@@ -85,6 +88,43 @@ public final class Fsr1Renderer {
             RenderSystem.enableBlend();
             RenderSystem.setProjectionMatrix(oldProjection, oldSorting);
             output.bindWrite(true);
+        }
+    }
+
+
+    /**
+     * Applies FXAA to an already-rendered world image. The intermediate target
+     * prevents sampling from and rendering into the same color texture.
+     */
+    public static boolean applyFxaa(RenderTarget output) {
+        if (output == null || fxaa == null || bilinear == null) return false;
+        int width = output.width;
+        int height = output.height;
+        if (width <= 0 || height <= 0) return false;
+
+        if (fxaaIntermediate == null) {
+            fxaaIntermediate = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+        } else if (fxaaIntermediate.width != width || fxaaIntermediate.height != height) {
+            fxaaIntermediate.resize(width, height, Minecraft.ON_OSX);
+        }
+
+        Matrix4f oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
+        VertexSorting oldSorting = RenderSystem.getVertexSorting();
+        try {
+            drawPass(output, fxaaIntermediate, fxaa, width, height, false);
+            // At native resolution bilinear sampling is a direct texel copy.
+            drawPass(fxaaIntermediate, output, bilinear, width, height, false);
+            return true;
+        } catch (RuntimeException | LinkageError exception) {
+            return false;
+        } finally {
+            RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
+            RenderSystem.depthMask(true);
+            RenderSystem.enableDepthTest();
+            RenderSystem.enableBlend();
+            RenderSystem.setProjectionMatrix(oldProjection, oldSorting);
+            output.bindWrite(true);
+            RenderSystem.viewport(0, 0, width, height);
         }
     }
 
