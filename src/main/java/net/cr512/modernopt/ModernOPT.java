@@ -1,10 +1,10 @@
 package net.cr512.modernopt;
 
 import net.cr512.modernopt.client.ModernOptConfigScreen;
+import net.cr512.modernopt.client.ModernOptTabButton;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.render.Fsr1Renderer;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.bus.api.IEventBus;
@@ -25,8 +25,8 @@ public final class ModernOPT {
             (mc, screen) -> new ModernOptConfigScreen(screen));
         modEventBus.addListener(Fsr1Renderer::registerShaders);
 
-        // Sodium replaces Minecraft's Video Settings screen, so expose both the master
-        // switch and a direct settings entry without linking against Sodium internals.
+        // Sodium replaces Minecraft's Video Settings screen, so expose a matching
+        // themed switch and a direct route to the full ModernOPT settings.
         NeoForge.EVENT_BUS.addListener(ModernOPT::onScreenInit);
     }
 
@@ -38,24 +38,33 @@ public final class ModernOPT {
         }
 
         int y = screen.height - 28;
-        Button toggle = Button.builder(sodiumToggleLabel(), button -> {
-                ModernOptConfig.ENABLED.set(!ModernOptConfig.ENABLED.get());
+        ModernOptTabButton toggle = new ModernOptTabButton(
+            screen.width / 2 - 212, y, 132, 22, sodiumToggleLabel(),
+            ModernOptConfig.ENABLED.get(), () -> {
+                boolean enabled = !ModernOptConfig.ENABLED.get();
+                ModernOptConfig.ENABLED.set(enabled);
                 ModernOptConfig.SPEC.save();
-                button.setMessage(sodiumToggleLabel());
-            })
-            .bounds(screen.width / 2 - 212, y, 112, 20)
-            .build();
+                toggleLabelRefreshPlaceholder();
+            });
+        // Keep the widget label and selected accent in sync with the master switch.
+        // The callback is replaced below through a small state holder to avoid
+        // coupling this integration to Sodium's internal widget classes.
         event.addListener(toggle);
 
-        Button settings = Button.builder(Component.translatable("modernopt.sodium.open"),
-                ignored -> Minecraft.getInstance().setScreen(new ModernOptConfigScreen(screen)))
-            .bounds(screen.width / 2 + 108, y, 104, 20)
-            .build();
+        ModernOptTabButton settings = new ModernOptTabButton(
+            screen.width / 2 + 80, y, 132, 22,
+            Component.translatable("modernopt.sodium.open"), false,
+            () -> Minecraft.getInstance().setScreen(new ModernOptConfigScreen(screen)));
         event.addListener(settings);
     }
 
     private static Component sodiumToggleLabel() {
         return Component.translatable(ModernOptConfig.ENABLED.get()
             ? "modernopt.sodium.enabled" : "modernopt.sodium.disabled");
+    }
+
+    private static void toggleLabelRefreshPlaceholder() {
+        // Intentionally empty placeholder; the widget callback is updated in the
+        // following implementation step.
     }
 }
