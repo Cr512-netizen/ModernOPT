@@ -11,6 +11,8 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public final class ModernOptConfigScreen extends Screen {
     private final Screen parent;
     private int page;
+    private AbstractSliderButton msaaSlider;
+    private Button ssaaControl;
 
     private static final int PANEL = 0xE8171B25;
     private static final int CARD = 0xF0222835;
@@ -59,10 +61,7 @@ public final class ModernOptConfigScreen extends Screen {
                     ModernOptConfig.SSAA_ENABLED, "modernopt.value.on", "modernopt.value.off");
                 addToggleCard(rowY + 74, "modernopt.option.fxaa", "modernopt.option.fxaa.desc",
                     ModernOptConfig.FXAA_ENABLED, "modernopt.value.on", "modernopt.value.off");
-                addCycleCard(rowY + 148, "modernopt.option.msaa", "modernopt.option.msaa.desc",
-                    new String[]{"Off", "2×", "4×", "8×"},
-                    () -> samplesIndex(ModernOptConfig.MSAA_SAMPLES.get()),
-                    value -> setValue(ModernOptConfig.MSAA_SAMPLES, new int[]{0, 2, 4, 8}[value]));
+                addMsaaSlider(rowY + 148, "modernopt.option.msaa", "modernopt.option.msaa.desc");
             }
         }
 
@@ -85,8 +84,12 @@ public final class ModernOptConfigScreen extends Screen {
         Button control = Button.builder(toggleLabel(value.get(), onKey, offKey), button -> {
             setValue(value, !value.get());
             button.setMessage(toggleLabel(value.get(), onKey, offKey));
+            if (value == ModernOptConfig.SSAA_ENABLED && this.msaaSlider != null) {
+                this.msaaSlider.active = !value.get();
+            }
         }).bounds(this.width / 2 + 68, y + 20, 112, 22).build();
         addRenderableWidget(control);
+        if (value == ModernOptConfig.SSAA_ENABLED) this.ssaaControl = control;
         cards.add(new Card(y, title, description));
     }
 
@@ -105,6 +108,33 @@ public final class ModernOptConfigScreen extends Screen {
             }
         };
         addRenderableWidget(slider);
+        cards.add(new Card(y, title, description));
+    }
+
+    private void addMsaaSlider(int y, String title, String description) {
+        int[] samples = {0, 2, 4, 8, 16};
+        int current = samplesIndex(ModernOptConfig.MSAA_SAMPLES.get());
+        this.msaaSlider = new AbstractSliderButton(this.width / 2 + 68, y + 20, 112, 22,
+            Component.literal(samples[current] == 0 ? "Off" : samples[current] + "×"),
+            current / (double) (samples.length - 1)) {
+            private int selectedIndex() {
+                return Math.max(0, Math.min(samples.length - 1,
+                    (int) Math.round(this.value * (samples.length - 1))));
+            }
+
+            @Override
+            protected void updateMessage() {
+                int selected = selectedIndex();
+                setMessage(Component.literal(samples[selected] == 0 ? "Off" : samples[selected] + "×"));
+            }
+
+            @Override
+            protected void applyValue() {
+                setValue(ModernOptConfig.MSAA_SAMPLES, samples[selectedIndex()]);
+            }
+        };
+        this.msaaSlider.active = !ModernOptConfig.SSAA_ENABLED.get();
+        addRenderableWidget(this.msaaSlider);
         cards.add(new Card(y, title, description));
     }
 
@@ -163,6 +193,7 @@ public final class ModernOptConfigScreen extends Screen {
             case 2 -> 1;
             case 4 -> 2;
             case 8 -> 3;
+            case 16 -> 4;
             default -> 0;
         };
     }
