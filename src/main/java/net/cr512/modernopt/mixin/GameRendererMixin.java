@@ -125,6 +125,9 @@ public abstract class GameRendererMixin {
         this.modernopt$scalingActive = width != targetWidth || height != targetHeight;
         if (this.modernopt$scalingActive) {
             RenderScalePhase.begin(width, height, targetWidth, targetHeight);
+            // Mark before resizing: a failed resize may have changed some targets
+            // before throwing, so the native-size rollback must still be attempted.
+            this.modernopt$auxTargetsAdjusted = true;
             if (!RenderTargetLifecycle.syncWorldTargets(this.minecraft, width, height)) {
                 RenderScalePhase.end();
                 modernopt$restoreAuxiliaryTargets(targetWidth, targetHeight);
@@ -134,8 +137,6 @@ public abstract class GameRendererMixin {
                 ssaaRequested = false;
                 samples = 0;
                 this.modernopt$scalingActive = false;
-            } else {
-                this.modernopt$auxTargetsAdjusted = true;
             }
         } else {
             modernopt$restoreAuxiliaryTargets(targetWidth, targetHeight);
