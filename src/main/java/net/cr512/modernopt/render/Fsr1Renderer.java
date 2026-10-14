@@ -9,6 +9,7 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexSorting;
+import net.cr512.modernopt.config.ModernOptConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
@@ -24,6 +25,8 @@ import java.io.IOException;
 public final class Fsr1Renderer {
     private static ShaderInstance easu;
     private static ShaderInstance rcas;
+    private static ShaderInstance bilinear;
+    private static ShaderInstance nearest;
     private static TextureTarget intermediate;
 
     private Fsr1Renderer() {}
@@ -36,30 +39,48 @@ public final class Fsr1Renderer {
             event.registerShader(new ShaderInstance(event.getResourceProvider(),
                 ResourceLocation.fromNamespaceAndPath("modernopt", "rcas"),
                 DefaultVertexFormat.POSITION_TEX), shader -> rcas = shader);
+            event.registerShader(new ShaderInstance(event.getResourceProvider(),
+                ResourceLocation.fromNamespaceAndPath("modernopt", "bilinear"),
+                DefaultVertexFormat.POSITION_TEX), shader -> bilinear = shader);
+            event.registerShader(new ShaderInstance(event.getResourceProvider(),
+                ResourceLocation.fromNamespaceAndPath("modernopt", "nearest"),
+                DefaultVertexFormat.POSITION_TEX), shader -> nearest = shader);
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to register ModernOPT FSR1 shaders", exception);
         }
     }
 
     public static boolean render(RenderTarget input, RenderTarget output) {
-        if (easu == null || rcas == null || input == null || output == null) return false;
+        if (input == null || output == null) return false;
         int width = output.width;
         int height = output.height;
         if (width <= 0 || height <= 0) return false;
 
-        if (intermediate == null) {
-            intermediate = new TextureTarget(width, height, true, Minecraft.ON_OSX);
-        } else if (intermediate.width != width || intermediate.height != height) {
-            intermediate.resize(width, height, Minecraft.ON_OSX);
+        int mode = ModernOptConfig.UPSCALER_MODE.get();
+        ShaderInstance simpleShader = mode == 1 ? bilinear : mode == 2 ? nearest : null;
+        if (mode == 0 && (easu == null || rcas == null)) return false;
+        if (mode == 1 && bilinear == null || mode == 2 && nearest == null) return false;
+        if (mode < 0 || mode > 2) return false;
+
+        if (mode == 0) {
+            if (intermediate == null) {
+                intermediate = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+            } else if (intermediate.width != width || intermediate.height != height) {
+                intermediate.resize(width, height, Minecraft.ON_OSX);
+            }
         }
 
         Matrix4f oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
         VertexSorting oldSorting = RenderSystem.getVertexSorting();
-        boolean success = false;
         try {
-            drawPass(input, intermediate, easu, width, height, true);
-            drawPass(intermediate, output, rcas, width, height, false);
-            success = true;
+            if (mode == 0) {
+                drawPass(input, intermediate, easu, width, height, true);
+                drawPass(intermediate, output, rcas, width, height, false);
+            } else {
+                // The two lightweight modes are single-pass spatial upscalers.
+                drawPass(input, output, simpleShader, width, height, false);
+            }
+            return true;
         } catch (RuntimeException | LinkageError exception) {
             // Fail closed: the caller can use the regular fullscreen blit.
             return false;
@@ -71,7 +92,6 @@ public final class Fsr1Renderer {
             RenderSystem.setProjectionMatrix(oldProjection, oldSorting);
             output.bindWrite(true);
         }
-        return success;
     }
 
     private static void drawPass(RenderTarget input, RenderTarget output, ShaderInstance shader,
