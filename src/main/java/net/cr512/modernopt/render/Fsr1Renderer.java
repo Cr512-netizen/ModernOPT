@@ -86,7 +86,7 @@ public final class Fsr1Renderer {
             new Matrix4f().setOrtho(0F, output.width, output.height, 0F, -1000F, 1000F),
             VertexSorting.ORTHOGRAPHIC_Z
         );
-        shader.setSampler("InSampler", () -> RenderSystem.setShaderTexture(0, input.getColorTextureId()));
+        shader.setSampler("InSampler", input.getColorTextureId());
         if (hasOutputSize) {
             var uniform = shader.getUniform("OutputSize");
             if (uniform == null) throw new IllegalStateException("FSR1 EASU OutputSize uniform is missing");
