@@ -54,5 +54,10 @@
   "modernopt.sodium.page.rendering": "ModernOPT",
   "modernopt.sodium.group.safety": "Safety",
   "modernopt.sodium.group.upscaling": "Upscaling",
-  "modernopt.sodium.group.anti_aliasing": "Anti-aliasing"
+  "modernopt.sodium.group.anti_aliasing": "Anti-aliasing",
+  "modernopt.sodium.group.iris": "Iris shader packs",
+  "modernopt.option.irisShadowScale": "Scale Iris shadow maps",
+  "modernopt.option.irisShadowScale.desc": "Experimental. Reduces Iris shader-pack shadow-map resolution; disabled by default for compatibility.",
+  "modernopt.option.irisShadowScalePercent": "Shadow-map resolution",
+  "modernopt.option.irisShadowScalePercent.desc": "Resolution relative to the shader pack setting. 75% uses about 56% of the shadow-map pixels."
 }
