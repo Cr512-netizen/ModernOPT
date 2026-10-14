@@ -1,16 +1,30 @@
-# Third-party notices
+# Third-party notices / Уведомления о сторонних компонентах
+
+ModernOPT includes or adapts components from third-party projects. These components retain their applicable copyright notices and licence terms. The MIT licence in the repository root applies to ModernOPT's own code; it does not replace or override third-party licences.
 
 ## AMD FidelityFX Super Resolution 1 (FSR1)
 
-The FSR1 shader implementation in `src/main/resources/assets/modernopt/shaders/include/fsr1/ffx_fsr1.glsl` is derived from AMD FidelityFX Super Resolution 1, Copyright (c) 2021 Advanced Micro Devices, Inc. All rights reserved. It is distributed under the MIT License; the original copyright and permission notice are retained in the source file.
+The FSR1 shader implementation and related source material in `src/main/resources/assets/modernopt/shaders/include/fsr1/` are derived from AMD FidelityFX Super Resolution 1.
 
-## RenderScale shader adaptations
+- Project: https://github.com/GPUOpen-Effects/FidelityFX-FSR
+- Copyright: Copyright (c) 2021 Advanced Micro Devices, Inc.
+- Licence: MIT
+- The applicable copyright and permission notice is retained with the relevant source where supplied.
 
-The FSR shader integration structure and helper shaders are adapted from RenderScale (Zolo101/RenderScale), Copyright (c) 2024, under the MIT License. The original MIT license notice is reproduced below.
+## RenderScale
 
+Parts of the FSR shader integration structure and helper-shader approach are adapted from RenderScale by Zolo101.
+
+- Project: https://github.com/Zolo101/RenderScale
+- Licence: MIT (see the upstream repository's licence file)
+- The original project and its copyright/licence notice must be credited when redistributing code derived from it. ModernOPT is an independent project and is not an official RenderScale build or endorsement.
+
+The upstream RenderScale licence notice available to this project was reproduced below. The copyright-holder field in the copied notice was blank in the source available to this repository; it is intentionally not guessed here. Please consult the upstream licence file for the authoritative current notice.
+
+```text
 The MIT License (MIT)
 
-Copyright (c) 2024 
+Copyright (c) 2024
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -29,3 +43,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+```
+
+## Other dependencies and trademarks
+
+Minecraft and NeoForge are build/runtime dependencies and are not included as proprietary assets by this notice. Their names and marks remain the property of their respective owners. See their official terms and licence information for details.
+
+If you identify a missing or inaccurate attribution, please open an issue with the component name, source URL, and relevant file path so it can be reviewed and corrected.
