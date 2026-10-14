@@ -123,6 +123,32 @@ public final class ModernOptConfigScreen extends Screen {
         cards.add(new Card(y, title, description));
     }
 
+    private void addIntSlider(int y, String title, String description, int minimum, int maximum, int step,
+                              java.util.function.IntSupplier getter, java.util.function.IntConsumer setter, String suffix) {
+        int count = (maximum - minimum) / step;
+        int currentIndex = Math.max(0, Math.min(count, Math.round((getter.getAsInt() - minimum) / (float) step)));
+        AbstractSliderButton slider = new AbstractSliderButton(this.width / 2 + 68, y + 20, 112, 22,
+            Component.literal((minimum + currentIndex * step) + suffix), currentIndex / (double) count) {
+            private int selectedIndex() {
+                return Math.max(0, Math.min(count, (int) Math.round(this.value * count)));
+            }
+
+            @Override
+            protected void updateMessage() {
+                setMessage(Component.literal((minimum + selectedIndex() * step) + suffix));
+            }
+
+            @Override
+            protected void applyValue() {
+                int index = selectedIndex();
+                this.value = index / (double) count;
+                updateMessage();
+                setter.accept(minimum + index * step);
+            }
+        };
+        addRenderableWidget(slider);
+        cards.add(new Card(y, title, description));
+    }
     private void addMsaaSlider(int y, String title, String description) {
         int[] samples = {0, 2, 4, 8, 16};
         int current = samplesIndex(ModernOptConfig.MSAA_SAMPLES.get());
