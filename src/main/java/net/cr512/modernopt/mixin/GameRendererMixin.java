@@ -286,6 +286,7 @@ public abstract class GameRendererMixin {
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
             RenderSystem.depthMask(true);
             RenderSystem.enableDepthTest();
+            RenderSystem.enableBlend();
             if (this.modernopt$oldProjection != null) {
                 RenderSystem.setProjectionMatrix(this.modernopt$oldProjection, this.modernopt$oldVertexSorting);
                 this.modernopt$oldProjection = null;
