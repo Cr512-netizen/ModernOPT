@@ -33,6 +33,8 @@ public final class Fsr1Renderer {
     private static TextureTarget intermediate;
     private static TextureTarget fxaaIntermediate;
     private static final Logger LOGGER = LoggerFactory.getLogger("ModernOPT");
+    private static boolean renderFailureLogged;
+    private static boolean fxaaFailureLogged;
 
     private Fsr1Renderer() {}
 
@@ -116,6 +118,11 @@ public final class Fsr1Renderer {
             }
             return true;
         } catch (RuntimeException | LinkageError exception) {
+            if (!renderFailureLogged) {
+                renderFailureLogged = true;
+                LOGGER.error("Spatial upscaler pass failed (mode={}, input={}x{}, output={}x{}); ModernOPT will use the safe fallback for subsequent frames.",
+                    mode, input.width, input.height, output.width, output.height, exception);
+            }
             return false;
         } finally {
             RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
@@ -151,6 +158,10 @@ public final class Fsr1Renderer {
             drawPass(fxaaIntermediate, output, bilinear, width, height, false);
             return true;
         } catch (RuntimeException | LinkageError exception) {
+            if (!fxaaFailureLogged) {
+                fxaaFailureLogged = true;
+                LOGGER.error("FXAA pass failed; ModernOPT will skip FXAA until resources are reloaded.", exception);
+            }
             return false;
         } finally {
             RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
