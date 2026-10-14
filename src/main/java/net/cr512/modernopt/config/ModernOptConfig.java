@@ -20,7 +20,7 @@ public final class ModernOptConfig {
         RENDER_SCALE_PERCENT = BUILDER.comment("Internal render resolution as a percentage of the window size.").defineInRange("renderScalePercent", 100, 25, 100);
         UPSCALER_MODE = BUILDER.comment("Upscaler: 0 = FSR1 (EASU + RCAS), 1 = Bilinear, 2 = Nearest Neighbor, 3 = SoftScale (soft Gaussian reconstruction).").defineInRange("upscalerMode", 0, 0, 3);
         FXAA_ENABLED = BUILDER.comment("Enable FXAA on the world image. Automatically skipped while an Iris shader pack is active.").define("fxaaEnabled", false);
-        MSAA_SAMPLES = BUILDER.comment("World multisample anti-aliasing: 0 = off, 2 = 2x, 4 = 4x, 8 = 8x. Automatically skipped with Iris shader packs.").defineInRange("msaaSamples", 0, 0, 8);
+        MSAA_SAMPLES = BUILDER.comment("World multisample anti-aliasing: 0 = off, 2 = 2x, 4 = 4x, 8 = 8x, 16 = 16x. 16x falls back to 8x if unsupported. Automatically skipped with Iris shader packs.").defineInRange("msaaSamples", 0, 0, 16);
         SSAA_ENABLED = BUILDER.comment("Render the world at 2x width and height, then downsample 4 samples per output pixel. Overrides render scale and MSAA.").define("ssaaEnabled", false);
         BUILDER.pop();
         SPEC = BUILDER.build();
