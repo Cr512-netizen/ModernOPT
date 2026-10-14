@@ -28,13 +28,17 @@ public final class Fsr1Renderer {
 
     private Fsr1Renderer() {}
 
-    public static void registerShaders(RegisterShadersEvent event) throws IOException {
-        event.registerShader(new ShaderInstance(event.getResourceProvider(),
-            ResourceLocation.fromNamespaceAndPath("modernopt", "easu"),
-            DefaultVertexFormat.POSITION_TEX), shader -> easu = shader);
-        event.registerShader(new ShaderInstance(event.getResourceProvider(),
-            ResourceLocation.fromNamespaceAndPath("modernopt", "rcas"),
-            DefaultVertexFormat.POSITION_TEX), shader -> rcas = shader);
+    public static void registerShaders(RegisterShadersEvent event) {
+        try {
+            event.registerShader(new ShaderInstance(event.getResourceProvider(),
+                ResourceLocation.fromNamespaceAndPath("modernopt", "easu"),
+                DefaultVertexFormat.POSITION_TEX), shader -> easu = shader);
+            event.registerShader(new ShaderInstance(event.getResourceProvider(),
+                ResourceLocation.fromNamespaceAndPath("modernopt", "rcas"),
+                DefaultVertexFormat.POSITION_TEX), shader -> rcas = shader);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to register ModernOPT FSR1 shaders", exception);
+        }
     }
 
     public static boolean render(RenderTarget input, RenderTarget output) {
