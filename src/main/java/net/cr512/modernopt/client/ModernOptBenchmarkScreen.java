@@ -33,6 +33,8 @@ public final class ModernOptBenchmarkScreen extends Screen {
     private final Screen parent;
     private final Minecraft minecraft = Minecraft.getInstance();
     private final List<Double> frameTimesMs = new ArrayList<>();
+    private int modernopt$spikeCount;
+    private int modernopt$overBudgetCount;
     private final List<String> csvRows = new ArrayList<>();
     private final double startX;
     private final double startY;
@@ -57,7 +59,7 @@ public final class ModernOptBenchmarkScreen extends Screen {
         this.startZ = player.getZ();
         this.startYaw = player.getYRot();
         this.startPitch = player.getXRot();
-        this.csvRows.add("elapsed_ms,segment,frame_time_ms");
+        this.csvRows.add("elapsed_ms,segment,frame_time_ms,target_budget_ms,over_budget,spike");
     }
 
     public static void tryStart(Screen parent) {
@@ -156,7 +158,13 @@ public final class ModernOptBenchmarkScreen extends Screen {
                     int routeTick = this.elapsedTicks - WARMUP_TICKS;
                     int segment = Math.min(SEGMENTS - 1, Math.max(0, routeTick / TICKS_PER_SEGMENT));
                     long elapsedMs = this.startNanos == 0L ? 0L : (now - this.startNanos) / 1_000_000L;
-                    this.csvRows.add(String.format(Locale.ROOT, "%d,%d,%.4f", elapsedMs, segment + 1, frameMs));
+                    double budget = 1000.0 / Math.max(30, net.cr512.modernopt.config.ModernOptConfig.DYNAMIC_TARGET_FPS.get());
+                    boolean overBudget = frameMs > budget;
+                    boolean spike = frameMs > budget * 1.5;
+                    if (overBudget) this.modernopt$overBudgetCount++;
+                    if (spike) this.modernopt$spikeCount++;
+                    this.csvRows.add(String.format(Locale.ROOT, "%d,%d,%.4f,%.4f,%d,%d",
+                        elapsedMs, segment + 1, frameMs, budget, overBudget ? 1 : 0, spike ? 1 : 0));
                 }
             }
         }
@@ -165,7 +173,7 @@ public final class ModernOptBenchmarkScreen extends Screen {
         int left = this.width / 2 - 155;
         int top = 18;
         int right = this.width / 2 + 155;
-        graphics.fill(left, top, right, top + 116, 0xD9101520);
+        graphics.fill(left, top, right, top + 132, 0xD9101520);
         graphics.drawCenteredString(this.font, Component.translatable("modernopt.benchmark.title"),
             this.width / 2, top + 9, 0xFFFFFFFF);
         graphics.drawCenteredString(this.font, statusText(), this.width / 2, top + 28, 0xFF69D6C5);
@@ -175,11 +183,13 @@ public final class ModernOptBenchmarkScreen extends Screen {
         graphics.drawString(this.font, Component.translatable("modernopt.benchmark.samples",
             this.frameTimesMs.size()), left + 12, top + 62, 0xFFADB8C8);
         graphics.drawString(this.font, statsText(), left + 12, top + 77, 0xFFFFFFFF);
+        graphics.drawString(this.font, pacingText(), left + 12, top + 92, 0xFFADB8C8);
+        graphics.drawString(this.font, diagnosticsText(), left + 12, top + 107, 0xFF69D6C5);
         if (!this.reportPath.isEmpty()) {
             graphics.drawString(this.font, Component.translatable("modernopt.benchmark.saved"),
-                left + 12, top + 94, 0xFF69D6C5);
+                left + 12, top + 122, 0xFF69D6C5);
         } else if (!this.failure.isEmpty()) {
-            graphics.drawString(this.font, Component.literal(this.failure), left + 12, top + 94, 0xFFFF7777);
+            graphics.drawString(this.font, Component.literal(this.failure), left + 12, top + 122, 0xFFFF7777);
         }
         super.render(graphics, mouseX, mouseY, partialTick);
     }
@@ -202,6 +212,31 @@ public final class ModernOptBenchmarkScreen extends Screen {
             String.format(Locale.ROOT, "%.1f", 1000.0 / average),
             String.format(Locale.ROOT, "%.1f", 1000.0 / p99),
             String.format(Locale.ROOT, "%.1f", worst));
+    }
+
+    private Component pacingText() {
+        if (this.frameTimesMs.isEmpty()) return Component.translatable("modernopt.benchmark.pacing.waiting");
+        List<Double> sorted = new ArrayList<>(this.frameTimesMs);
+        Collections.sort(sorted);
+        return Component.translatable("modernopt.benchmark.pacing",
+            String.format(Locale.ROOT, "%.2f", percentile(sorted, 0.50)),
+            String.format(Locale.ROOT, "%.2f", percentile(sorted, 0.95)),
+            String.format(Locale.ROOT, "%.2f", percentile(sorted, 0.99)), this.modernopt$spikeCount);
+    }
+
+    private Component diagnosticsText() {
+        int scale = net.cr512.modernopt.render.RenderScaleController.effectivePercent();
+        String[] modes = {"FSR1", "Bilinear", "Nearest", "SoftScale"};
+        int mode = Math.max(0, Math.min(modes.length - 1,
+            net.cr512.modernopt.config.ModernOptConfig.UPSCALER_MODE.get()));
+        return Component.translatable("modernopt.benchmark.diagnostics",
+            this.minecraft.getFps(), scale, modes[mode], this.modernopt$overBudgetCount);
+    }
+
+    private static double percentile(List<Double> sorted, double percentile) {
+        if (sorted.isEmpty()) return 0.0;
+        int index = (int) Math.ceil(percentile * sorted.size()) - 1;
+        return sorted.get(Math.max(0, Math.min(sorted.size() - 1, index)));
     }
 
     private void finishRun(boolean cancelled) {
