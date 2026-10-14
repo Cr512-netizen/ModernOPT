@@ -23,10 +23,16 @@ public final class RenderTargetLifecycle {
 
         try {
             resizeIfNeeded(minecraft.levelRenderer.entityTarget(), width, height);
+
+            // Use PostChain.resize rather than resizing its targets individually:
+            // vanilla recalculates the chain's orthographic matrix in this method.
             PostChain entityEffect = minecraft.levelRenderer.entityEffect;
             if (entityEffect != null && entityEffect.fullSizedTargets != null) {
-                for (RenderTarget target : entityEffect.fullSizedTargets) {
-                    resizeIfNeeded(target, width, height);
+                boolean resizeChain = entityEffect.fullSizedTargets.stream().anyMatch(target ->
+                    target != null && (target.width != width || target.height != height)
+                );
+                if (resizeChain) {
+                    entityEffect.resize(width, height);
                 }
             }
             return true;
