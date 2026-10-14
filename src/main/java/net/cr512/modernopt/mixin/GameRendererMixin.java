@@ -127,6 +127,9 @@ public abstract class GameRendererMixin {
                         if (samples != 16) throw requestedModeUnavailable;
                         // 16x is optional hardware support; retry with the broadly supported 8x mode.
                         samples = 8;
+                        requestedSamples = 8;
+                        ModernOptConfig.MSAA_SAMPLES.set(8);
+                        ModernOptConfig.SPEC.save();
                         this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, samples, Minecraft.ON_OSX);
                     }
                     // Track the requested mode, not the fallback target, to avoid retrying 16x every frame.
