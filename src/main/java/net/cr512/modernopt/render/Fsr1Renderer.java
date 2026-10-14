@@ -128,6 +128,30 @@ public final class Fsr1Renderer {
         }
     }
 
+    /** Resolves an MSAA target and copies it to the native-size world target. */
+    public static boolean copyResolved(RenderTarget input, RenderTarget output) {
+        if (input == null || output == null || bilinear == null) return false;
+        int width = output.width;
+        int height = output.height;
+        if (width <= 0 || height <= 0) return false;
+        Matrix4f oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
+        VertexSorting oldSorting = RenderSystem.getVertexSorting();
+        try {
+            drawPass(input, output, bilinear, width, height, false);
+            return true;
+        } catch (RuntimeException | LinkageError exception) {
+            return false;
+        } finally {
+            RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
+            RenderSystem.depthMask(true);
+            RenderSystem.enableDepthTest();
+            RenderSystem.enableBlend();
+            RenderSystem.setProjectionMatrix(oldProjection, oldSorting);
+            output.bindWrite(true);
+            RenderSystem.viewport(0, 0, width, height);
+        }
+    }
+
     private static void drawPass(RenderTarget input, RenderTarget output, ShaderInstance shader,
                                  int width, int height, boolean hasOutputSize) {
         output.bindWrite(true);
