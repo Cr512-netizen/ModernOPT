@@ -14,6 +14,7 @@ import net.cr512.modernopt.render.Fsr1Renderer;
 import net.cr512.modernopt.render.MultisampleRenderTarget;
 import net.cr512.modernopt.render.RenderScaleController;
 import net.cr512.modernopt.render.RenderScalePhase;
+import net.cr512.modernopt.render.RenderTargetLifecycle;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import org.joml.Matrix4f;
@@ -78,9 +79,18 @@ public abstract class GameRendererMixin {
         this.modernopt$worldTarget = null;
         RenderScaleController.update(this.minecraft.getFps());
 
-        if (!ModernOptConfig.ENABLED.get() || this.minecraft.level == null) return;
+        RenderTarget nativeTarget = this.minecraft.getMainRenderTarget();
+        int nativeWidth = nativeTarget.width;
+        int nativeHeight = nativeTarget.height;
+        if (!ModernOptConfig.ENABLED.get() || this.minecraft.level == null) {
+            RenderTargetLifecycle.syncWorldTargets(this.minecraft, nativeWidth, nativeHeight);
+            return;
+        }
         // Keep the existing safe bypass: don't replace targets underneath Iris' shader pipeline.
-        if (modernopt$shaderPackInUse()) return;
+        if (modernopt$shaderPackInUse()) {
+            RenderTargetLifecycle.syncWorldTargets(this.minecraft, nativeWidth, nativeHeight);
+            return;
+        }
 
         boolean ssaaRequested = ModernOptConfig.SSAA_ENABLED.get();
         boolean scalingRequestedInitially = !ssaaRequested && RenderScaleController.isEnabled();
@@ -88,11 +98,14 @@ public abstract class GameRendererMixin {
         boolean fxaaRequested = ModernOptConfig.FXAA_ENABLED.get();
         int samples = modernopt$requestedSamples();
         if (samples == this.modernopt$failedMsaaRequest) samples = 0;
-        if (!scalingRequested && !ssaaRequested && !fxaaRequested && samples == 0) return;
+        if (!scalingRequested && !ssaaRequested && !fxaaRequested && samples == 0) {
+            RenderTargetLifecycle.syncWorldTargets(this.minecraft, nativeWidth, nativeHeight);
+            return;
+        }
 
-        RenderTarget original = this.minecraft.getMainRenderTarget();
-        int targetWidth = original.width;
-        int targetHeight = original.height;
+        RenderTarget original = nativeTarget;
+        int targetWidth = nativeWidth;
+        int targetHeight = nativeHeight;
         if (targetWidth <= 0 || targetHeight <= 0) return;
         this.modernopt$originalTarget = original;
 
@@ -108,8 +121,21 @@ public abstract class GameRendererMixin {
         if (ssaaRequested) samples = 0;
         int width = ssaaRequested ? targetWidth * 2 : (scalingRequested ? RenderScaleController.scaledWidth(targetWidth) : targetWidth);
         int height = ssaaRequested ? targetHeight * 2 : (scalingRequested ? RenderScaleController.scaledHeight(targetHeight) : targetHeight);
-        this.modernopt$ssaaActive = ssaaRequested;
         this.modernopt$scalingActive = width != targetWidth || height != targetHeight;
+        if (this.modernopt$scalingActive) {
+            RenderScalePhase.begin(width, height, targetWidth, targetHeight);
+        }
+        if (!RenderTargetLifecycle.syncWorldTargets(this.minecraft, width, height)) {
+            RenderScalePhase.end();
+            RenderTargetLifecycle.syncWorldTargets(this.minecraft, targetWidth, targetHeight);
+            width = targetWidth;
+            height = targetHeight;
+            scalingRequested = false;
+            ssaaRequested = false;
+            samples = 0;
+            this.modernopt$scalingActive = false;
+        }
+        this.modernopt$ssaaActive = ssaaRequested;
 
         boolean needsOffscreen = this.modernopt$scalingActive || samples > 0;
         if (!needsOffscreen) {
@@ -164,6 +190,7 @@ public abstract class GameRendererMixin {
         }
 
         if (this.modernopt$worldTarget == null) {
+            RenderScalePhase.end();
             this.modernopt$originalTarget = null;
             this.modernopt$scalingActive = false;
             this.modernopt$msaaActive = false;
@@ -175,9 +202,6 @@ public abstract class GameRendererMixin {
         this.modernopt$worldTarget.bindWrite(true);
         ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$worldTarget);
         this.modernopt$active = true;
-        if (this.modernopt$scalingActive) {
-            RenderScalePhase.begin(width, height, targetWidth, targetHeight);
-        }
     }
 
     @Inject(method = "renderLevel", at = @At("RETURN"))
