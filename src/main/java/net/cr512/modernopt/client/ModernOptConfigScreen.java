@@ -128,7 +128,10 @@ public final class ModernOptConfigScreen extends Screen {
 
             @Override
             protected void applyValue() {
-                setValue(ModernOptConfig.MSAA_SAMPLES, samples[selectedIndex()]);
+                int selected = selectedIndex();
+                this.value = selected / (double) (samples.length - 1);
+                updateMessage();
+                setValue(ModernOptConfig.MSAA_SAMPLES, samples[selected]);
             }
         };
         this.msaaSlider.active = !ModernOptConfig.SSAA_ENABLED.get();
