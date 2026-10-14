@@ -74,6 +74,7 @@ public abstract class GameRendererMixin {
         this.modernopt$ssaaActive = false;
         this.modernopt$fxaaOnly = false;
         this.modernopt$worldTarget = null;
+        RenderScaleController.update(this.minecraft.getFps());
 
         if (!ModernOptConfig.ENABLED.get() || this.minecraft.level == null) return;
         // Keep the existing safe bypass: don't replace targets underneath Iris' shader pipeline.
