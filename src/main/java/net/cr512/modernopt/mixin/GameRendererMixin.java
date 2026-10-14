@@ -263,6 +263,9 @@ public abstract class GameRendererMixin {
                     ? Fsr1Renderer.downsampleSsaa(this.modernopt$worldTarget, this.modernopt$originalTarget)
                     : Fsr1Renderer.render(this.modernopt$worldTarget, this.modernopt$originalTarget);
                 if (!upscaled) {
+                    // A failed shader pass restores vanilla state, including blending.
+                    // Force an opaque copy for the fallback blit.
+                    RenderSystem.disableBlend();
                     RenderSystem.setShader(GameRenderer::getPositionTexShader);
                     RenderSystem.setShaderTexture(0, this.modernopt$worldTarget.getColorTextureId());
                     BufferBuilder builder = Tesselator.getInstance().begin(
