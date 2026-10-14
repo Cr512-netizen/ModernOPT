@@ -58,6 +58,6 @@
   "modernopt.sodium.group.iris": "Iris shader packs",
   "modernopt.option.irisShadowScale": "Scale Iris shadow maps",
   "modernopt.option.irisShadowScale.desc": "Experimental. Reduces Iris shader-pack shadow-map resolution; disabled by default for compatibility.",
-  "modernopt.option.irisShadowScalePercent": "Shadow-map resolution",
-  "modernopt.option.irisShadowScalePercent.desc": "Iris shadow-map resolution percentage when shadow scaling is enabled. Reload the shader pack to apply changes.",
+  "modernopt.option.irisShadowResolution": "Shadow-map resolution",
+  "modernopt.option.irisShadowResolution.desc": "Set the fixed Iris shadow-map resolution in pixels (256–8192). Reload the shader pack to apply changes.",
 }
