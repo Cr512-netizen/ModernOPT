@@ -3,6 +3,7 @@ package net.cr512.modernopt;
 import net.cr512.modernopt.client.ModernOptConfigScreen;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.render.Fsr1Renderer;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -39,7 +40,7 @@ public final class ModernOPT {
         int x = screen.width / 2 + 108;
         int y = screen.height - 28;
         Button button = Button.builder(Component.translatable("modernopt.sodium.open"),
-                ignored -> screen.getMinecraft().setScreen(new ModernOptConfigScreen(screen)))
+                ignored -> Minecraft.getInstance().setScreen(new ModernOptConfigScreen(screen)))
             .bounds(x, y, 104, 20)
             .build();
         event.addListener(button);
