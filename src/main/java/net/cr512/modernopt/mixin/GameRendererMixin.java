@@ -13,6 +13,7 @@ import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.render.Fsr1Renderer;
 import net.cr512.modernopt.render.MultisampleRenderTarget;
 import net.cr512.modernopt.render.RenderScaleController;
+import net.cr512.modernopt.render.RenderScalePhase;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import org.joml.Matrix4f;
@@ -68,6 +69,7 @@ public abstract class GameRendererMixin {
 
     @Inject(method = "renderLevel", at = @At("HEAD"))
     private void modernopt$beginWorldPass(CallbackInfo ci) {
+        RenderScalePhase.end();
         this.modernopt$active = false;
         this.modernopt$scalingActive = false;
         this.modernopt$msaaActive = false;
@@ -173,10 +175,14 @@ public abstract class GameRendererMixin {
         this.modernopt$worldTarget.bindWrite(true);
         ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$worldTarget);
         this.modernopt$active = true;
+        if (this.modernopt$scalingActive) {
+            RenderScalePhase.begin(width, height, targetWidth, targetHeight);
+        }
     }
 
     @Inject(method = "renderLevel", at = @At("RETURN"))
     private void modernopt$endWorldPass(CallbackInfo ci) {
+        RenderScalePhase.end();
         if (!this.modernopt$active && !this.modernopt$fxaaOnly) return;
 
         try {
