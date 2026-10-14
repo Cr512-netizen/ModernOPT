@@ -10,7 +10,8 @@
     "PostChainAccessor",
     "LevelRendererMixin",
     "WindowMixin",
-    "GameRendererMixin"
+    "GameRendererMixin",
+    "IrisShadowResolutionMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }
