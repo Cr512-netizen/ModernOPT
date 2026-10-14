@@ -29,12 +29,29 @@ public abstract class GameRendererMixin {
     @Unique private Matrix4f modernopt$oldProjection;
     @Unique private boolean modernopt$active;
 
-    @Inject(method = "renderLevel", at = @At("HEAD"))
+    @Unique
+    private static boolean modernopt$shaderPackInUse() {
+        if (!net.neoforged.fml.ModList.get().isLoaded("iris")) return false;
+        try {
+            Class<?> apiClass = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+            Object api = apiClass.getMethod("getInstance").invoke(null);
+            Object result = apiClass.getMethod("isShaderPackInUse").invoke(api);
+            return Boolean.TRUE.equals(result);
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            // Unknown Iris API/version: fail closed rather than touching its pipeline.
+            return true;
+        }
+    }
+
+    @Inject(method = "renderLevel", at = @At("HEAD"), remap = false)
     private void modernopt$beginWorldPass(CallbackInfo ci) {
         this.modernopt$active = false;
         if (!RenderScaleController.isEnabled() || this.minecraft.level == null) return;
-        // Iris owns a custom shader pipeline; don't swap its target without an explicit bridge.
-        if (net.neoforged.fml.ModList.get().isLoaded("iris")) return;
+        // Iris owns a custom render graph while a shader pack is active. Swapping
+        // Minecraft's main target behind that graph can corrupt passes or crash.
+        // Keep Iris packs enabled and fall back to native-resolution rendering until
+        // a version-matched Iris render-pipeline bridge is available.
+        if (modernopt$shaderPackInUse()) return;
 
         RenderTarget original = this.minecraft.getMainRenderTarget();
         int windowWidth = this.minecraft.getWindow().getWidth();
@@ -55,7 +72,7 @@ public abstract class GameRendererMixin {
         this.modernopt$active = true;
     }
 
-    @Inject(method = "renderLevel", at = @At("RETURN"))
+    @Inject(method = "renderLevel", at = @At("RETURN"), remap = false)
     private void modernopt$endWorldPass(CallbackInfo ci) {
         if (!this.modernopt$active) return;
         try {
