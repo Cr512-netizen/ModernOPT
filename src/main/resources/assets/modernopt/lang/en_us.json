@@ -17,5 +17,6 @@
   "modernopt.option.msaa": "MSAA",
   "modernopt.option.msaa.desc": "Multisample anti-aliasing; skipped when unsupported.",
   "modernopt.value.on": "ON",
-  "modernopt.value.off": "OFF"
+  "modernopt.value.off": "OFF",
+  "modernopt.sodium.open": "ModernOPT Settings"
 }
