@@ -1,30 +1,25 @@
 # ModernOPT
 
-ModernOPT is being rebuilt from a clean base for **Minecraft Java 1.21.1 + NeoForge**.
+ModernOPT is a clean rebuild for Minecraft Java 1.21.1 on NeoForge. Frame Generation and legacy rendering code are intentionally excluded.
 
-## Current scope
+## Current rendering core
 
-- Client-side master enable/disable setting.
-- Bounded render-scale configuration (50–100%).
-- Render sizing policy isolated from Minecraft's main framebuffer.
-- CI build that compiles the mod and uploads the JAR as an artifact.
-
-**Important:** the percentage is configuration/core plumbing at this stage; world-only render-target switching is not enabled yet. The renderer must keep GUI/HUD at native resolution and fail closed if a compatible target path cannot be established. No Frame Generation code is included.
+- Client-side master switch and internal render scale (50–100%).
+- World/first-person pass is rendered to a dedicated lower-resolution target and scaled into the window-sized main target.
+- HUD, menus, and other GUI rendering happen after the world pass and remain at native window resolution.
+- Render scaling is fail-closed when Iris is loaded because the shader pipeline requires a dedicated compatibility bridge. Do not assume Iris compatibility yet.
+- Build and test with the exact mod set before treating the renderer as stable.
 
 ## Build
 
-Requires Java 21 and Gradle 9.2.1:
+Requires Java 21. CI runs clean build on pushes and pull requests. The build artifact is uploaded by GitHub Actions.
 
-```sh
-gradle clean build
-```
+## Русский
 
-The resulting JAR is in `build/libs/`.
+ModernOPT — чистая переработка для Minecraft Java 1.21.1 на NeoForge. Frame Generation и старый код рендера не переносятся.
 
-## Совместимость и статус
-
-ModernOPT пересобирается с нуля для **Minecraft Java 1.21.1 + NeoForge**.
-
-Сейчас заложены переключатель полного отключения, настройка масштаба 50–100%, изолированная политика расчёта размеров рендера и CI-сборка. Само переключение world-only render target пока не включено: нельзя уменьшать главный framebuffer вслепую, иначе вместе с миром уменьшаются HUD/GUI и возможны конфликты с Sodium/Iris.
-
-Frame Generation намеренно не входит в эту базовую версию. Следующий этап — реализовать и проверить безопасный путь рендера мира с сохранением HUD/GUI в родном разрешении.
+- Главный выключатель мода и масштаб внутреннего рендера 50–100%.
+- Мир и вид от первого лица рисуются в отдельную текстуру меньшего разрешения, затем масштабируются в основной буфер окна.
+- HUD, меню и GUI рисуются после прохода мира и остаются в исходном разрешении.
+- При наличии Iris масштабирование безопасно отключается: для шейдерного конвейера нужен отдельный слой совместимости. Совместимость с Iris пока не заявляется.
+- После изменений обязательно проверять сборку и тестировать в реальном клиенте с нужным набором модов.

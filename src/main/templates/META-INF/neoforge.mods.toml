@@ -1,25 +1,27 @@
 modLoader="javafml"
 loaderVersion="${loader_version_range}"
 license="${mod_license}"
-issueTrackerURL="https://github.com/Cr512-netizen/ModernOPT/issues"
 
 [[mods]]
 modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
 authors="Cr512-netizen"
-description='''ModernOPT: a clean, safety-first rendering optimization core for Minecraft 1.21.1.'''
+description='''ModernOPT is a clean, opt-in render scaling core for Minecraft 1.21.1.'''
+
+[[mixins]]
+config="modernopt.mixins.json"
 
 [[dependencies.${mod_id}]]
 modId="neoforge"
 type="required"
 versionRange="${neo_version_range}"
 ordering="NONE"
-side="BOTH"
+side="CLIENT"
 
 [[dependencies.${mod_id}]]
 modId="minecraft"
 type="required"
 versionRange="${minecraft_version_range}"
 ordering="NONE"
-side="BOTH"
+side="CLIENT"
