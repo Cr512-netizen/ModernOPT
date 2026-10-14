@@ -2,7 +2,7 @@ package net.cr512.modernopt.mixin;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
-import com.mojang.blaze3d.systems.ProjectionType;
+import com.mojang.blaze3d.systems.VertexSorting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
@@ -23,10 +23,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin {
-    @Shadow @Final private Minecraft minecraft;
+    @Shadow(remap = false) @Final private Minecraft minecraft;
     @Unique private RenderTarget modernopt$originalTarget;
     @Unique private TextureTarget modernopt$scaledTarget;
     @Unique private Matrix4f modernopt$oldProjection;
+    @Unique private VertexSorting modernopt$oldVertexSorting;
     @Unique private boolean modernopt$active;
 
     @Unique
@@ -82,7 +83,8 @@ public abstract class GameRendererMixin {
             int height = this.minecraft.getWindow().getHeight();
             RenderSystem.viewport(0, 0, width, height);
             this.modernopt$oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
-            RenderSystem.setProjectionMatrix(new Matrix4f().setOrtho(0.0F, width, height, 0.0F, -1000.0F, 1000.0F), ProjectionType.ORTHOGRAPHIC);
+            this.modernopt$oldVertexSorting = RenderSystem.getVertexSorting();
+            RenderSystem.setProjectionMatrix(new Matrix4f().setOrtho(0.0F, width, height, 0.0F, -1000.0F, 1000.0F), VertexSorting.ORTHOGRAPHIC_Z);
             RenderSystem.disableDepthTest();
             RenderSystem.depthMask(false);
             RenderSystem.setShader(GameRenderer::getPositionTexShader);
@@ -97,7 +99,7 @@ public abstract class GameRendererMixin {
             RenderSystem.depthMask(true);
             RenderSystem.enableDepthTest();
             if (this.modernopt$oldProjection != null) {
-                RenderSystem.setProjectionMatrix(this.modernopt$oldProjection, ProjectionType.PERSPECTIVE);
+                RenderSystem.setProjectionMatrix(this.modernopt$oldProjection, this.modernopt$oldVertexSorting);
             }
             ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$originalTarget);
             this.modernopt$originalTarget.bindWrite(true);
