@@ -7,6 +7,7 @@ ModernOPT is a clean rebuild for Minecraft Java 1.21.1 on NeoForge. Frame Genera
 - Client-side master switch and internal render scale (50–100%).
 - Four selectable spatial upscalers: FSR1 (EASU + RCAS), bilinear, nearest-neighbor, and SoftScale (a soft 3×3 Gaussian reconstruction filter).
 - Upscaler selection is stored in the client config as `rendering.upscalerMode`: `0` = FSR1, `1` = bilinear, `2` = nearest-neighbor, `3` = SoftScale.
+- Optional FXAA anti-aliasing runs after upscaling (or at native resolution when scaling is off); it is automatically skipped whenever an Iris shader pack is active. Configure it with `fxaaEnabled` in the client config.
 - World/first-person pass is rendered to a dedicated lower-resolution target and scaled into the window-sized main target.
 - HUD, menus, and other GUI rendering happen after the world pass and remain at native window resolution.
 - Render scaling is fail-closed when Iris is loaded because the shader pipeline requires a dedicated compatibility bridge. Do not assume Iris compatibility yet.
@@ -23,6 +24,7 @@ ModernOPT — чистая переработка для Minecraft Java 1.21.1 �
 - Главный выключатель мода и масштаб внутреннего рендера 50–100%.
 - Четыре режима масштабирования: FSR1 (EASU + RCAS), билинейный, по ближайшему соседу и SoftScale (мягкий фильтр Гаусса 3×3).
 - Режим выбирается в клиентском конфиге `rendering.upscalerMode`: `0` — FSR1, `1` — билинейный, `2` — ближайший сосед, `3` — SoftScale.
+- Дополнительное сглаживание FXAA выполняется после апскейлинга (или в исходном разрешении, если масштабирование выключено). При активном шейдер-паке Iris FXAA автоматически отключается. Настройка клиента: `fxaaEnabled`.
 - Мир и вид от первого лица рисуются в отдельную текстуру меньшего разрешения, затем масштабируются в основной буфер окна.
 - HUD, меню и GUI рисуются после прохода мира и остаются в исходном разрешении.
 - При наличии Iris масштабирование безопасно отключается: для шейдерного конвейера нужен отдельный слой совместимости. Совместимость с Iris пока не заявляется.
