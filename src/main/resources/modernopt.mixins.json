@@ -3,6 +3,11 @@
   "minVersion": "0.8",
   "package": "net.cr512.modernopt.mixin",
   "compatibilityLevel": "JAVA_21",
-  "client": [],
+  "client": [
+    "MinecraftRenderTargetMixin",
+    "RenderTargetAccessor",
+    "WindowMixin",
+    "GameRendererMixin"
+  ],
   "injectors": { "defaultRequire": 1 }
 }
