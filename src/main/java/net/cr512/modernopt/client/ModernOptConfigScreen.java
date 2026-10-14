@@ -48,6 +48,7 @@ public final class ModernOptConfigScreen extends Screen {
                     .bounds(this.width / 2 + 68, rowY + 42, 112, 18)
                     .build();
                 addRenderableWidget(benchmark);
+                addRenderProfileCard(rowY + 74);
             }
             case 1 -> {
                 addScaleSlider(rowY, "modernopt.option.scale", "modernopt.option.scale.desc");
@@ -91,6 +92,57 @@ public final class ModernOptConfigScreen extends Screen {
                 init();
             });
         addRenderableWidget(tab);
+    }
+
+    private void addRenderProfileCard(int y) {
+        Button profile = Button.builder(profileLabel(), button -> {
+            int next = (currentProfile() + 1) % 4;
+            if (next == 0) {
+                setValue(ModernOptConfig.RENDER_SCALE_PERCENT, 100);
+                setValue(ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT, 80);
+                setValue(ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT, 100);
+                setValue(ModernOptConfig.DYNAMIC_TARGET_FPS, 120);
+                setValue(ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED, false);
+            } else if (next == 1) {
+                setValue(ModernOptConfig.RENDER_SCALE_PERCENT, 85);
+                setValue(ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT, 65);
+                setValue(ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT, 100);
+                setValue(ModernOptConfig.DYNAMIC_TARGET_FPS, 120);
+                setValue(ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED, true);
+            } else if (next == 2) {
+                setValue(ModernOptConfig.RENDER_SCALE_PERCENT, 65);
+                setValue(ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT, 50);
+                setValue(ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT, 80);
+                setValue(ModernOptConfig.DYNAMIC_TARGET_FPS, 144);
+                setValue(ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED, true);
+            }
+            button.setMessage(profileLabel());
+        }).bounds(this.width / 2 + 68, y + 20, 112, 22).build();
+        addRenderableWidget(profile);
+        cards.add(new Card(y, "modernopt.profile.title", "modernopt.profile.desc"));
+    }
+
+    private int currentProfile() {
+        if (!ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED.get()
+                && ModernOptConfig.RENDER_SCALE_PERCENT.get() == 100) return 0;
+        if (ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED.get()
+                && ModernOptConfig.RENDER_SCALE_PERCENT.get() == 85
+                && ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.get() == 65
+                && ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.get() == 100) return 1;
+        if (ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED.get()
+                && ModernOptConfig.RENDER_SCALE_PERCENT.get() == 65
+                && ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.get() == 50
+                && ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.get() == 80) return 2;
+        return 3;
+    }
+
+    private Component profileLabel() {
+        return Component.translatable(switch (currentProfile()) {
+            case 0 -> "modernopt.profile.quality";
+            case 1 -> "modernopt.profile.balanced";
+            case 2 -> "modernopt.profile.performance";
+            default -> "modernopt.profile.custom";
+        });
     }
 
     private void addToggleCard(int y, String title, String description, ModConfigSpec.BooleanValue value,
