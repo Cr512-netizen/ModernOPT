@@ -33,6 +33,6 @@ side="CLIENT"
 [[dependencies.${mod_id}]]
 modId="sodium"
 type="optional"
-versionRange="[0.8.13,)"
+versionRange="[0,)"
 ordering="AFTER"
 side="CLIENT"
