@@ -17,6 +17,9 @@ import net.neoforged.neoforge.client.event.RegisterShadersEvent;
 import org.joml.Matrix4f;
 
 import java.io.IOException;
+import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Spatial upscalers used by ModernOPT. */
 public final class Fsr1Renderer {
@@ -29,20 +32,45 @@ public final class Fsr1Renderer {
     private static ShaderInstance ssaaDownsample;
     private static TextureTarget intermediate;
     private static TextureTarget fxaaIntermediate;
+    private static final Logger LOGGER = LoggerFactory.getLogger("ModernOPT");
 
     private Fsr1Renderer() {}
 
+    /**
+     * Register each shader independently. A shader compile failure must not abort
+     * Minecraft's entire resource reload (which otherwise leaves the client stuck
+     * before the title screen). Features that need a failed shader are skipped.
+     */
     public static void registerShaders(RegisterShadersEvent event) {
+        registerShader(event, "easu", shader -> easu = shader);
+        registerShader(event, "rcas", shader -> rcas = shader);
+        registerShader(event, "bilinear", shader -> bilinear = shader);
+        registerShader(event, "nearest", shader -> nearest = shader);
+        registerShader(event, "softscale", shader -> softscale = shader);
+        registerShader(event, "fxaa", shader -> fxaa = shader);
+        registerShader(event, "ssaa_downsample", shader -> ssaaDownsample = shader);
+    }
+
+    private static void registerShader(RegisterShadersEvent event, String name, Consumer<ShaderInstance> setter) {
         try {
-            event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "easu"), DefaultVertexFormat.POSITION_TEX), shader -> easu = shader);
-            event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "rcas"), DefaultVertexFormat.POSITION_TEX), shader -> rcas = shader);
-            event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "bilinear"), DefaultVertexFormat.POSITION_TEX), shader -> bilinear = shader);
-            event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "nearest"), DefaultVertexFormat.POSITION_TEX), shader -> nearest = shader);
-            event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "softscale"), DefaultVertexFormat.POSITION_TEX), shader -> softscale = shader);
-            event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "fxaa"), DefaultVertexFormat.POSITION_TEX), shader -> fxaa = shader);
-            event.registerShader(new ShaderInstance(event.getResourceProvider(), ResourceLocation.fromNamespaceAndPath("modernopt", "ssaa_downsample"), DefaultVertexFormat.POSITION_TEX), shader -> ssaaDownsample = shader);
-        } catch (IOException exception) {
-            throw new IllegalStateException("Failed to register ModernOPT upscaler shaders", exception);
+            event.registerShader(
+                new ShaderInstance(event.getResourceProvider(),
+                    ResourceLocation.fromNamespaceAndPath("modernopt", name),
+                    DefaultVertexFormat.POSITION_TEX),
+                setter
+            );
+        } catch (IOException | RuntimeException exception) {
+            LOGGER.error("Could not load ModernOPT shader '{}'. Features requiring it will be unavailable; continuing resource loading.", name, exception);
+            switch (name) {
+                case "easu" -> easu = null;
+                case "rcas" -> rcas = null;
+                case "bilinear" -> bilinear = null;
+                case "nearest" -> nearest = null;
+                case "softscale" -> softscale = null;
+                case "fxaa" -> fxaa = null;
+                case "ssaa_downsample" -> ssaaDownsample = null;
+                default -> { }
+            }
         }
     }
 
