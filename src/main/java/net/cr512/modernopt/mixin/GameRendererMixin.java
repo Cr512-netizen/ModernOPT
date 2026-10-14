@@ -2,7 +2,7 @@ package net.cr512.modernopt.mixin;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
-import com.mojang.blaze3d.systems.VertexSorting;
+import com.mojang.blaze3d.vertex.VertexSorting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
@@ -63,7 +63,7 @@ public abstract class GameRendererMixin {
 
         this.modernopt$originalTarget = original;
         if (this.modernopt$scaledTarget == null) {
-            this.modernopt$scaledTarget = new TextureTarget(width, height, true);
+            this.modernopt$scaledTarget = new TextureTarget(width, height, true, Minecraft.ON_OSX);
         } else if (this.modernopt$scaledTarget.width != width || this.modernopt$scaledTarget.height != height) {
             this.modernopt$scaledTarget.resize(width, height, Minecraft.ON_OSX);
         }
