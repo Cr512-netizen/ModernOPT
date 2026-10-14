@@ -1,7 +1,6 @@
 plugins {
     id 'java-library'
     id 'net.neoforged.moddev' version '2.0.148'
-    id 'org.spongepowered.mixin' version '0.7.38'
 }
 version = mod_version
 group = mod_group_id
@@ -10,10 +9,6 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 repositories {
     maven {
-        name = "SpongePowered"
-        url = "https://repo.spongepowered.org/repository/maven-public/"
-    }
-    maven {
         name = "CaffeineMC"
         url = "https://maven.caffeinemc.net/releases"
     }
@@ -21,15 +16,10 @@ repositories {
 
 dependencies {
     compileOnly 'org.spongepowered:mixin:0.8.7'
-    annotationProcessor 'org.spongepowered:mixin:0.8.7:processor'
     // Sodium 0.8.13 for Minecraft 1.21.1 provides the supported third-party config API.
     compileOnly 'net.caffeinemc:sodium-neoforge-api:0.8.13+mc1.21.1'
 }
 
-mixin {
-    add sourceSets.main, 'modernopt.refmap.json'
-    config 'modernopt.mixins.json'
-}
 
 neoForge {
     version = project.neo_version
