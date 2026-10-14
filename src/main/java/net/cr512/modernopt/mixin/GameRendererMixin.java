@@ -37,6 +37,7 @@ public abstract class GameRendererMixin {
     @Unique private boolean modernopt$active;
     @Unique private boolean modernopt$scalingActive;
     @Unique private boolean modernopt$msaaActive;
+    @Unique private boolean modernopt$ssaaActive;
     @Unique private boolean modernopt$fxaaOnly;
     @Unique private int modernopt$allocatedSamples;
 
@@ -68,6 +69,7 @@ public abstract class GameRendererMixin {
         this.modernopt$active = false;
         this.modernopt$scalingActive = false;
         this.modernopt$msaaActive = false;
+        this.modernopt$ssaaActive = false;
         this.modernopt$fxaaOnly = false;
         this.modernopt$worldTarget = null;
 
@@ -75,10 +77,12 @@ public abstract class GameRendererMixin {
         // Keep the existing safe bypass: don't replace targets underneath Iris' shader pipeline.
         if (modernopt$shaderPackInUse()) return;
 
-        boolean scalingRequested = RenderScaleController.isEnabled();
+        boolean ssaaRequested = ModernOptConfig.SSAA_ENABLED.get();
+        boolean scalingRequested = !ssaaRequested && RenderScaleController.isEnabled();
         boolean fxaaRequested = ModernOptConfig.FXAA_ENABLED.get();
         int samples = modernopt$requestedSamples();
-        if (!scalingRequested && !fxaaRequested && samples == 0) return;
+        if (!scalingRequested && !ssaaRequested && !fxaaRequested && samples == 0) return;
+        if (ssaaRequested) samples = 0;
 
         RenderTarget original = this.minecraft.getMainRenderTarget();
         int targetWidth = original.width;
@@ -89,9 +93,11 @@ public abstract class GameRendererMixin {
         // Targets with stencil attachments are left untouched for compatibility with mods.
         if (samples > 0 && original.isStencilEnabled()) samples = 0;
 
-        int width = scalingRequested ? RenderScaleController.scaledWidth(targetWidth) : targetWidth;
-        int height = scalingRequested ? RenderScaleController.scaledHeight(targetHeight) : targetHeight;
-        this.modernopt$scalingActive = width < targetWidth || height < targetHeight;
+        if (ssaaRequested && (targetWidth > 8192 || targetHeight > 8192)) ssaaRequested = false;
+        int width = ssaaRequested ? targetWidth * 2 : (scalingRequested ? RenderScaleController.scaledWidth(targetWidth) : targetWidth);
+        int height = ssaaRequested ? targetHeight * 2 : (scalingRequested ? RenderScaleController.scaledHeight(targetHeight) : targetHeight);
+        this.modernopt$ssaaActive = ssaaRequested;
+        this.modernopt$scalingActive = width != targetWidth || height != targetHeight;
 
         boolean needsOffscreen = this.modernopt$scalingActive || samples > 0;
         if (!needsOffscreen) {
@@ -165,7 +171,9 @@ public abstract class GameRendererMixin {
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
 
             if (this.modernopt$active && this.modernopt$scalingActive) {
-                boolean upscaled = Fsr1Renderer.render(this.modernopt$worldTarget, this.modernopt$originalTarget);
+                boolean upscaled = this.modernopt$ssaaActive
+                    ? Fsr1Renderer.downsampleSsaa(this.modernopt$worldTarget, this.modernopt$originalTarget)
+                    : Fsr1Renderer.render(this.modernopt$worldTarget, this.modernopt$originalTarget);
                 if (!upscaled) {
                     RenderSystem.setShader(GameRenderer::getPositionTexShader);
                     RenderSystem.setShaderTexture(0, this.modernopt$worldTarget.getColorTextureId());
@@ -199,6 +207,7 @@ public abstract class GameRendererMixin {
             this.modernopt$active = false;
             this.modernopt$scalingActive = false;
             this.modernopt$msaaActive = false;
+            this.modernopt$ssaaActive = false;
             this.modernopt$fxaaOnly = false;
             this.modernopt$originalTarget = null;
             this.modernopt$worldTarget = null;
