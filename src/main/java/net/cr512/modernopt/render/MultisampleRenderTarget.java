@@ -21,8 +21,8 @@ public final class MultisampleRenderTarget extends RenderTarget {
 
     public MultisampleRenderTarget(int width, int height, int samples, boolean onOSX) {
         super(true);
-        if (samples != 2 && samples != 4 && samples != 8) {
-            throw new IllegalArgumentException("MSAA samples must be 2, 4, or 8");
+        if (samples != 2 && samples != 4 && samples != 8 && samples != 16) {
+            throw new IllegalArgumentException("MSAA samples must be 2, 4, 8, or 16");
         }
         this.samples = samples;
         this.onOSX = onOSX;
