@@ -9,6 +9,7 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexSorting;
+import net.cr512.modernopt.render.Fsr1Renderer;
 import net.cr512.modernopt.render.RenderScaleController;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
@@ -40,7 +41,6 @@ public abstract class GameRendererMixin {
             Object result = apiClass.getMethod("isShaderPackInUse").invoke(api);
             return Boolean.TRUE.equals(result);
         } catch (ReflectiveOperationException | LinkageError ignored) {
-            // Unknown Iris API/version: fail closed rather than touching its pipeline.
             return true;
         }
     }
@@ -49,14 +49,9 @@ public abstract class GameRendererMixin {
     private void modernopt$beginWorldPass(CallbackInfo ci) {
         this.modernopt$active = false;
         if (!RenderScaleController.isEnabled() || this.minecraft.level == null) return;
-        // Iris owns a custom render graph while a shader pack is active. Swapping
-        // Minecraft's main target behind that graph can corrupt passes or crash.
         if (modernopt$shaderPackInUse()) return;
 
         RenderTarget original = this.minecraft.getMainRenderTarget();
-        // Use the actual framebuffer dimensions, not logical window dimensions.
-        // This guarantees the blit covers the complete destination target on HiDPI
-        // displays and whenever Minecraft's framebuffer size differs from the window.
         int targetWidth = original.width;
         int targetHeight = original.height;
         int width = RenderScaleController.scaledWidth(targetWidth);
@@ -81,7 +76,6 @@ public abstract class GameRendererMixin {
         if (!this.modernopt$active) return;
 
         try {
-            // Restore the destination before drawing the upscale pass.
             ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$originalTarget);
             this.modernopt$originalTarget.bindWrite(true);
             int width = this.modernopt$originalTarget.width;
@@ -95,23 +89,26 @@ public abstract class GameRendererMixin {
                 VertexSorting.ORTHOGRAPHIC_Z
             );
 
-            // Replace every destination pixel. Alpha blending or a stale shader tint
-            // can otherwise leave the old frame visible underneath the scaled image.
             RenderSystem.disableDepthTest();
             RenderSystem.depthMask(false);
             RenderSystem.disableBlend();
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-            RenderSystem.setShader(GameRenderer::getPositionTexShader);
-            RenderSystem.setShaderTexture(0, this.modernopt$scaledTarget.getColorTextureId());
 
-            BufferBuilder builder = Tesselator.getInstance().begin(
-                VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX
-            );
-            builder.addVertex(0.0F, 0.0F, 0.0F).setUv(0.0F, 0.0F);
-            builder.addVertex(0.0F, height, 0.0F).setUv(0.0F, 1.0F);
-            builder.addVertex(width, height, 0.0F).setUv(1.0F, 1.0F);
-            builder.addVertex(width, 0.0F, 0.0F).setUv(1.0F, 0.0F);
-            BufferUploader.drawWithShader(builder.build());
+            // FSR1 is a two-pass EASU + RCAS upscale. If shader compilation or
+            // setup fails, preserve a safe linear fullscreen fallback.
+            boolean fsrRendered = Fsr1Renderer.render(this.modernopt$scaledTarget, this.modernopt$originalTarget);
+            if (!fsrRendered) {
+                RenderSystem.setShader(GameRenderer::getPositionTexShader);
+                RenderSystem.setShaderTexture(0, this.modernopt$scaledTarget.getColorTextureId());
+                BufferBuilder builder = Tesselator.getInstance().begin(
+                    VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX
+                );
+                builder.addVertex(0.0F, 0.0F, 0.0F).setUv(0.0F, 0.0F);
+                builder.addVertex(0.0F, height, 0.0F).setUv(0.0F, 1.0F);
+                builder.addVertex(width, height, 0.0F).setUv(1.0F, 1.0F);
+                builder.addVertex(width, 0.0F, 0.0F).setUv(1.0F, 0.0F);
+                BufferUploader.drawWithShader(builder.build());
+            }
         } finally {
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
             RenderSystem.depthMask(true);
