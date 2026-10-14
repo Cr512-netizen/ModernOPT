@@ -3,7 +3,6 @@
   "minVersion": "0.8",
   "package": "net.cr512.modernopt.mixin",
   "compatibilityLevel": "JAVA_21",
-  "refmap": "modernopt.refmap.json",
   "client": [
     "MinecraftRenderTargetMixin",
     "RenderTargetAccessor",
