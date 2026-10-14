@@ -15,6 +15,8 @@ import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 
+import java.util.Locale;
+
 @Mod(ModernOPT.MOD_ID)
 public final class ModernOPT {
     public static final String MOD_ID = "modernopt";
@@ -25,22 +27,26 @@ public final class ModernOPT {
             (mc, screen) -> new ModernOptConfigScreen(screen));
         modEventBus.addListener(Fsr1Renderer::registerShaders);
 
-        // Sodium replaces Minecraft's Video Settings screen, so expose a matching
-        // themed switch and a direct route to the full ModernOPT settings.
+        // Sodium owns its video settings screen, so add an entry point directly to it.
         NeoForge.EVENT_BUS.addListener(ModernOPT::onScreenInit);
     }
 
     private static void onScreenInit(ScreenEvent.Init.Post event) {
         Screen screen = event.getScreen();
-        String className = screen.getClass().getName().toLowerCase(java.util.Locale.ROOT);
-        if (!className.contains("sodium") || !className.contains("option")) {
+        String className = screen.getClass().getName().toLowerCase(Locale.ROOT);
+
+        // Match Sodium's options screens across the 0.8.x naming variants without
+        // depending on Sodium classes at compile time.
+        if (!className.contains("sodium")
+                || !(className.contains("option") || className.contains("video"))) {
             return;
         }
 
         int y = screen.height - 28;
+        int center = screen.width / 2;
         ModernOptTabButton[] toggleRef = new ModernOptTabButton[1];
         toggleRef[0] = new ModernOptTabButton(
-            screen.width / 2 - 212, y, 132, 22, sodiumToggleLabel(),
+            center - 212, y, 132, 22, sodiumToggleLabel(),
             ModernOptConfig.ENABLED.get(), () -> {
                 boolean enabled = !ModernOptConfig.ENABLED.get();
                 ModernOptConfig.ENABLED.set(enabled);
@@ -51,7 +57,7 @@ public final class ModernOPT {
         event.addListener(toggleRef[0]);
 
         ModernOptTabButton settings = new ModernOptTabButton(
-            screen.width / 2 + 80, y, 132, 22,
+            center + 80, y, 132, 22,
             Component.translatable("modernopt.sodium.open"), false,
             () -> Minecraft.getInstance().setScreen(new ModernOptConfigScreen(screen)));
         event.addListener(settings);
