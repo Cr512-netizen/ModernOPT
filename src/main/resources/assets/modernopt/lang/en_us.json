@@ -5,8 +5,8 @@
   "modernopt.screen.upscalers": "Upscalers",
   "modernopt.screen.aa": "Anti-aliasing",
   "modernopt.screen.dynamic": "Dynamic res",
-  "modernopt.option.enabled": "Enable ModernOPT",
-  "modernopt.option.enabled.desc": "Master switch for all ModernOPT rendering features.",
+  "modernopt.option.enabled": "Safe Render Mode · ModernOPT",
+  "modernopt.option.enabled.desc": "Emergency bypass: disables all ModernOPT render interventions.",
   "modernopt.option.scale": "Render scale",
   "modernopt.option.scale.desc": "Fixed world render scale; dynamic mode can adjust it within your bounds.",
   "modernopt.option.upscaler": "Upscaler",
@@ -41,5 +41,14 @@
   "modernopt.benchmark.waiting": "Collecting frame-time samples...",
   "modernopt.benchmark.stats": "Average FPS: %s  ·  1%% low: %s  ·  worst ms: %s",
   "modernopt.benchmark.finished": "Benchmark finished",
-  "modernopt.benchmark.saved": "CSV report saved in modernopt-benchmarks/"
+  "modernopt.benchmark.saved": "CSV report saved in modernopt-benchmarks/",
+  "modernopt.benchmark.pacing.waiting": "Frame pacing: collecting samples...",
+  "modernopt.benchmark.pacing": "Frame ms p50/p95/p99: %s / %s / %s · spikes: %s",
+  "modernopt.benchmark.diagnostics": "FPS %s · scale %s%% · %s · over budget: %s",
+  "modernopt.profile.title": "Render profile",
+  "modernopt.profile.desc": "Cycle Quality, Balanced, Performance or Custom presets.",
+  "modernopt.profile.quality": "Quality",
+  "modernopt.profile.balanced": "Balanced",
+  "modernopt.profile.performance": "Performance",
+  "modernopt.profile.custom": "Custom"
 }
