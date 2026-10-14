@@ -25,9 +25,13 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin {
+    @Unique private static final Logger MODERNOPT_LOGGER = LoggerFactory.getLogger("ModernOPT");
+
     @Shadow @Final private Minecraft minecraft;
 
     @Unique private RenderTarget modernopt$originalTarget;
@@ -187,12 +191,23 @@ public abstract class GameRendererMixin {
         }
 
         if (this.modernopt$worldTarget == null && this.modernopt$scalingActive) {
-            if (this.modernopt$scaledTarget == null) {
-                this.modernopt$scaledTarget = new TextureTarget(width, height, true, Minecraft.ON_OSX);
-            } else if (this.modernopt$scaledTarget.width != width || this.modernopt$scaledTarget.height != height) {
-                this.modernopt$scaledTarget.resize(width, height, Minecraft.ON_OSX);
+            try {
+                if (this.modernopt$scaledTarget == null) {
+                    this.modernopt$scaledTarget = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+                } else if (this.modernopt$scaledTarget.width != width || this.modernopt$scaledTarget.height != height) {
+                    this.modernopt$scaledTarget.resize(width, height, Minecraft.ON_OSX);
+                }
+                this.modernopt$worldTarget = this.modernopt$scaledTarget;
+            } catch (RuntimeException | LinkageError allocationFailure) {
+                MODERNOPT_LOGGER.warn("Could not allocate the scaled world target; using the native framebuffer for this frame.", allocationFailure);
+                RenderScalePhase.end();
+                modernopt$restoreAuxiliaryTargets(targetWidth, targetHeight);
+                this.modernopt$scalingActive = false;
+                this.modernopt$ssaaActive = false;
+                this.modernopt$originalTarget = fxaaRequested ? original : null;
+                this.modernopt$fxaaOnly = fxaaRequested;
+                return;
             }
-            this.modernopt$worldTarget = this.modernopt$scaledTarget;
         }
 
         if (this.modernopt$worldTarget == null) {
