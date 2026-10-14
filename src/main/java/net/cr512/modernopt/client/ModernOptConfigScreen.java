@@ -84,11 +84,12 @@ public final class ModernOptConfigScreen extends Screen {
     }
 
     private void addTab(int x, int tabPage, String key) {
-        Button tab = Button.builder(Component.translatable(key), button -> {
-            page = tabPage;
-            clearWidgets();
-            init();
-        }).bounds(x, 58, 94, 22).build();
+        ModernOptTabButton tab = new ModernOptTabButton(x, 58, 94, 24,
+            Component.translatable(key), page == tabPage, () -> {
+                page = tabPage;
+                clearWidgets();
+                init();
+            });
         addRenderableWidget(tab);
     }
 
@@ -149,6 +150,7 @@ public final class ModernOptConfigScreen extends Screen {
         addRenderableWidget(slider);
         cards.add(new Card(y, title, description));
     }
+
     private void addMsaaSlider(int y, String title, String description) {
         int[] samples = {0, 2, 4, 8, 16};
         int current = samplesIndex(ModernOptConfig.MSAA_SAMPLES.get());
