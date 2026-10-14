@@ -10,6 +10,10 @@ public final class ModernOptConfig {
     public static final ModConfigSpec.BooleanValue FXAA_ENABLED;
     public static final ModConfigSpec.IntValue MSAA_SAMPLES;
     public static final ModConfigSpec.BooleanValue SSAA_ENABLED;
+    public static final ModConfigSpec.BooleanValue DYNAMIC_RESOLUTION_ENABLED;
+    public static final ModConfigSpec.IntValue DYNAMIC_MIN_SCALE_PERCENT;
+    public static final ModConfigSpec.IntValue DYNAMIC_MAX_SCALE_PERCENT;
+    public static final ModConfigSpec.IntValue DYNAMIC_TARGET_FPS;
     public static final ModConfigSpec SPEC;
 
     static {
@@ -22,6 +26,10 @@ public final class ModernOptConfig {
         FXAA_ENABLED = BUILDER.comment("Enable FXAA on the world image. Automatically skipped while an Iris shader pack is active.").define("fxaaEnabled", false);
         MSAA_SAMPLES = BUILDER.comment("World multisample anti-aliasing: 0 = off, 2 = 2x, 4 = 4x, 8 = 8x, 16 = 16x. 16x falls back to 8x if unsupported. Automatically skipped with Iris shader packs.").defineInRange("msaaSamples", 0, 0, 16);
         SSAA_ENABLED = BUILDER.comment("Render the world at 2x width and height, then downsample 4 samples per output pixel. Overrides render scale and MSAA.").define("ssaaEnabled", false);
+        DYNAMIC_RESOLUTION_ENABLED = BUILDER.comment("Automatically adjust world render resolution to approach the target FPS.").define("dynamicResolutionEnabled", false);
+        DYNAMIC_MIN_SCALE_PERCENT = BUILDER.comment("Lowest allowed dynamic world render scale.").defineInRange("dynamicMinScalePercent", 50, 25, 100);
+        DYNAMIC_MAX_SCALE_PERCENT = BUILDER.comment("Highest allowed dynamic world render scale.").defineInRange("dynamicMaxScalePercent", 100, 25, 100);
+        DYNAMIC_TARGET_FPS = BUILDER.comment("Target FPS for dynamic resolution, from 30 to 540.").defineInRange("dynamicTargetFps", 120, 30, 540);
         BUILDER.pop();
         SPEC = BUILDER.build();
     }
