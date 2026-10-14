@@ -12,7 +12,6 @@ public final class ModernOptConfigScreen extends Screen {
     private final Screen parent;
     private int page;
     private AbstractSliderButton msaaSlider;
-    private Button ssaaControl;
 
     private static final int PANEL = 0xE8171B25;
     private static final int CARD = 0xF0222835;
@@ -89,7 +88,6 @@ public final class ModernOptConfigScreen extends Screen {
             }
         }).bounds(this.width / 2 + 68, y + 20, 112, 22).build();
         addRenderableWidget(control);
-        if (value == ModernOptConfig.SSAA_ENABLED) this.ssaaControl = control;
         cards.add(new Card(y, title, description));
     }
 
