@@ -108,6 +108,7 @@ public abstract class GameRendererMixin {
         }
 
         if (samples > 0) {
+            int requestedSamples = samples;
             try {
                 if (this.modernopt$msaaTarget == null || this.modernopt$allocatedSamples != samples) {
                     if (this.modernopt$msaaTarget != null) this.modernopt$msaaTarget.destroyBuffers();
@@ -120,7 +121,8 @@ public abstract class GameRendererMixin {
                         samples = 8;
                         this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, samples, Minecraft.ON_OSX);
                     }
-                    this.modernopt$allocatedSamples = samples;
+                    // Track the requested mode, not the fallback target, to avoid retrying 16x every frame.
+                    this.modernopt$allocatedSamples = requestedSamples;
                 } else if (this.modernopt$msaaTarget.width != width || this.modernopt$msaaTarget.height != height) {
                     this.modernopt$msaaTarget.resize(width, height, Minecraft.ON_OSX);
                 }
