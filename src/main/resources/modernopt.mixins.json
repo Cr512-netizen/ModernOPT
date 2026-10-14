@@ -8,6 +8,7 @@
     "RenderTargetAccessor",
     "LevelRendererAccessor",
     "PostChainAccessor",
+    "LevelRendererMixin",
     "WindowMixin",
     "GameRendererMixin"
   ],
