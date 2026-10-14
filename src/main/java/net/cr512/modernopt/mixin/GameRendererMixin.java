@@ -11,6 +11,7 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.render.Fsr1Renderer;
+import net.cr512.modernopt.render.MultisampleRenderTarget;
 import net.cr512.modernopt.render.RenderScaleController;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
@@ -29,10 +30,15 @@ public abstract class GameRendererMixin {
 
     @Unique private RenderTarget modernopt$originalTarget;
     @Unique private TextureTarget modernopt$scaledTarget;
+    @Unique private MultisampleRenderTarget modernopt$msaaTarget;
+    @Unique private RenderTarget modernopt$worldTarget;
     @Unique private Matrix4f modernopt$oldProjection;
     @Unique private VertexSorting modernopt$oldVertexSorting;
     @Unique private boolean modernopt$active;
+    @Unique private boolean modernopt$scalingActive;
+    @Unique private boolean modernopt$msaaActive;
     @Unique private boolean modernopt$fxaaOnly;
+    @Unique private int modernopt$allocatedSamples;
 
     @Unique
     private static boolean modernopt$shaderPackInUse() {
@@ -47,17 +53,32 @@ public abstract class GameRendererMixin {
         }
     }
 
+    @Unique
+    private static int modernopt$requestedSamples() {
+        return switch (ModernOptConfig.MSAA_SAMPLES.get()) {
+            case 2 -> 2;
+            case 4 -> 4;
+            case 8 -> 8;
+            default -> 0;
+        };
+    }
+
     @Inject(method = "renderLevel", at = @At("HEAD"), remap = false)
     private void modernopt$beginWorldPass(CallbackInfo ci) {
         this.modernopt$active = false;
+        this.modernopt$scalingActive = false;
+        this.modernopt$msaaActive = false;
         this.modernopt$fxaaOnly = false;
+        this.modernopt$worldTarget = null;
+
         if (!ModernOptConfig.ENABLED.get() || this.minecraft.level == null) return;
-        // FXAA and render scaling are both bypassed while an Iris shader pack is active.
+        // Keep the existing safe bypass: don't replace targets underneath Iris' shader pipeline.
         if (modernopt$shaderPackInUse()) return;
 
         boolean scalingRequested = RenderScaleController.isEnabled();
         boolean fxaaRequested = ModernOptConfig.FXAA_ENABLED.get();
-        if (!scalingRequested && !fxaaRequested) return;
+        int samples = modernopt$requestedSamples();
+        if (!scalingRequested && !fxaaRequested && samples == 0) return;
 
         RenderTarget original = this.minecraft.getMainRenderTarget();
         int targetWidth = original.width;
@@ -65,27 +86,59 @@ public abstract class GameRendererMixin {
         if (targetWidth <= 0 || targetHeight <= 0) return;
         this.modernopt$originalTarget = original;
 
-        if (scalingRequested) {
-            int width = RenderScaleController.scaledWidth(targetWidth);
-            int height = RenderScaleController.scaledHeight(targetHeight);
-            if (width < targetWidth || height < targetHeight) {
-                if (this.modernopt$scaledTarget == null) {
-                    this.modernopt$scaledTarget = new TextureTarget(width, height, true, Minecraft.ON_OSX);
-                } else if (this.modernopt$scaledTarget.width != width || this.modernopt$scaledTarget.height != height) {
-                    this.modernopt$scaledTarget.resize(width, height, Minecraft.ON_OSX);
-                }
+        // Targets with stencil attachments are left untouched for compatibility with mods.
+        if (samples > 0 && original.isStencilEnabled()) samples = 0;
 
-                this.modernopt$scaledTarget.clear(Minecraft.ON_OSX);
-                this.modernopt$scaledTarget.bindWrite(true);
-                ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$scaledTarget);
-                this.modernopt$active = true;
-                return;
+        int width = scalingRequested ? RenderScaleController.scaledWidth(targetWidth) : targetWidth;
+        int height = scalingRequested ? RenderScaleController.scaledHeight(targetHeight) : targetHeight;
+        this.modernopt$scalingActive = width < targetWidth || height < targetHeight;
+
+        boolean needsOffscreen = this.modernopt$scalingActive || samples > 0;
+        if (!needsOffscreen) {
+            this.modernopt$fxaaOnly = fxaaRequested;
+            if (!this.modernopt$fxaaOnly) this.modernopt$originalTarget = null;
+            return;
+        }
+
+        if (samples > 0) {
+            try {
+                if (this.modernopt$msaaTarget == null || this.modernopt$allocatedSamples != samples) {
+                    if (this.modernopt$msaaTarget != null) this.modernopt$msaaTarget.destroyBuffers();
+                    this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, samples, Minecraft.ON_OSX);
+                    this.modernopt$allocatedSamples = samples;
+                } else if (this.modernopt$msaaTarget.width != width || this.modernopt$msaaTarget.height != height) {
+                    this.modernopt$msaaTarget.resize(width, height, Minecraft.ON_OSX);
+                }
+                this.modernopt$worldTarget = this.modernopt$msaaTarget;
+                this.modernopt$msaaActive = true;
+            } catch (RuntimeException | LinkageError msaaUnavailable) {
+                // Unsupported sample counts/framebuffer formats must not break world rendering.
+                this.modernopt$msaaActive = false;
+                this.modernopt$worldTarget = null;
             }
         }
 
-        // FXAA can be used independently at native resolution.
-        this.modernopt$fxaaOnly = fxaaRequested;
-        if (!this.modernopt$fxaaOnly) this.modernopt$originalTarget = null;
+        if (this.modernopt$worldTarget == null && this.modernopt$scalingActive) {
+            if (this.modernopt$scaledTarget == null) {
+                this.modernopt$scaledTarget = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+            } else if (this.modernopt$scaledTarget.width != width || this.modernopt$scaledTarget.height != height) {
+                this.modernopt$scaledTarget.resize(width, height, Minecraft.ON_OSX);
+            }
+            this.modernopt$worldTarget = this.modernopt$scaledTarget;
+        }
+
+        if (this.modernopt$worldTarget == null) {
+            this.modernopt$originalTarget = null;
+            this.modernopt$scalingActive = false;
+            this.modernopt$msaaActive = false;
+            this.modernopt$fxaaOnly = fxaaRequested;
+            return;
+        }
+
+        this.modernopt$worldTarget.clear(Minecraft.ON_OSX);
+        this.modernopt$worldTarget.bindWrite(true);
+        ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$worldTarget);
+        this.modernopt$active = true;
     }
 
     @Inject(method = "renderLevel", at = @At("RETURN"), remap = false)
@@ -111,12 +164,11 @@ public abstract class GameRendererMixin {
             RenderSystem.disableBlend();
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
 
-            if (this.modernopt$active) {
-                // If the selected upscaler fails, preserve a safe fullscreen fallback.
-                boolean upscaled = Fsr1Renderer.render(this.modernopt$scaledTarget, this.modernopt$originalTarget);
+            if (this.modernopt$active && this.modernopt$scalingActive) {
+                boolean upscaled = Fsr1Renderer.render(this.modernopt$worldTarget, this.modernopt$originalTarget);
                 if (!upscaled) {
                     RenderSystem.setShader(GameRenderer::getPositionTexShader);
-                    RenderSystem.setShaderTexture(0, this.modernopt$scaledTarget.getColorTextureId());
+                    RenderSystem.setShaderTexture(0, this.modernopt$worldTarget.getColorTextureId());
                     BufferBuilder builder = Tesselator.getInstance().begin(
                         VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX
                     );
@@ -126,9 +178,10 @@ public abstract class GameRendererMixin {
                     builder.addVertex(width, 0.0F, 0.0F).setUv(1.0F, 0.0F);
                     BufferUploader.drawWithShader(builder.build());
                 }
+            } else if (this.modernopt$active && this.modernopt$msaaActive) {
+                Fsr1Renderer.copyResolved(this.modernopt$worldTarget, this.modernopt$originalTarget);
             }
 
-            // Run after upscaling, or on the native-resolution world image when scaling is off.
             if (ModernOptConfig.FXAA_ENABLED.get()) {
                 Fsr1Renderer.applyFxaa(this.modernopt$originalTarget);
             }
@@ -144,8 +197,11 @@ public abstract class GameRendererMixin {
             ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$originalTarget);
             this.modernopt$originalTarget.bindWrite(true);
             this.modernopt$active = false;
+            this.modernopt$scalingActive = false;
+            this.modernopt$msaaActive = false;
             this.modernopt$fxaaOnly = false;
             this.modernopt$originalTarget = null;
+            this.modernopt$worldTarget = null;
         }
     }
 }
