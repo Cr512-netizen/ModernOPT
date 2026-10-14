@@ -31,7 +31,7 @@
 - **Render-scale control:** adjust the internal world-render resolution from 25% to 100% of the window resolution.
 - **Spatial upscalers:** FSR 1 (EASU + RCAS), bilinear, nearest-neighbour, and SoftScale reconstruction modes.
 - **SSAA:** optional 2× width and 2× height world rendering followed by downsampling. This processes four times as many world pixels and can be expensive. SSAA takes priority over render scale and MSAA.
-- **MSAA:** optional world-pass multisampling with Off, 2×, 4×, and 8× choices where supported by the current render path.
+- **MSAA:** optional world-pass multisampling with Off, 2×, 4×, 8×, and 16× choices; if 16× is unavailable, ModernOPT retries at 8×.
 - **FXAA:** optional post-process edge smoothing.
 - **Native-resolution interface:** the intended render pipeline keeps HUD and GUI rendering at the window resolution.
 - **Client-side settings:** rendering options are stored in the client configuration. The master switch is intended to disable ModernOPT's rendering interventions.
@@ -59,7 +59,7 @@ Artifacts are development builds and may change without notice. Use the version/
 
 ## Configuration
 
-ModernOPT registers a client configuration screen through NeoForge. Depending on the installed loader/mod-menu setup, it may be accessible through the Mods screen. Settings currently cover:
+ModernOPT exposes its rendering options in Sodium's own options UI when a compatible Sodium version is installed. The master switch is off by default; leave it off if you encounter visual corruption. Settings cover:
 
 - Master enable/disable switch
 - Render scale and upscaler selection
@@ -133,7 +133,7 @@ The software is provided “as is”, without warranties or guarantees, to the m
 - **Масштаб рендера:** от 25% до 100% разрешения окна.
 - **Пространственные апскейлеры:** FSR 1 (EASU + RCAS), билинейный, по ближайшему соседу и SoftScale.
 - **SSAA:** рендер мира в разрешении 2× по ширине и высоте с последующим уменьшением. Обрабатывается в четыре раза больше пикселей; это может быть очень затратно. SSAA имеет приоритет над масштабом рендера и MSAA.
-- **MSAA:** мультисэмплинг прохода мира с режимами выкл., 2×, 4× и 8× там, где это поддерживается текущим путём рендеринга.
+- **MSAA:** мультисэмплинг прохода мира с режимами выкл., 2×, 4×, 8× и 16× там, где это поддерживается текущим путём рендеринга.
 - **FXAA:** дополнительное сглаживание контуров.
 - **Интерфейс в исходном разрешении:** предполагается, что HUD и GUI рисуются в разрешении окна.
 - **Клиентские настройки:** параметры рендеринга хранятся в клиентской конфигурации. Главный переключатель предназначен для отключения вмешательства ModernOPT в рендеринг.
