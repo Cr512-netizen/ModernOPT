@@ -11,6 +11,8 @@ public final class ModernOptConfig {
     public static final ModConfigSpec.IntValue MSAA_SAMPLES;
     public static final ModConfigSpec.BooleanValue SSAA_ENABLED;
     public static final ModConfigSpec.BooleanValue DYNAMIC_RESOLUTION_ENABLED;
+    public static final ModConfigSpec.BooleanValue IRIS_SHADOW_SCALE_ENABLED;
+    public static final ModConfigSpec.IntValue IRIS_SHADOW_SCALE_PERCENT;
     public static final ModConfigSpec.IntValue DYNAMIC_MIN_SCALE_PERCENT;
     public static final ModConfigSpec.IntValue DYNAMIC_MAX_SCALE_PERCENT;
     public static final ModConfigSpec.IntValue DYNAMIC_TARGET_FPS;
@@ -31,6 +33,10 @@ public final class ModernOptConfig {
         DYNAMIC_MIN_SCALE_PERCENT = BUILDER.defineInRange("dynamicMinScalePercent", 50, 25, 100);
         DYNAMIC_MAX_SCALE_PERCENT = BUILDER.defineInRange("dynamicMaxScalePercent", 100, 25, 100);
         DYNAMIC_TARGET_FPS = BUILDER.defineInRange("dynamicTargetFps", 120, 30, 540);
+        BUILDER.pop();
+        BUILDER.push("iris");
+        IRIS_SHADOW_SCALE_ENABLED = BUILDER.comment("Scale Iris shader-pack shadow maps. Disabled by default for maximum shader-pack compatibility.").define("shadowScaleEnabled", false);
+        IRIS_SHADOW_SCALE_PERCENT = BUILDER.comment("Iris shadow-map resolution percentage when shadow scaling is enabled.").defineInRange("shadowScalePercent", 75, 50, 100);
         BUILDER.pop();
         SPEC = BUILDER.build();
     }
