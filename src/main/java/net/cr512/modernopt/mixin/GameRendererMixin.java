@@ -2,13 +2,13 @@ package net.cr512.modernopt.mixin;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
-import com.mojang.blaze3d.vertex.VertexSorting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.VertexSorting;
 import net.cr512.modernopt.render.RenderScaleController;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
@@ -24,6 +24,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin {
     @Shadow(remap = false) @Final private Minecraft minecraft;
+
     @Unique private RenderTarget modernopt$originalTarget;
     @Unique private TextureTarget modernopt$scaledTarget;
     @Unique private Matrix4f modernopt$oldProjection;
@@ -50,16 +51,17 @@ public abstract class GameRendererMixin {
         if (!RenderScaleController.isEnabled() || this.minecraft.level == null) return;
         // Iris owns a custom render graph while a shader pack is active. Swapping
         // Minecraft's main target behind that graph can corrupt passes or crash.
-        // Keep Iris packs enabled and fall back to native-resolution rendering until
-        // a version-matched Iris render-pipeline bridge is available.
         if (modernopt$shaderPackInUse()) return;
 
         RenderTarget original = this.minecraft.getMainRenderTarget();
-        int windowWidth = this.minecraft.getWindow().getWidth();
-        int windowHeight = this.minecraft.getWindow().getHeight();
-        int width = RenderScaleController.scaledWidth(windowWidth);
-        int height = RenderScaleController.scaledHeight(windowHeight);
-        if (width >= windowWidth && height >= windowHeight) return;
+        // Use the actual framebuffer dimensions, not logical window dimensions.
+        // This guarantees the blit covers the complete destination target on HiDPI
+        // displays and whenever Minecraft's framebuffer size differs from the window.
+        int targetWidth = original.width;
+        int targetHeight = original.height;
+        int width = RenderScaleController.scaledWidth(targetWidth);
+        int height = RenderScaleController.scaledHeight(targetHeight);
+        if (targetWidth <= 0 || targetHeight <= 0 || width >= targetWidth && height >= targetHeight) return;
 
         this.modernopt$originalTarget = original;
         if (this.modernopt$scaledTarget == null) {
@@ -67,6 +69,7 @@ public abstract class GameRendererMixin {
         } else if (this.modernopt$scaledTarget.width != width || this.modernopt$scaledTarget.height != height) {
             this.modernopt$scaledTarget.resize(width, height, Minecraft.ON_OSX);
         }
+
         this.modernopt$scaledTarget.clear(Minecraft.ON_OSX);
         this.modernopt$scaledTarget.bindWrite(true);
         ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$scaledTarget);
@@ -76,30 +79,47 @@ public abstract class GameRendererMixin {
     @Inject(method = "renderLevel", at = @At("RETURN"), remap = false)
     private void modernopt$endWorldPass(CallbackInfo ci) {
         if (!this.modernopt$active) return;
+
         try {
+            // Restore the destination before drawing the upscale pass.
             ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$originalTarget);
             this.modernopt$originalTarget.bindWrite(true);
-            int width = this.minecraft.getWindow().getWidth();
-            int height = this.minecraft.getWindow().getHeight();
+            int width = this.modernopt$originalTarget.width;
+            int height = this.modernopt$originalTarget.height;
             RenderSystem.viewport(0, 0, width, height);
+
             this.modernopt$oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
             this.modernopt$oldVertexSorting = RenderSystem.getVertexSorting();
-            RenderSystem.setProjectionMatrix(new Matrix4f().setOrtho(0.0F, width, height, 0.0F, -1000.0F, 1000.0F), VertexSorting.ORTHOGRAPHIC_Z);
+            RenderSystem.setProjectionMatrix(
+                new Matrix4f().setOrtho(0.0F, width, height, 0.0F, -1000.0F, 1000.0F),
+                VertexSorting.ORTHOGRAPHIC_Z
+            );
+
+            // Replace every destination pixel. Alpha blending or a stale shader tint
+            // can otherwise leave the old frame visible underneath the scaled image.
             RenderSystem.disableDepthTest();
             RenderSystem.depthMask(false);
+            RenderSystem.disableBlend();
+            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
             RenderSystem.setShader(GameRenderer::getPositionTexShader);
             RenderSystem.setShaderTexture(0, this.modernopt$scaledTarget.getColorTextureId());
-            BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+
+            BufferBuilder builder = Tesselator.getInstance().begin(
+                VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX
+            );
             builder.addVertex(0.0F, 0.0F, 0.0F).setUv(0.0F, 0.0F);
             builder.addVertex(0.0F, height, 0.0F).setUv(0.0F, 1.0F);
             builder.addVertex(width, height, 0.0F).setUv(1.0F, 1.0F);
             builder.addVertex(width, 0.0F, 0.0F).setUv(1.0F, 0.0F);
             BufferUploader.drawWithShader(builder.build());
         } finally {
+            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
             RenderSystem.depthMask(true);
             RenderSystem.enableDepthTest();
             if (this.modernopt$oldProjection != null) {
                 RenderSystem.setProjectionMatrix(this.modernopt$oldProjection, this.modernopt$oldVertexSorting);
+                this.modernopt$oldProjection = null;
+                this.modernopt$oldVertexSorting = null;
             }
             ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$originalTarget);
             this.modernopt$originalTarget.bindWrite(true);
