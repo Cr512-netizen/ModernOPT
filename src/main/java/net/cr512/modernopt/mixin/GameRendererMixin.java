@@ -98,10 +98,12 @@ public abstract class GameRendererMixin {
         }
 
         boolean ssaaRequested = ModernOptConfig.SSAA_ENABLED.get();
+        boolean fxaaRequested = !ssaaRequested && ModernOptConfig.FXAA_ENABLED.get();
+        // AA modes are exclusive: SSAA takes priority, then FXAA, then MSAA.
+        // This also sanitizes combinations saved by older config versions.
+        int samples = (ssaaRequested || fxaaRequested) ? 0 : modernopt$requestedSamples();
         boolean scalingRequestedInitially = !ssaaRequested && RenderScaleController.isEnabled();
         boolean scalingRequested = scalingRequestedInitially;
-        boolean fxaaRequested = ModernOptConfig.FXAA_ENABLED.get();
-        int samples = modernopt$requestedSamples();
         if (samples == this.modernopt$failedMsaaRequest) samples = 0;
         if (!scalingRequested && !ssaaRequested && !fxaaRequested && samples == 0) {
             modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
@@ -227,6 +229,29 @@ public abstract class GameRendererMixin {
     }
 
     @Unique
+    private void modernopt$blitOpaque(RenderTarget input, RenderTarget output) {
+        int width = output.width;
+        int height = output.height;
+        output.bindWrite(true);
+        RenderSystem.viewport(0, 0, width, height);
+        RenderSystem.disableBlend();
+        RenderSystem.disableDepthTest();
+        RenderSystem.depthMask(false);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        RenderSystem.setShaderTexture(0, input.getColorTextureId());
+        BufferBuilder builder = Tesselator.getInstance().begin(
+            VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX
+        );
+        // Framebuffer textures are bottom-left-origin; the destination quad is top-left-origin.
+        builder.addVertex(0.0F, 0.0F, 0.0F).setUv(0.0F, 1.0F);
+        builder.addVertex(0.0F, height, 0.0F).setUv(0.0F, 0.0F);
+        builder.addVertex(width, height, 0.0F).setUv(1.0F, 0.0F);
+        builder.addVertex(width, 0.0F, 0.0F).setUv(1.0F, 1.0F);
+        BufferUploader.drawWithShader(builder.build());
+    }
+
+    @Unique
     private void modernopt$restoreAuxiliaryTargets(int width, int height) {
         if (!this.modernopt$auxTargetsAdjusted) return;
         if (RenderTargetLifecycle.syncWorldTargets(this.minecraft, width, height)) {
@@ -264,22 +289,13 @@ public abstract class GameRendererMixin {
                     : Fsr1Renderer.render(this.modernopt$worldTarget, this.modernopt$originalTarget);
                 if (!upscaled) {
                     // A failed shader pass restores vanilla state, including blending.
-                    // Force an opaque copy for the fallback blit.
-                    RenderSystem.disableBlend();
-                    RenderSystem.setShader(GameRenderer::getPositionTexShader);
-                    RenderSystem.setShaderTexture(0, this.modernopt$worldTarget.getColorTextureId());
-                    BufferBuilder builder = Tesselator.getInstance().begin(
-                        VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX
-                    );
-                    // Framebuffer textures are bottom-left-origin; the destination quad is top-left-origin.
-                    builder.addVertex(0.0F, 0.0F, 0.0F).setUv(0.0F, 1.0F);
-                    builder.addVertex(0.0F, height, 0.0F).setUv(0.0F, 0.0F);
-                    builder.addVertex(width, height, 0.0F).setUv(1.0F, 0.0F);
-                    builder.addVertex(width, 0.0F, 0.0F).setUv(1.0F, 1.0F);
-                    BufferUploader.drawWithShader(builder.build());
+                    modernopt$blitOpaque(this.modernopt$worldTarget, this.modernopt$originalTarget);
                 }
             } else if (this.modernopt$active && this.modernopt$msaaActive) {
-                Fsr1Renderer.copyResolved(this.modernopt$worldTarget, this.modernopt$originalTarget);
+                if (!Fsr1Renderer.copyResolved(this.modernopt$worldTarget, this.modernopt$originalTarget)) {
+                    // A missing copy shader must not leave the native framebuffer blank.
+                    modernopt$blitOpaque(this.modernopt$worldTarget, this.modernopt$originalTarget);
+                }
             }
 
             if (ModernOptConfig.FXAA_ENABLED.get()) {
