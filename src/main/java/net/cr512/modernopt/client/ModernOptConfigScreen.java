@@ -85,8 +85,8 @@ public final class ModernOptConfigScreen extends Screen {
 
     private void addScaleSlider(int y, String title, String description) {
         AbstractSliderButton slider = new AbstractSliderButton(this.width / 2 + 68, y + 20, 112, 22,
-            (ModernOptConfig.RENDER_SCALE_PERCENT.get() - 25) / 75.0,
-            Component.literal(ModernOptConfig.RENDER_SCALE_PERCENT.get() + "%")) {
+            Component.literal(ModernOptConfig.RENDER_SCALE_PERCENT.get() + "%"),
+            (ModernOptConfig.RENDER_SCALE_PERCENT.get() - 25) / 75.0) {
             @Override
             protected void updateMessage() {
                 setMessage(Component.literal((int)Math.round(25 + value * 75) + "%"));
