@@ -20,11 +20,11 @@
   "modernopt.option.maxScale": "Максимальный масштаб",
   "modernopt.option.maxScale.desc": "Верхний предел масштаба рендеринга мира.",
   "modernopt.option.ssaa": "SSAA",
-  "modernopt.option.ssaa.desc": "Рендер в разрешении 2x с последующим уменьшением. Несовместимо с FXAA и MSAA."
+  "modernopt.option.ssaa.desc": "Рендер в разрешении 2x с последующим уменьшением. Несовместимо с FXAA и MSAA.",
   "modernopt.option.fxaa": "FXAA",
-  "modernopt.option.fxaa.desc": "Постобработка сглаживания. Несовместимо с SSAA и MSAA."
+  "modernopt.option.fxaa.desc": "Постобработка сглаживания. Несовместимо с SSAA и MSAA.",
   "modernopt.option.msaa": "MSAA",
-  "modernopt.option.msaa.desc": "Мультисэмпловое сглаживание 2x, 4x, 8x или 16x. Несовместимо с FXAA и SSAA."
+  "modernopt.option.msaa.desc": "Мультисэмпловое сглаживание 2x, 4x, 8x или 16x. Несовместимо с FXAA и SSAA.",
   "modernopt.value.on": "ВКЛ",
   "modernopt.value.off": "ВЫКЛ",
   "modernopt.sodium.open": "Настройки ModernOPT",
