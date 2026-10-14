@@ -160,7 +160,7 @@ public final class Fsr1Renderer {
         } catch (RuntimeException | LinkageError exception) {
             if (!fxaaFailureLogged) {
                 fxaaFailureLogged = true;
-                LOGGER.error("FXAA pass failed; ModernOPT will skip FXAA until resources are reloaded.", exception);
+                LOGGER.error("FXAA pass failed; this frame is left on the unfiltered image. This failure is logged only once.", exception);
             }
             return false;
         } finally {
