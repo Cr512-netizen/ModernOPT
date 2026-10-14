@@ -27,7 +27,7 @@ public final class RenderScaleController {
 
     private static int scaledDimension(int dimension, int percent, int minimum) {
         if (dimension <= 0) return dimension;
-        int safePercent = Math.max(50, Math.min(100, percent));
+        int safePercent = Math.max(25, Math.min(100, percent));
         int scaled = (int) Math.round(dimension * (safePercent / 100.0));
         return Math.min(dimension, Math.max(Math.min(minimum, dimension), scaled));
     }
