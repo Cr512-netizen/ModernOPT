@@ -25,7 +25,7 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
     private static final ResourceLocation MIN_SCALE_ID = id("minimum_scale");
     private static final ResourceLocation MAX_SCALE_ID = id("maximum_scale");
     private static final ResourceLocation IRIS_SHADOW_SCALE_ENABLED_ID = id("iris_shadow_scale_enabled");
-    private static final ResourceLocation IRIS_SHADOW_SCALE_PERCENT_ID = id("iris_shadow_scale_percent");
+    private static final ResourceLocation IRIS_SHADOW_RESOLUTION_ID = id("iris_shadow_resolution");
 
     @Override
     public void registerConfigLate(ConfigBuilder builder) {
@@ -109,13 +109,13 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setDefaultValue(false)
                         .setEnabled(true))
                     .addOption(builder.createIntegerOption(IRIS_SHADOW_SCALE_PERCENT_ID)
-                        .setName(Component.translatable("modernopt.option.irisShadowScalePercent"))
-                        .setTooltip(Component.translatable("modernopt.option.irisShadowScalePercent.desc"))
-                        .setRange(50, 100, 5)
-                        .setValueFormatter(value -> Component.literal(value + "%"))
-                        .setBinding(ModernOptConfig.IRIS_SHADOW_SCALE_PERCENT::set, ModernOptConfig.IRIS_SHADOW_SCALE_PERCENT::get)
+                        .setName(Component.translatable("modernopt.option.irisShadowResolution"))
+                        .setTooltip(Component.translatable("modernopt.option.irisShadowResolution.desc"))
+                        .setRange(256, 8192, 256)
+                        .setValueFormatter(value -> Component.literal(value + " px"))
+                        .setBinding(ModernOptConfig.IRIS_SHADOW_RESOLUTION::set, ModernOptConfig.IRIS_SHADOW_RESOLUTION::get)
                         .setStorageHandler(storage)
-                        .setDefaultValue(75)
+                        .setDefaultValue(2048)
                         .setEnabled(true))
                 )
                 .addOptionGroup(builder.createOptionGroup()
