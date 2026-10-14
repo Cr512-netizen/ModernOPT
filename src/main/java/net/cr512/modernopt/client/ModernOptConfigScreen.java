@@ -25,6 +25,7 @@ public final class ModernOptConfigScreen extends Screen {
 
     @Override
     protected void init() {
+        cards.clear();
         int center = this.width / 2;
         int tabWidth = 118;
         int tabGap = 8;
