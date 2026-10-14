@@ -6,6 +6,8 @@
   "client": [
     "MinecraftRenderTargetMixin",
     "RenderTargetAccessor",
+    "LevelRendererAccessor",
+    "PostChainAccessor",
     "WindowMixin",
     "GameRendererMixin"
   ],
