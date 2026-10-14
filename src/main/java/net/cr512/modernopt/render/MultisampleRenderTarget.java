@@ -125,9 +125,11 @@ public final class MultisampleRenderTarget extends RenderTarget {
             GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, multisampleFramebuffer);
             GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER,
                 ((RenderTargetAccessor)(Object)resolvedTarget).modernopt$getFrameBufferId());
-            int mask = GL11.GL_COLOR_BUFFER_BIT;
-            if (useDepth) mask |= GL11.GL_DEPTH_BUFFER_BIT;
-            GL30.glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, mask, GL11.GL_NEAREST);
+            // Only the color image is sampled by ModernOPT's resolve/upscale pass.
+            // Resolving depth as well can fail on driver/format combinations and leave
+            // the post-process input undefined (commonly observed as a white world).
+            GL30.glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
+                GL11.GL_COLOR_BUFFER_BIT, GL11.GL_NEAREST);
         } finally {
             GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousRead);
             GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDraw);
