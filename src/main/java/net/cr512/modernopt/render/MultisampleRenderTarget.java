@@ -36,35 +36,45 @@ public final class MultisampleRenderTarget extends RenderTarget {
     @Override
     public void createBuffers(int width, int height, boolean clearError) {
         if (width <= 0 || height <= 0) throw new IllegalArgumentException("Invalid MSAA target size");
-        resolvedTarget = new TextureTarget(width, height, true, onOSX);
 
-        multisampleFramebuffer = GL30.glGenFramebuffers();
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, multisampleFramebuffer);
+        int previousFramebuffer = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
+        int previousRenderbuffer = GL11.glGetInteger(GL30.GL_RENDERBUFFER_BINDING);
+        try {
+            resolvedTarget = new TextureTarget(width, height, true, onOSX);
 
-        multisampleColorBuffer = GL30.glGenRenderbuffers();
-        GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, multisampleColorBuffer);
-        GL30.glRenderbufferStorageMultisample(GL30.GL_RENDERBUFFER, samples, GL11.GL_RGBA8, width, height);
-        GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL30.GL_RENDERBUFFER, multisampleColorBuffer);
+            multisampleFramebuffer = GL30.glGenFramebuffers();
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, multisampleFramebuffer);
 
-        multisampleDepthBuffer = GL30.glGenRenderbuffers();
-        GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, multisampleDepthBuffer);
-        GL30.glRenderbufferStorageMultisample(GL30.GL_RENDERBUFFER, samples, GL30.GL_DEPTH_COMPONENT24, width, height);
-        GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_RENDERBUFFER, multisampleDepthBuffer);
+            multisampleColorBuffer = GL30.glGenRenderbuffers();
+            GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, multisampleColorBuffer);
+            GL30.glRenderbufferStorageMultisample(GL30.GL_RENDERBUFFER, samples, GL11.GL_RGBA8, width, height);
+            GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL30.GL_RENDERBUFFER, multisampleColorBuffer);
 
-        int status = GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
-        if (status != GL30.GL_FRAMEBUFFER_COMPLETE) {
+            multisampleDepthBuffer = GL30.glGenRenderbuffers();
+            GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, multisampleDepthBuffer);
+            GL30.glRenderbufferStorageMultisample(GL30.GL_RENDERBUFFER, samples, GL11.GL_DEPTH_COMPONENT24, width, height);
+            GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_RENDERBUFFER, multisampleDepthBuffer);
+
+            int status = GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
+            if (status != GL30.GL_FRAMEBUFFER_COMPLETE) {
+                throw new IllegalStateException("MSAA framebuffer is incomplete: 0x" + Integer.toHexString(status));
+            }
+
+            ((RenderTargetAccessor)(Object)this).modernopt$setFrameBufferId(multisampleFramebuffer);
+            // The inherited IDs are only used by vanilla bookkeeping. Actual texture sampling
+            // is routed through the resolved target by getColorTextureId/getDepthTextureId.
+            ((RenderTargetAccessor)(Object)this).modernopt$setColorTextureId(resolvedTarget.getColorTextureId());
+            ((RenderTargetAccessor)(Object)this).modernopt$setDepthBufferId(resolvedTarget.getDepthTextureId());
+            if (clearError) GL11.glGetError();
+        } catch (RuntimeException | LinkageError allocationFailure) {
+            // A partial GL allocation must not leak renderbuffers or leave a broken target
+            // registered in RenderTarget's inherited bookkeeping.
             destroyBuffers();
-            throw new IllegalStateException("MSAA framebuffer is incomplete: 0x" + Integer.toHexString(status));
+            throw allocationFailure;
+        } finally {
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previousFramebuffer);
+            GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, previousRenderbuffer);
         }
-
-        ((RenderTargetAccessor)(Object)this).modernopt$setFrameBufferId(multisampleFramebuffer);
-        // The inherited IDs are only used by vanilla bookkeeping. Actual texture sampling
-        // is routed through the resolved target by getColorTextureId/getDepthTextureId.
-        ((RenderTargetAccessor)(Object)this).modernopt$setColorTextureId(resolvedTarget.getColorTextureId());
-        ((RenderTargetAccessor)(Object)this).modernopt$setDepthBufferId(resolvedTarget.getDepthTextureId());
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
-        GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, 0);
-        if (clearError) GL11.glGetError();
     }
 
     @Override
