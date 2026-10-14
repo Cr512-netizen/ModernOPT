@@ -81,17 +81,22 @@ public final class Fsr1Renderer {
         if (width <= 0 || height <= 0) return false;
 
         int mode = ModernOptConfig.UPSCALER_MODE.get();
-        ShaderInstance simpleShader = switch (mode) {
+        // FSR1 currently needs GLSL features not exposed by every 1.21.1
+        // shader context. If either pass failed compilation, preserve rendering
+        // with the simple bilinear scaler instead of leaving the world unresolved.
+        boolean useFsr1 = mode == 0 && easu != null && rcas != null;
+        int effectiveMode = mode == 0 && !useFsr1 ? 1 : mode;
+        ShaderInstance simpleShader = switch (effectiveMode) {
             case 1 -> bilinear;
             case 2 -> nearest;
             case 3 -> softscale;
             default -> null;
         };
-        if (mode == 0 && (easu == null || rcas == null)) return false;
-        if (mode >= 1 && mode <= 3 && simpleShader == null) return false;
+        if (useFsr1 && (easu == null || rcas == null)) return false;
+        if (effectiveMode >= 1 && effectiveMode <= 3 && simpleShader == null) return false;
         if (mode < 0 || mode > 3) return false;
 
-        if (mode == 0) {
+        if (useFsr1) {
             if (intermediate == null) {
                 intermediate = new TextureTarget(width, height, true, Minecraft.ON_OSX);
             } else if (intermediate.width != width || intermediate.height != height) {
@@ -102,7 +107,7 @@ public final class Fsr1Renderer {
         Matrix4f oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
         VertexSorting oldSorting = RenderSystem.getVertexSorting();
         try {
-            if (mode == 0) {
+            if (useFsr1) {
                 drawPass(input, intermediate, easu, width, height, true);
                 drawPass(intermediate, output, rcas, width, height, false);
             } else {
