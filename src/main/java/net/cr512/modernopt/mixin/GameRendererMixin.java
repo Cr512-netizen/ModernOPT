@@ -40,6 +40,7 @@ public abstract class GameRendererMixin {
     @Unique private boolean modernopt$ssaaActive;
     @Unique private boolean modernopt$fxaaOnly;
     @Unique private int modernopt$allocatedSamples;
+    @Unique private int modernopt$failedMsaaRequest;
 
     @Unique
     private static boolean modernopt$shaderPackInUse() {
@@ -83,6 +84,7 @@ public abstract class GameRendererMixin {
         boolean scalingRequested = scalingRequestedInitially;
         boolean fxaaRequested = ModernOptConfig.FXAA_ENABLED.get();
         int samples = modernopt$requestedSamples();
+        if (samples == this.modernopt$failedMsaaRequest) samples = 0;
         if (!scalingRequested && !ssaaRequested && !fxaaRequested && samples == 0) return;
 
         RenderTarget original = this.minecraft.getMainRenderTarget();
@@ -132,6 +134,7 @@ public abstract class GameRendererMixin {
                 } else if (this.modernopt$msaaTarget.width != width || this.modernopt$msaaTarget.height != height) {
                     this.modernopt$msaaTarget.resize(width, height, Minecraft.ON_OSX);
                 }
+                this.modernopt$failedMsaaRequest = 0;
                 this.modernopt$worldTarget = this.modernopt$msaaTarget;
                 this.modernopt$msaaActive = true;
             } catch (RuntimeException | LinkageError msaaUnavailable) {
@@ -139,6 +142,7 @@ public abstract class GameRendererMixin {
                 if (this.modernopt$msaaTarget != null) this.modernopt$msaaTarget.destroyBuffers();
                 this.modernopt$msaaTarget = null;
                 this.modernopt$allocatedSamples = 0;
+                this.modernopt$failedMsaaRequest = requestedSamples;
                 this.modernopt$msaaActive = false;
                 this.modernopt$worldTarget = null;
             }
