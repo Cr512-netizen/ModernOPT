@@ -229,10 +229,12 @@ public final class Fsr1Renderer {
         }
         RenderSystem.setShader(() -> shader);
         BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        builder.addVertex(0F, 0F, 0F).setUv(0F, 0F);
-        builder.addVertex(0F, output.height, 0F).setUv(0F, 1F);
-        builder.addVertex(output.width, output.height, 0F).setUv(1F, 1F);
-        builder.addVertex(output.width, 0F, 0F).setUv(1F, 0F);
+        // Framebuffer textures use OpenGL's bottom-left origin. The destination
+        // quad uses GUI-style top-left coordinates, so flip V when sampling.
+        builder.addVertex(0F, 0F, 0F).setUv(0F, 1F);
+        builder.addVertex(0F, output.height, 0F).setUv(0F, 0F);
+        builder.addVertex(output.width, output.height, 0F).setUv(1F, 0F);
+        builder.addVertex(output.width, 0F, 0F).setUv(1F, 1F);
         BufferUploader.drawWithShader(builder.build());
         shader.clear();
     }
