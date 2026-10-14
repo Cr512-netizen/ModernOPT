@@ -17,5 +17,6 @@
   "modernopt.option.msaa": "MSAA",
   "modernopt.option.msaa.desc": "Мультисэмплинг; пропускается, если не поддерживается.",
   "modernopt.value.on": "ВКЛ",
-  "modernopt.value.off": "ВЫКЛ"
+  "modernopt.value.off": "ВЫКЛ",
+  "modernopt.sodium.open": "Настройки ModernOPT"
 }
