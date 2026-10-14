@@ -196,7 +196,7 @@ public abstract class GameRendererMixin {
 
         if (this.modernopt$worldTarget == null) {
             RenderScalePhase.end();
-            this.modernopt$originalTarget = null;
+            this.modernopt$originalTarget = fxaaRequested ? original : null;
             this.modernopt$scalingActive = false;
             this.modernopt$msaaActive = false;
             this.modernopt$fxaaOnly = fxaaRequested;
