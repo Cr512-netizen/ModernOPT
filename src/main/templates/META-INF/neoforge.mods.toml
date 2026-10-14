@@ -27,3 +27,12 @@ type="required"
 versionRange="${minecraft_version_range}"
 ordering="NONE"
 side="CLIENT"
+
+# Sodium is optional. When Sodium 0.8.13+ is installed, its own config API
+# discovers the ModernOPT options page through this NeoForge entry point.
+[[dependencies.${mod_id}]]
+modId="sodium"
+type="optional"
+versionRange="[0.8.13,)"
+ordering="AFTER"
+side="CLIENT"
