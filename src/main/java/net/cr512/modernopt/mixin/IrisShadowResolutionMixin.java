@@ -1,0 +1,37 @@
+package net.cr512.modernopt.mixin;
+
+import net.cr512.modernopt.config.ModernOptConfig;
+import net.neoforged.fml.ModList;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Pseudo;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+/**
+ * Optional Iris integration. Iris reads PackShadowDirectives.getResolution()
+ * when it constructs the shadow targets for a shader-pack pipeline. Scaling this
+ * value before target creation lets Iris allocate smaller shadow maps without
+ * replacing its framebuffers or changing the main world render target.
+ */
+@Pseudo
+@Mixin(targets = "net.irisshaders.iris.shaderpack.properties.PackShadowDirectives", remap = false)
+public abstract class IrisShadowResolutionMixin {
+    @Inject(method = "getResolution", at = @At("RETURN"), cancellable = true, remap = false, require = 0)
+    private void modernopt$scaleIrisShadowResolution(CallbackInfoReturnable<Integer> cir) {
+        if (!ModList.get().isLoaded("iris") || !ModernOptConfig.IRIS_SHADOW_SCALE_ENABLED.get()) {
+            return;
+        }
+
+        int original = cir.getReturnValueI();
+        if (original <= 0) {
+            return;
+        }
+
+        int percent = ModernOptConfig.IRIS_SHADOW_SCALE_PERCENT.get();
+        int scaled = Math.max(256, Math.round(original * percent / 100.0f));
+        // Keep common shadow-map dimensions aligned to 16-pixel boundaries.
+        scaled = Math.max(256, (scaled / 16) * 16);
+        cir.setReturnValue(scaled);
+    }
+}
