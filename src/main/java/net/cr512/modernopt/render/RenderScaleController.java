@@ -47,17 +47,18 @@ public final class RenderScaleController {
         int max = Math.max(ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.get(), ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.get());
         effectivePercent = clamp(effectivePercent, min, max);
         if (target != lastTargetFps) { lastTargetFps = target; lastAdjustmentNanos = 0L; }
-        long now = System.nanoTime();
-        if (lastAdjustmentNanos != 0L && now - lastAdjustmentNanos < ADJUST_INTERVAL_NANOS) return;
-        lastAdjustmentNanos = now;
         if (measuredFps <= 0) return;
         double ratio = measuredFps / (double) target;
         if (ratio < 1.0 - DEAD_BAND) { belowTargetSamples++; aboveTargetSamples = 0; }
         else if (ratio > 1.0 + DEAD_BAND) { aboveTargetSamples++; belowTargetSamples = 0; }
         else { belowTargetSamples = 0; aboveTargetSamples = 0; return; }
         if (belowTargetSamples < REQUIRED_SAMPLES && aboveTargetSamples < REQUIRED_SAMPLES) return;
+
+        long now = System.nanoTime();
+        if (lastAdjustmentNanos != 0L && now - lastAdjustmentNanos < ADJUST_INTERVAL_NANOS) return;
         if (belowTargetSamples >= REQUIRED_SAMPLES) effectivePercent = Math.max(min, effectivePercent - SCALE_STEP);
         else if (aboveTargetSamples >= REQUIRED_SAMPLES) effectivePercent = Math.min(max, effectivePercent + SCALE_STEP);
+        lastAdjustmentNanos = now;
         belowTargetSamples = 0;
         aboveTargetSamples = 0;
     }
