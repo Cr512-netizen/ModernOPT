@@ -91,17 +91,17 @@ public abstract class GameRendererMixin {
             modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
             return;
         }
-        // Keep the existing safe bypass: don't replace targets underneath Iris' shader pipeline.
-        if (modernopt$shaderPackInUse()) {
-            modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
-            return;
-        }
+        // Shader packs provide their own temporal/spatial AA. Do not run ModernOPT
+        // AA over them, but keep the spatial render-scale/upscaler path available.
+        // Iris' target integration remains best-effort; if target synchronization fails,
+        // the existing rollback below returns to native rendering for that frame.
+        boolean shaderPackInUse = modernopt$shaderPackInUse();
 
-        boolean ssaaRequested = ModernOptConfig.SSAA_ENABLED.get();
-        boolean fxaaRequested = !ssaaRequested && ModernOptConfig.FXAA_ENABLED.get();
+        boolean ssaaRequested = !shaderPackInUse && ModernOptConfig.SSAA_ENABLED.get();
+        boolean fxaaRequested = !shaderPackInUse && !ssaaRequested && ModernOptConfig.FXAA_ENABLED.get();
         // AA modes are exclusive: SSAA takes priority, then FXAA, then MSAA.
-        // This also sanitizes combinations saved by older config versions.
-        int samples = (ssaaRequested || fxaaRequested) ? 0 : modernopt$requestedSamples();
+        // Shader packs disable only ModernOPT's AA modes, not its upscaler.
+        int samples = (shaderPackInUse || ssaaRequested || fxaaRequested) ? 0 : modernopt$requestedSamples();
         boolean scalingRequestedInitially = !ssaaRequested && RenderScaleController.isEnabled();
         boolean scalingRequested = scalingRequestedInitially;
         if (samples == this.modernopt$failedMsaaRequest) samples = 0;
@@ -298,7 +298,7 @@ public abstract class GameRendererMixin {
                 }
             }
 
-            if (ModernOptConfig.FXAA_ENABLED.get()) {
+            if (!modernopt$shaderPackInUse() && ModernOptConfig.FXAA_ENABLED.get()) {
                 Fsr1Renderer.applyFxaa(this.modernopt$originalTarget);
             }
         } finally {
