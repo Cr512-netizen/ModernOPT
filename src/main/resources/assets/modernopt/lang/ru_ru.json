@@ -58,6 +58,6 @@
   "modernopt.sodium.group.iris": "Шейдерпаки Iris",
   "modernopt.option.irisShadowScale": "Масштабировать карты теней Iris",
   "modernopt.option.irisShadowScale.desc": "Экспериментально. Уменьшает разрешение карт теней шейдерпака Iris; по умолчанию выключено для совместимости.",
-  "modernopt.option.irisShadowScalePercent": "Разрешение карт теней",
-  "modernopt.option.irisShadowScalePercent.desc": "Доля от разрешения, заданного шейдерпаком. Для применения изменений перезагрузите шейдерпак.",
+  "modernopt.option.irisShadowResolution": "Разрешение карт теней",
+  "modernopt.option.irisShadowResolution.desc": "Задаёт фиксированное разрешение карт теней Iris в пикселях (256–8192). Для применения изменений перезагрузите шейдерпак.",
 }
