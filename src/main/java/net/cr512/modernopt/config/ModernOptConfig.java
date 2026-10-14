@@ -15,7 +15,7 @@ public final class ModernOptConfig {
         BUILDER.pop();
         BUILDER.push("rendering");
         RENDER_SCALE_PERCENT = BUILDER.comment("Internal render resolution as a percentage of the window size.").defineInRange("renderScalePercent", 100, 50, 100);
-        UPSCALER_MODE = BUILDER.comment("Upscaler: 0 = FSR1 (EASU + RCAS), 1 = Bilinear, 2 = Nearest Neighbor.").defineInRange("upscalerMode", 0, 0, 2);
+        UPSCALER_MODE = BUILDER.comment("Upscaler: 0 = FSR1 (EASU + RCAS), 1 = Bilinear, 2 = Nearest Neighbor, 3 = SoftScale (soft Gaussian reconstruction).").defineInRange("upscalerMode", 0, 0, 3);
         BUILDER.pop();
         SPEC = BUILDER.build();
     }
