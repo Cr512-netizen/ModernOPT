@@ -25,8 +25,8 @@ public final class ModernOPT {
             (mc, screen) -> new ModernOptConfigScreen(screen));
         modEventBus.addListener(Fsr1Renderer::registerShaders);
 
-        // Sodium replaces Minecraft's Video Settings screen, so expose a direct entry
-        // there through NeoForge's screen event without linking against Sodium internals.
+        // Sodium replaces Minecraft's Video Settings screen, so expose both the master
+        // switch and a direct settings entry without linking against Sodium internals.
         NeoForge.EVENT_BUS.addListener(ModernOPT::onScreenInit);
     }
 
@@ -37,12 +37,25 @@ public final class ModernOPT {
             return;
         }
 
-        int x = screen.width / 2 + 108;
         int y = screen.height - 28;
-        Button button = Button.builder(Component.translatable("modernopt.sodium.open"),
-                ignored -> Minecraft.getInstance().setScreen(new ModernOptConfigScreen(screen)))
-            .bounds(x, y, 104, 20)
+        Button toggle = Button.builder(sodiumToggleLabel(), button -> {
+                ModernOptConfig.ENABLED.set(!ModernOptConfig.ENABLED.get());
+                ModernOptConfig.SPEC.save();
+                button.setMessage(sodiumToggleLabel());
+            })
+            .bounds(screen.width / 2 - 212, y, 112, 20)
             .build();
-        event.addListener(button);
+        event.addListener(toggle);
+
+        Button settings = Button.builder(Component.translatable("modernopt.sodium.open"),
+                ignored -> Minecraft.getInstance().setScreen(new ModernOptConfigScreen(screen)))
+            .bounds(screen.width / 2 + 108, y, 104, 20)
+            .build();
+        event.addListener(settings);
+    }
+
+    private static Component sodiumToggleLabel() {
+        return Component.translatable(ModernOptConfig.ENABLED.get()
+            ? "modernopt.sodium.enabled" : "modernopt.sodium.disabled");
     }
 }
