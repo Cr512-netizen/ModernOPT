@@ -24,6 +24,8 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
     private static final ResourceLocation TARGET_FPS_ID = id("target_fps");
     private static final ResourceLocation MIN_SCALE_ID = id("minimum_scale");
     private static final ResourceLocation MAX_SCALE_ID = id("maximum_scale");
+    private static final ResourceLocation IRIS_SHADOW_SCALE_ENABLED_ID = id("iris_shadow_scale_enabled");
+    private static final ResourceLocation IRIS_SHADOW_SCALE_PERCENT_ID = id("iris_shadow_scale_percent");
 
     @Override
     public void registerConfigLate(ConfigBuilder builder) {
@@ -95,6 +97,25 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setBinding(ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT::set, ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT::get)
                         .setStorageHandler(storage)
                         .setDefaultValue(100)
+                        .setEnabled(true))
+                )
+                .addOptionGroup(builder.createOptionGroup()
+                    .setName(Component.translatable("modernopt.sodium.group.iris"))
+                    .addOption(builder.createBooleanOption(IRIS_SHADOW_SCALE_ENABLED_ID)
+                        .setName(Component.translatable("modernopt.option.irisShadowScale"))
+                        .setTooltip(Component.translatable("modernopt.option.irisShadowScale.desc"))
+                        .setBinding(ModernOptConfig.IRIS_SHADOW_SCALE_ENABLED::set, ModernOptConfig.IRIS_SHADOW_SCALE_ENABLED::get)
+                        .setStorageHandler(storage)
+                        .setDefaultValue(false)
+                        .setEnabled(true))
+                    .addOption(builder.createIntegerOption(IRIS_SHADOW_SCALE_PERCENT_ID)
+                        .setName(Component.translatable("modernopt.option.irisShadowScalePercent"))
+                        .setTooltip(Component.translatable("modernopt.option.irisShadowScalePercent.desc"))
+                        .setRange(50, 100, 5)
+                        .setValueFormatter(value -> Component.literal(value + "%"))
+                        .setBinding(ModernOptConfig.IRIS_SHADOW_SCALE_PERCENT::set, ModernOptConfig.IRIS_SHADOW_SCALE_PERCENT::get)
+                        .setStorageHandler(storage)
+                        .setDefaultValue(75)
                         .setEnabled(true))
                 )
                 .addOptionGroup(builder.createOptionGroup()
