@@ -79,11 +79,11 @@ public abstract class GameRendererMixin {
         if (modernopt$shaderPackInUse()) return;
 
         boolean ssaaRequested = ModernOptConfig.SSAA_ENABLED.get();
-        boolean scalingRequested = !ssaaRequested && RenderScaleController.isEnabled();
+        boolean scalingRequestedInitially = !ssaaRequested && RenderScaleController.isEnabled();
+        boolean scalingRequested = scalingRequestedInitially;
         boolean fxaaRequested = ModernOptConfig.FXAA_ENABLED.get();
         int samples = modernopt$requestedSamples();
         if (!scalingRequested && !ssaaRequested && !fxaaRequested && samples == 0) return;
-        if (ssaaRequested) samples = 0;
 
         RenderTarget original = this.minecraft.getMainRenderTarget();
         int targetWidth = original.width;
@@ -94,7 +94,13 @@ public abstract class GameRendererMixin {
         // Targets with stencil attachments are left untouched for compatibility with mods.
         if (samples > 0 && original.isStencilEnabled()) samples = 0;
 
-        if (ssaaRequested && (targetWidth > 8192 || targetHeight > 8192)) ssaaRequested = false;
+        // SSAA doubles each dimension. Respect the actual GPU texture limit before allocating.
+        int maxTextureSize = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL11.GL_MAX_TEXTURE_SIZE);
+        if (ssaaRequested && (targetWidth > maxTextureSize / 2 || targetHeight > maxTextureSize / 2)) {
+            ssaaRequested = false;
+            scalingRequested = RenderScaleController.isEnabled();
+        }
+        if (ssaaRequested) samples = 0;
         int width = ssaaRequested ? targetWidth * 2 : (scalingRequested ? RenderScaleController.scaledWidth(targetWidth) : targetWidth);
         int height = ssaaRequested ? targetHeight * 2 : (scalingRequested ? RenderScaleController.scaledHeight(targetHeight) : targetHeight);
         this.modernopt$ssaaActive = ssaaRequested;
