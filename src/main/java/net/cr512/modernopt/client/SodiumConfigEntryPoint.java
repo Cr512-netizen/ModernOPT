@@ -108,7 +108,7 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setStorageHandler(storage)
                         .setDefaultValue(false)
                         .setEnabled(true))
-                    .addOption(builder.createIntegerOption(IRIS_SHADOW_SCALE_PERCENT_ID)
+                    .addOption(builder.createIntegerOption(IRIS_SHADOW_RESOLUTION_ID)
                         .setName(Component.translatable("modernopt.option.irisShadowResolution"))
                         .setTooltip(Component.translatable("modernopt.option.irisShadowResolution.desc"))
                         .setRange(256, 8192, 256)
