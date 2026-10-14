@@ -10,7 +10,7 @@
   "modernopt.option.scale": "Render scale",
   "modernopt.option.scale.desc": "Internal world resolution as a percentage of the window size.",
   "modernopt.option.upscaler": "Upscaler",
-  "modernopt.option.upscaler.desc": "0 — FSR1, 1 — Bilinear, 2 — Nearest, 3 — SoftScale. Render pipeline is currently disabled.",
+  "modernopt.option.upscaler.desc": "0 — FSR1, 1 — Bilinear, 2 — Nearest, 3 — SoftScale. Select a render scale below 100% to apply upscaling.",
   "modernopt.option.dynamic": "Dynamic resolution",
   "modernopt.option.dynamic.desc": "Automatically adjust world resolution toward the target FPS.",
   "modernopt.option.targetfps": "Target FPS",
