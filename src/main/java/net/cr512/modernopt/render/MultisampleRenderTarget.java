@@ -52,7 +52,7 @@ public final class MultisampleRenderTarget extends RenderTarget {
 
             multisampleDepthBuffer = GL30.glGenRenderbuffers();
             GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, multisampleDepthBuffer);
-            GL30.glRenderbufferStorageMultisample(GL30.GL_RENDERBUFFER, samples, GL11.GL_DEPTH_COMPONENT24, width, height);
+            GL30.glRenderbufferStorageMultisample(GL30.GL_RENDERBUFFER, samples, GL30.GL_DEPTH_COMPONENT24, width, height);
             GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_RENDERBUFFER, multisampleDepthBuffer);
 
             int status = GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
