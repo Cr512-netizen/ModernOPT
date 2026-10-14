@@ -5,8 +5,8 @@
   "modernopt.screen.upscalers": "Апскейлеры",
   "modernopt.screen.aa": "Сглаживание",
   "modernopt.screen.dynamic": "Динамика",
-  "modernopt.option.enabled": "Включить ModernOPT",
-  "modernopt.option.enabled.desc": "Главный переключатель всех функций рендеринга.",
+  "modernopt.option.enabled": "Безопасный режим · ModernOPT",
+  "modernopt.option.enabled.desc": "Аварийный обход: отключает все вмешательства ModernOPT в рендер.",
   "modernopt.option.scale": "Масштаб рендера",
   "modernopt.option.scale.desc": "Фиксированный масштаб мира; динамика меняет его в заданных пределах.",
   "modernopt.option.upscaler": "Апскейлер",
@@ -41,5 +41,14 @@
   "modernopt.benchmark.waiting": "Сбор времени кадра...",
   "modernopt.benchmark.stats": "Средний FPS: %s  ·  1%% low: %s  ·  худшее мс: %s",
   "modernopt.benchmark.finished": "Бенчмарк завершён",
-  "modernopt.benchmark.saved": "CSV-отчёт сохранён в modernopt-benchmarks/"
+  "modernopt.benchmark.saved": "CSV-отчёт сохранён в modernopt-benchmarks/",
+  "modernopt.benchmark.pacing.waiting": "Плавность кадров: сбор измерений...",
+  "modernopt.benchmark.pacing": "Кадр мс p50/p95/p99: %s / %s / %s · скачки: %s",
+  "modernopt.benchmark.diagnostics": "FPS %s · масштаб %s%% · %s · выше лимита: %s",
+  "modernopt.profile.title": "Профиль рендера",
+  "modernopt.profile.desc": "Переключение профилей Качество, Баланс, Производительность и Свой.",
+  "modernopt.profile.quality": "Качество",
+  "modernopt.profile.balanced": "Баланс",
+  "modernopt.profile.performance": "Производительность",
+  "modernopt.profile.custom": "Свой"
 }
