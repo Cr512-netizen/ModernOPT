@@ -16,7 +16,7 @@ public final class ModernOptConfig {
         ENABLED = BUILDER.comment("Master switch. When false, ModernOPT rendering features must not intervene.").define("enabled", true);
         BUILDER.pop();
         BUILDER.push("rendering");
-        RENDER_SCALE_PERCENT = BUILDER.comment("Internal render resolution as a percentage of the window size.").defineInRange("renderScalePercent", 100, 50, 100);
+        RENDER_SCALE_PERCENT = BUILDER.comment("Internal render resolution as a percentage of the window size.").defineInRange("renderScalePercent", 100, 25, 100);
         UPSCALER_MODE = BUILDER.comment("Upscaler: 0 = FSR1 (EASU + RCAS), 1 = Bilinear, 2 = Nearest Neighbor, 3 = SoftScale (soft Gaussian reconstruction).").defineInRange("upscalerMode", 0, 0, 3);
         FXAA_ENABLED = BUILDER.comment("Enable FXAA on the world image. Automatically skipped while an Iris shader pack is active.").define("fxaaEnabled", false);
         MSAA_SAMPLES = BUILDER.comment("World multisample anti-aliasing: 0 = off, 2 = 2x, 4 = 4x, 8 = 8x. Automatically skipped with Iris shader packs.").defineInRange("msaaSamples", 0, 0, 8);
