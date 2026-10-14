@@ -18,5 +18,19 @@
   "modernopt.option.msaa.desc": "Мультисэмплинг; пропускается, если не поддерживается.",
   "modernopt.value.on": "ВКЛ",
   "modernopt.value.off": "ВЫКЛ",
-  "modernopt.sodium.open": "Настройки ModernOPT"
+  "modernopt.sodium.open": "Настройки ModernOPT",
+  "modernopt.sodium.enabled": "ModernOPT: ВКЛ",
+  "modernopt.sodium.disabled": "ModernOPT: ВЫКЛ",
+  "modernopt.benchmark.run": "Запустить бенчмарк",
+  "modernopt.benchmark.title": "Бенчмарк ModernOPT",
+  "modernopt.benchmark.requirements": "Бенчмарк требует локальный одиночный мир и режим наблюдателя.",
+  "modernopt.benchmark.cancel": "Отменить бенчмарк",
+  "modernopt.benchmark.warmup": "Прогрев · поворот камеры",
+  "modernopt.benchmark.segment": "Этап маршрута %s/%s",
+  "modernopt.benchmark.progress": "Прогресс: %s / %s тиков",
+  "modernopt.benchmark.samples": "Измерено кадров: %s",
+  "modernopt.benchmark.waiting": "Сбор времени кадра...",
+  "modernopt.benchmark.stats": "Средний FPS: %s  ·  1%% low: %s  ·  худшее мс: %s",
+  "modernopt.benchmark.finished": "Бенчмарк завершён",
+  "modernopt.benchmark.saved": "CSV-отчёт сохранён в modernopt-benchmarks/"
 }
