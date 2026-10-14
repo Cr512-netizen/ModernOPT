@@ -28,14 +28,15 @@ public final class ModernOptConfigScreen extends Screen {
     protected void init() {
         cards.clear();
         int center = this.width / 2;
-        int tabWidth = 118;
-        int tabGap = 8;
-        int tabsWidth = tabWidth * 3 + tabGap * 2;
+        int tabWidth = 94;
+        int tabGap = 6;
+        int tabsWidth = tabWidth * 4 + tabGap * 3;
         int left = center - tabsWidth / 2;
 
         addTab(left, 0, "modernopt.screen.general");
         addTab(left + tabWidth + tabGap, 1, "modernopt.screen.upscalers");
         addTab(left + (tabWidth + tabGap) * 2, 2, "modernopt.screen.aa");
+        addTab(left + (tabWidth + tabGap) * 3, 3, "modernopt.screen.dynamic");
 
         int rowY = 91;
         switch (page) {
@@ -62,6 +63,19 @@ public final class ModernOptConfigScreen extends Screen {
                     ModernOptConfig.FXAA_ENABLED, "modernopt.value.on", "modernopt.value.off");
                 addMsaaSlider(rowY + 148, "modernopt.option.msaa", "modernopt.option.msaa.desc");
             }
+            case 3 -> {
+                addToggleCard(rowY, "modernopt.option.dynamic", "modernopt.option.dynamic.desc",
+                    ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED, "modernopt.value.on", "modernopt.value.off");
+                addIntSlider(rowY + 68, "modernopt.option.targetfps", "modernopt.option.targetfps.desc",
+                    30, 540, 10, () -> ModernOptConfig.DYNAMIC_TARGET_FPS.get(),
+                    value -> setValue(ModernOptConfig.DYNAMIC_TARGET_FPS, value), " FPS");
+                addIntSlider(rowY + 136, "modernopt.option.minScale", "modernopt.option.minScale.desc",
+                    25, 100, 5, () -> ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.get(),
+                    value -> setValue(ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT, value), "%");
+                addIntSlider(rowY + 204, "modernopt.option.maxScale", "modernopt.option.maxScale.desc",
+                    25, 100, 5, () -> ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.get(),
+                    value -> setValue(ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT, value), "%");
+            }
         }
 
         Button done = Button.builder(Component.translatable("gui.done"), button -> onClose())
@@ -74,7 +88,7 @@ public final class ModernOptConfigScreen extends Screen {
             page = tabPage;
             clearWidgets();
             init();
-        }).bounds(x, 58, 118, 22).build();
+        }).bounds(x, 58, 94, 22).build();
         addRenderableWidget(tab);
     }
 
