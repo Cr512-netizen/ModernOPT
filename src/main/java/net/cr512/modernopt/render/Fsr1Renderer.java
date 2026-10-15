@@ -10,11 +10,14 @@ import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import net.cr512.modernopt.config.ModernOptConfig;
+import net.cr512.modernopt.mixin.RenderTargetAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.client.event.RegisterShadersEvent;
 import org.joml.Matrix4f;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 
 import java.io.IOException;
 import java.util.function.Consumer;
@@ -119,7 +122,7 @@ public final class Fsr1Renderer {
             // formats must fall back to the caller's safe blit instead of crashing the pass.
             if (useFsr1) {
                 if (intermediate == null) {
-                    intermediate = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+                    intermediate = new TextureTarget(width, height, false, Minecraft.ON_OSX);
                 } else if (intermediate.width != width || intermediate.height != height) {
                     intermediate.resize(width, height, Minecraft.ON_OSX);
                 }
@@ -164,13 +167,14 @@ public final class Fsr1Renderer {
         VertexSorting oldSorting = RenderSystem.getVertexSorting();
         try {
             if (fxaaIntermediate == null) {
-                fxaaIntermediate = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+                fxaaIntermediate = new TextureTarget(width, height, false, Minecraft.ON_OSX);
             } else if (fxaaIntermediate.width != width || fxaaIntermediate.height != height) {
                 fxaaIntermediate.resize(width, height, Minecraft.ON_OSX);
             }
             drawPass(output, fxaaIntermediate, fxaa, width, height, false);
-            // At native resolution bilinear sampling is a direct texel copy.
-            drawPass(fxaaIntermediate, output, bilinear, width, height, false);
+            // The FXAA output already has the same dimensions as the destination.
+            // Copy it with a framebuffer blit rather than launching a redundant full-screen shader pass.
+            if (!blitColor(fxaaIntermediate, output)) return false;
             return true;
         } catch (RuntimeException | LinkageError exception) {
             if (!fxaaFailureLogged) {
@@ -235,6 +239,34 @@ public final class Fsr1Renderer {
             RenderSystem.setProjectionMatrix(oldProjection, oldSorting);
             output.bindWrite(true);
             RenderSystem.viewport(0, 0, width, height);
+        }
+    }
+
+    /** Copies equal-sized color buffers without allocating a shader pass. */
+    private static boolean blitColor(RenderTarget input, RenderTarget output) {
+        if (input == null || output == null || input.width <= 0 || input.height <= 0
+            || input.width != output.width || input.height != output.height) return false;
+
+        int previousRead = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
+        int previousDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        try {
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER,
+                ((RenderTargetAccessor) (Object) input).modernopt$getFrameBufferId());
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER,
+                ((RenderTargetAccessor) (Object) output).modernopt$getFrameBufferId());
+            GL30.glBlitFramebuffer(
+                0, 0, input.width, input.height,
+                0, 0, output.width, output.height,
+                GL11.GL_COLOR_BUFFER_BIT, GL11.GL_NEAREST
+            );
+            return GL11.glGetError() == GL11.GL_NO_ERROR;
+        } catch (RuntimeException | LinkageError exception) {
+            return false;
+        } finally {
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousRead);
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDraw);
+            output.bindWrite(true);
+            RenderSystem.viewport(0, 0, output.width, output.height);
         }
     }
 
