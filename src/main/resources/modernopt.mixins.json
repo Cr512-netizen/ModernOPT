@@ -12,6 +12,8 @@
     "WindowMixin",
     "GameRendererMixin",
     "IrisShadowResolutionMixin",
+    "IrisShadowFrameSkipMixin",
+    "ScreenMixin",
     "IrisRenderTargetsScaleMixin"
   ],
   "injectors": { "defaultRequire": 1 }
