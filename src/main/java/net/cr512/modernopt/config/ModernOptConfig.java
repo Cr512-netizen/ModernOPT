@@ -20,8 +20,8 @@ public final class ModernOptConfig {
 
     static {
         BUILDER.push("general");
-        // The pipeline is inert at default settings (native resolution, AA off), so the master switch can be enabled safely.
-        ENABLED = BUILDER.comment("Master switch for ModernOPT rendering features.").define("enabled", true);
+        // Keep render hooks disabled until the user explicitly enables the experimental pipeline.
+        ENABLED = BUILDER.comment("Master switch for ModernOPT rendering features.").define("enabled", false);
         BUILDER.pop();
         BUILDER.push("rendering");
         RENDER_SCALE_PERCENT = BUILDER.comment("Internal render resolution as a percentage of the window size.").defineInRange("renderScalePercent", 100, 25, 100);
