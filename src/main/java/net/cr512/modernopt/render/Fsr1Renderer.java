@@ -34,6 +34,9 @@ public final class Fsr1Renderer {
     private static TextureTarget fxaaIntermediate;
     private static final Logger LOGGER = LoggerFactory.getLogger("ModernOPT");
     private static boolean renderFailureLogged;
+    // Avoid retrying a shader path that has already thrown every frame; a mode change or resource reload permits retry.
+    private static int failedUpscalerMode = -1;
+    private static int lastRequestedUpscalerMode = -1;
     private static boolean fxaaFailureLogged;
 
     private Fsr1Renderer() {}
@@ -44,6 +47,9 @@ public final class Fsr1Renderer {
      * before the title screen). Features that need a failed shader are skipped.
      */
     public static void registerShaders(RegisterShadersEvent event) {
+        failedUpscalerMode = -1;
+        lastRequestedUpscalerMode = -1;
+        renderFailureLogged = false;
         registerShader(event, "easu", shader -> easu = shader);
         registerShader(event, "rcas", shader -> rcas = shader);
         registerShader(event, "bilinear", shader -> bilinear = shader);
@@ -83,6 +89,11 @@ public final class Fsr1Renderer {
         if (width <= 0 || height <= 0) return false;
 
         int mode = ModernOptConfig.UPSCALER_MODE.get();
+        if (mode != lastRequestedUpscalerMode) {
+            lastRequestedUpscalerMode = mode;
+            failedUpscalerMode = -1;
+        }
+        if (mode == failedUpscalerMode) return false;
         // Mode 0 skips every ModernOPT post-process shader. The caller performs
         // one direct opaque blit to native resolution, avoiding extra texture reads,
         // shader invocations, and the FSR intermediate allocation.
@@ -121,6 +132,7 @@ public final class Fsr1Renderer {
             }
             return true;
         } catch (RuntimeException | LinkageError exception) {
+            failedUpscalerMode = mode;
             if (!renderFailureLogged) {
                 renderFailureLogged = true;
                 LOGGER.error("Spatial upscaler pass failed (mode={}, input={}x{}, output={}x{}); ModernOPT will use the safe fallback for subsequent frames.",
