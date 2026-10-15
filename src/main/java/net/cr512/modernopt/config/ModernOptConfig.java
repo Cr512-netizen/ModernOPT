@@ -13,7 +13,6 @@ public final class ModernOptConfig {
     public static final ModConfigSpec.BooleanValue DYNAMIC_RESOLUTION_ENABLED;
     public static final ModConfigSpec.BooleanValue IRIS_SHADOW_SCALE_ENABLED;
     public static final ModConfigSpec.IntValue IRIS_SHADOW_RESOLUTION;
-    public static final ModConfigSpec.IntValue IRIS_SHADOW_UPDATE_INTERVAL;
     public static final ModConfigSpec.IntValue DYNAMIC_MIN_SCALE_PERCENT;
     public static final ModConfigSpec.IntValue DYNAMIC_MAX_SCALE_PERCENT;
     public static final ModConfigSpec.IntValue DYNAMIC_TARGET_FPS;
@@ -37,8 +36,7 @@ public final class ModernOptConfig {
         BUILDER.pop();
         BUILDER.push("iris");
         IRIS_SHADOW_SCALE_ENABLED = BUILDER.comment("Scale Iris shader-pack shadow maps. Disabled by default for maximum shader-pack compatibility.").define("shadowScaleEnabled", false);
-        IRIS_SHADOW_RESOLUTION = BUILDER.comment("Fixed Iris shadow-map resolution in pixels when shadow scaling is enabled.").defineInRange("shadowResolution", 1024, 256, 8192);
-        IRIS_SHADOW_UPDATE_INTERVAL = BUILDER.comment("Render Iris shadow maps once every N frames; 1 means every frame.").defineInRange("shadowUpdateInterval", 1, 1, 10);
+        IRIS_SHADOW_RESOLUTION = BUILDER.comment("Fixed Iris shadow-map resolution in pixels when shadow scaling is enabled.").defineInRange("shadowResolution", 1024, 512, 8192);
         BUILDER.pop();
         SPEC = BUILDER.build();
     }
