@@ -328,8 +328,12 @@ public abstract class GameRendererMixin {
                 boolean upscaled;
                 if (this.modernopt$ssaaActive) {
                     upscaled = Fsr1Renderer.downsampleSsaa(this.modernopt$worldTarget, this.modernopt$originalTarget);
-                } else if (ModernOptConfig.UPSCALER_MODE.get() == 0) {
-                    // "None" performs only a fixed-function framebuffer blit.
+                } else if (ModernOptConfig.UPSCALER_MODE.get() == 0
+                    || ((ModernOptConfig.UPSCALER_MODE.get() == 2 || ModernOptConfig.UPSCALER_MODE.get() == 3)
+                        && this.modernopt$worldTarget.width == width
+                        && this.modernopt$worldTarget.height == height)) {
+                    // Bilinear and nearest-neighbor are identity operations at equal dimensions.
+                    // Use a fixed-function framebuffer blit instead of running a redundant shader pass.
                     upscaled = modernopt$blitFramebuffer(this.modernopt$worldTarget, this.modernopt$originalTarget);
                 } else {
                     upscaled = Fsr1Renderer.render(this.modernopt$worldTarget, this.modernopt$originalTarget);
