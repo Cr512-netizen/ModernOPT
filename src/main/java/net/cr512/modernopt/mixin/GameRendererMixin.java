@@ -43,6 +43,7 @@ public abstract class GameRendererMixin {
     @Unique private Matrix4f modernopt$oldProjection;
     @Unique private VertexSorting modernopt$oldVertexSorting;
     @Unique private boolean modernopt$active;
+    @Unique private boolean modernopt$shaderPackInUseThisFrame;
     @Unique private boolean modernopt$scalingActive;
     @Unique private boolean modernopt$msaaActive;
     @Unique private boolean modernopt$ssaaActive;
@@ -97,7 +98,8 @@ public abstract class GameRendererMixin {
         // AA over them, but keep the spatial render-scale/upscaler path available.
         // Iris' target integration remains best-effort; if target synchronization fails,
         // the existing rollback below returns to native rendering for that frame.
-        boolean shaderPackInUse = modernopt$shaderPackInUse();
+        this.modernopt$shaderPackInUseThisFrame = modernopt$shaderPackInUse();
+        boolean shaderPackInUse = this.modernopt$shaderPackInUseThisFrame;
 
         boolean ssaaRequested = !shaderPackInUse && ModernOptConfig.SSAA_ENABLED.get();
         boolean fxaaRequested = !shaderPackInUse && !ssaaRequested && ModernOptConfig.FXAA_ENABLED.get();
@@ -252,7 +254,10 @@ public abstract class GameRendererMixin {
                 0, 0, output.width, output.height,
                 GL11.GL_COLOR_BUFFER_BIT, GL11.GL_NEAREST
             );
-            return GL11.glGetError() == GL11.GL_NO_ERROR;
+            // Do not call glGetError here: it can force driver-side synchronization,
+            // and it also consumes any pre-existing GL error from another mod.
+            // Both framebuffer targets are ModernOPT/Minecraft-owned compatible targets.
+            return true;
         } catch (RuntimeException | LinkageError exception) {
             MODERNOPT_LOGGER.warn("Direct framebuffer copy failed; falling back to the textured blit.", exception);
             return false;
@@ -340,7 +345,7 @@ public abstract class GameRendererMixin {
                 }
             }
 
-            if (!modernopt$shaderPackInUse() && ModernOptConfig.FXAA_ENABLED.get()) {
+            if (!this.modernopt$shaderPackInUseThisFrame && ModernOptConfig.FXAA_ENABLED.get()) {
                 Fsr1Renderer.applyFxaa(this.modernopt$originalTarget);
             }
         } finally {
