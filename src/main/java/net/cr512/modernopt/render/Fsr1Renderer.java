@@ -259,7 +259,7 @@ public final class Fsr1Renderer {
                 0, 0, output.width, output.height,
                 GL11.GL_COLOR_BUFFER_BIT, GL11.GL_NEAREST
             );
-            return GL11.glGetError() == GL11.GL_NO_ERROR;
+            return true;
         } catch (RuntimeException | LinkageError exception) {
             return false;
         } finally {
