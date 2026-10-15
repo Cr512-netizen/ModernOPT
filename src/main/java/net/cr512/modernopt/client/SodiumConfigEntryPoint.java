@@ -27,6 +27,8 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
     private static final ResourceLocation MAX_SCALE_ID = id("maximum_scale");
     private static final ResourceLocation IRIS_SHADOW_SCALE_ENABLED_ID = id("iris_shadow_scale_enabled");
     private static final ResourceLocation IRIS_SHADOW_RESOLUTION_ID = id("iris_shadow_resolution");
+    private static final ResourceLocation SHADOW_FRAME_SKIP_ENABLED_ID = id("shadow_frame_skip_enabled");
+    private static final ResourceLocation SHADOW_UPDATE_FPS_ID = id("shadow_update_fps");
 
     @Override
     public void registerConfigLate(ConfigBuilder builder) {
@@ -137,6 +139,22 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setBinding(ModernOptConfig.IRIS_SHADOW_RESOLUTION::set, ModernOptConfig.IRIS_SHADOW_RESOLUTION::get)
                         .setStorageHandler(storage)
                         .setDefaultValue(1024)
+                        .setEnabled(true))
+                    .addOption(builder.createBooleanOption(SHADOW_FRAME_SKIP_ENABLED_ID)
+                        .setName(Component.translatable("modernopt.option.shadowFrameSkip"))
+                        .setTooltip(Component.translatable("modernopt.option.shadowFrameSkip.desc"))
+                        .setBinding(ModernOptConfig.SHADOW_FRAME_SKIP_ENABLED::set, ModernOptConfig.SHADOW_FRAME_SKIP_ENABLED::get)
+                        .setStorageHandler(storage)
+                        .setDefaultValue(false)
+                        .setEnabled(true))
+                    .addOption(builder.createIntegerOption(SHADOW_UPDATE_FPS_ID)
+                        .setName(Component.translatable("modernopt.option.shadowUpdateFps"))
+                        .setTooltip(Component.translatable("modernopt.option.shadowUpdateFps.desc"))
+                        .setRange(40, 240, 10)
+                        .setValueFormatter(value -> Component.literal(value + " FPS"))
+                        .setBinding(ModernOptConfig.SHADOW_UPDATE_FPS::set, ModernOptConfig.SHADOW_UPDATE_FPS::get)
+                        .setStorageHandler(storage)
+                        .setDefaultValue(60)
                         .setEnabled(true))
                 )
                 .addOptionGroup(builder.createOptionGroup()
