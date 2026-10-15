@@ -11,7 +11,8 @@
     "LevelRendererMixin",
     "WindowMixin",
     "GameRendererMixin",
-    "IrisShadowResolutionMixin"
+    "IrisShadowResolutionMixin",
+    "IrisRenderTargetsScaleMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }
