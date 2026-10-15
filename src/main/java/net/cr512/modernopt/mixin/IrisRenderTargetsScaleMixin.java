@@ -21,12 +21,12 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 @Mixin(targets = "net.irisshaders.iris.targets.RenderTargets", remap = false)
 public abstract class IrisRenderTargetsScaleMixin {
     @ModifyVariable(method = "<init>", at = @At("HEAD"), argsOnly = true, ordinal = 0, remap = false)
-    private int modernopt$scaleIrisTargetWidth(int width) {
+    private static int modernopt$scaleIrisTargetWidth(int width) {
         return modernopt$scaledDimension(width, true);
     }
 
     @ModifyVariable(method = "<init>", at = @At("HEAD"), argsOnly = true, ordinal = 1, remap = false)
-    private int modernopt$scaleIrisTargetHeight(int height) {
+    private static int modernopt$scaleIrisTargetHeight(int height) {
         return modernopt$scaledDimension(height, false);
     }
 
