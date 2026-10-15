@@ -46,7 +46,7 @@
   "modernopt.benchmark.pacing": "Frame ms p50/p95/p99: %s / %s / %s · spikes: %s",
   "modernopt.benchmark.diagnostics": "FPS %s · scale %s%% · %s · over budget: %s",
   "modernopt.profile.title": "Render profile",
-  "modernopt.profile.desc": "Choose a render-scale and upscaler preset. Custom keeps your manually selected values." ,
+  "modernopt.profile.desc": "Choose a render-scale and upscaler preset. Custom keeps your manually selected values.",
   "modernopt.profile.quality": "Quality",
   "modernopt.profile.balanced": "Balanced",
   "modernopt.profile.performance": "Performance",
@@ -65,5 +65,9 @@
   "modernopt.option.irisShadowScale": "Scale Iris shadow maps",
   "modernopt.option.irisShadowScale.desc": "Experimental. Reduces Iris shader-pack shadow-map resolution; disabled by default for compatibility.",
   "modernopt.option.irisShadowResolution": "Shadow-map resolution",
-  "modernopt.option.irisShadowResolution.desc": "Set the fixed Iris shadow-map resolution in pixels (512–8192). Enable shadow-map scaling and reload the shader pack."
+  "modernopt.option.irisShadowResolution.desc": "Set the fixed Iris shadow-map resolution in pixels (512–8192). Enable shadow-map scaling and reload the shader pack.",
+  "modernopt.option.shadowFrameSkip": "Dynamic shadow frame skipping",
+  "modernopt.option.shadowFrameSkip.desc": "Refreshes Iris shadow maps at a target rate and reuses the previous map on skipped frames. Experimental: shadows may lag behind moving objects.",
+  "modernopt.option.shadowUpdateFps": "Shadow refresh rate",
+  "modernopt.option.shadowUpdateFps.desc": "Target shadow refresh rate from 40 to 240 FPS. If the game runs below the target, shadows update every frame."
 }
