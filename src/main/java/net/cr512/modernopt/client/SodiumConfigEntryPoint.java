@@ -116,7 +116,7 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                     .addOption(builder.createIntegerOption(IRIS_SHADOW_RESOLUTION_ID)
                         .setName(Component.translatable("modernopt.option.irisShadowResolution"))
                         .setTooltip(Component.translatable("modernopt.option.irisShadowResolution.desc"))
-                        .setRange(256, 8192, 256)
+                        .setRange(512, 8192, 256)
                         .setValueFormatter(value -> Component.literal(value + " px"))
                         .setBinding(ModernOptConfig.IRIS_SHADOW_RESOLUTION::set, ModernOptConfig.IRIS_SHADOW_RESOLUTION::get)
                         .setStorageHandler(storage)
