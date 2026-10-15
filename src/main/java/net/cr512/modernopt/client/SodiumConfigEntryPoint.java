@@ -26,7 +26,6 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
     private static final ResourceLocation MAX_SCALE_ID = id("maximum_scale");
     private static final ResourceLocation IRIS_SHADOW_SCALE_ENABLED_ID = id("iris_shadow_scale_enabled");
     private static final ResourceLocation IRIS_SHADOW_RESOLUTION_ID = id("iris_shadow_resolution");
-    private static final ResourceLocation IRIS_SHADOW_UPDATE_INTERVAL_ID = id("iris_shadow_update_interval");
 
     @Override
     public void registerConfigLate(ConfigBuilder builder) {
@@ -56,14 +55,19 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setStorageHandler(storage)
                         .setDefaultValue(100)
                         .setEnabled(true))
-                    .addOption(builder.createIntegerOption(UPSCALER_ID)
+                    .addOption(builder.createEnumOption(UPSCALER_ID, UpscalerMode.class)
                         .setName(Component.translatable("modernopt.option.upscaler"))
                         .setTooltip(Component.translatable("modernopt.option.upscaler.desc"))
-                        .setRange(0, 3, 1)
-                        .setValueFormatter(value -> Component.literal(switch (value) { case 0 -> "FSR 1"; case 1 -> "Bilinear"; case 2 -> "Nearest Neighbor"; default -> "SoftScale"; }))
-                        .setBinding(ModernOptConfig.UPSCALER_MODE::set, ModernOptConfig.UPSCALER_MODE::get)
+                        .setElementNameProvider(value -> Component.literal(switch (value) {
+                            case FSR1 -> "FSR 1";
+                            case BILINEAR -> "Bilinear";
+                            case NEAREST_NEIGHBOR -> "Nearest Neighbor";
+                            case SOFT_SCALE -> "SoftScale";
+                        }))
+                        .setBinding(value -> ModernOptConfig.UPSCALER_MODE.set(value.ordinal()),
+                            () -> UpscalerMode.values()[Math.max(0, Math.min(UpscalerMode.values().length - 1, ModernOptConfig.UPSCALER_MODE.get()))])
                         .setStorageHandler(storage)
-                        .setDefaultValue(1)
+                        .setDefaultValue(UpscalerMode.BILINEAR)
                         .setEnabled(true))
                     .addOption(builder.createBooleanOption(DYNAMIC_ID)
                         .setName(Component.translatable("modernopt.option.dynamic"))
@@ -118,15 +122,6 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setStorageHandler(storage)
                         .setDefaultValue(1024)
                         .setEnabled(true))
-                    .addOption(builder.createIntegerOption(IRIS_SHADOW_UPDATE_INTERVAL_ID)
-                        .setName(Component.translatable("modernopt.option.irisShadowUpdateInterval"))
-                        .setTooltip(Component.translatable("modernopt.option.irisShadowUpdateInterval.desc"))
-                        .setRange(1, 10, 1)
-                        .setValueFormatter(value -> Component.literal(value == 1 ? "Every frame" : "Every " + value + " frames"))
-                        .setBinding(ModernOptConfig.IRIS_SHADOW_UPDATE_INTERVAL::set, ModernOptConfig.IRIS_SHADOW_UPDATE_INTERVAL::get)
-                        .setStorageHandler(storage)
-                        .setDefaultValue(1)
-                        .setEnabled(true))
                 )
                 .addOptionGroup(builder.createOptionGroup()
                     .setName(Component.translatable("modernopt.sodium.group.anti_aliasing"))
@@ -179,6 +174,13 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
 
     private void save() {
         ModernOptConfig.SPEC.save();
+    }
+
+    private enum UpscalerMode {
+        FSR1,
+        BILINEAR,
+        NEAREST_NEIGHBOR,
+        SOFT_SCALE
     }
 
     private static ResourceLocation id(String path) {
