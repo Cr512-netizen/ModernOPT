@@ -46,7 +46,7 @@
   "modernopt.benchmark.pacing": "Кадр мс p50/p95/p99: %s / %s / %s · скачки: %s",
   "modernopt.benchmark.diagnostics": "FPS %s · масштаб %s%% · %s · выше лимита: %s",
   "modernopt.profile.title": "Профиль рендера",
-  "modernopt.profile.desc": "Переключение профилей Качество, Баланс, Производительность и Свой.",
+  "modernopt.profile.desc": "Выберите профиль масштаба рендера и апскейлера. «Свой» сохраняет ручные настройки." ,
   "modernopt.profile.quality": "Качество",
   "modernopt.profile.balanced": "Баланс",
   "modernopt.profile.performance": "Производительность",
