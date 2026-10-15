@@ -7,7 +7,7 @@ public final class RenderScaleController {
     private static final int MIN_WIDTH = 320;
     private static final int MIN_HEIGHT = 180;
     private static final long ADJUST_INTERVAL_NANOS = 1_500_000_000L;
-    private static final int SCALE_STEP = 2;
+    private static final int SCALE_STEP = 1;
     private static final int REQUIRED_SAMPLES = 3;
     private static int belowTargetSamples;
     private static int aboveTargetSamples;
@@ -78,7 +78,7 @@ public final class RenderScaleController {
 
     private static int scaledDimension(int dimension, int percent, int minimum) {
         if (dimension <= 0) return dimension;
-        int scaled = (int) Math.round(dimension * (clamp(percent, 25, 100) / 100.0));
+        int scaled = (int) Math.round(dimension * (clamp(percent, 1, 100) / 100.0));
         return Math.min(dimension, Math.max(Math.min(minimum, dimension), scaled));
     }
 
