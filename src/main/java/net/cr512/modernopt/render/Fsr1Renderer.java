@@ -83,20 +83,23 @@ public final class Fsr1Renderer {
         if (width <= 0 || height <= 0) return false;
 
         int mode = ModernOptConfig.UPSCALER_MODE.get();
-        // FSR1 currently needs GLSL features not exposed by every 1.21.1
-        // shader context. If either pass failed compilation, preserve rendering
-        // with the simple bilinear scaler instead of leaving the world unresolved.
-        boolean useFsr1 = mode == 0 && easu != null && rcas != null;
-        int effectiveMode = mode == 0 && !useFsr1 ? 1 : mode;
+        // Mode 0 skips every ModernOPT post-process shader. The caller performs
+        // one direct opaque blit to native resolution, avoiding extra texture reads,
+        // shader invocations, and the FSR intermediate allocation.
+        if (mode == 0) return false;
+
+        // If FSR1 shaders are unavailable, fall back to bilinear rather than leaving
+        // the world unresolved. The no-upscaler mode above remains shader-free.
+        boolean useFsr1 = mode == 1 && easu != null && rcas != null;
+        int effectiveMode = mode == 1 && !useFsr1 ? 2 : mode;
         ShaderInstance simpleShader = switch (effectiveMode) {
-            case 1 -> bilinear;
-            case 2 -> nearest;
-            case 3 -> softscale;
+            case 2 -> bilinear;
+            case 3 -> nearest;
+            case 4 -> softscale;
             default -> null;
         };
-        if (useFsr1 && (easu == null || rcas == null)) return false;
-        if (effectiveMode >= 1 && effectiveMode <= 3 && simpleShader == null) return false;
-        if (mode < 0 || mode > 3) return false;
+        if (effectiveMode >= 2 && effectiveMode <= 4 && simpleShader == null) return false;
+        if (mode < 0 || mode > 4) return false;
 
         Matrix4f oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
         VertexSorting oldSorting = RenderSystem.getVertexSorting();
