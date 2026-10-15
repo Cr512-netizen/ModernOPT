@@ -25,7 +25,7 @@ public final class ModernOptConfig {
         BUILDER.pop();
         BUILDER.push("rendering");
         RENDER_SCALE_PERCENT = BUILDER.comment("Internal render resolution as a percentage of the window size.").defineInRange("renderScalePercent", 100, 25, 100);
-        UPSCALER_MODE = BUILDER.comment("Upscaler: 0 = FSR1, 1 = Bilinear, 2 = Nearest Neighbor, 3 = SoftScale.").defineInRange("upscalerMode", 1, 0, 3);
+        UPSCALER_MODE = BUILDER.comment("Upscaler: 0 = none (direct blit), 1 = FSR1, 2 = Bilinear, 3 = Nearest Neighbor, 4 = SoftScale.").defineInRange("upscalerMode", 2, 0, 4);
         FXAA_ENABLED = BUILDER.define("fxaaEnabled", false);
         MSAA_SAMPLES = BUILDER.comment("0 = off, otherwise 2, 4, 8, or 16 samples.").defineInRange("msaaSamples", 0, 0, 16);
         SSAA_ENABLED = BUILDER.define("ssaaEnabled", false);
