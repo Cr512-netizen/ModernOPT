@@ -2,6 +2,8 @@ package net.cr512.modernopt.mixin;
 
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.render.RenderScaleController;
+import net.cr512.modernopt.render.RenderScalePhase;
+import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
@@ -33,6 +35,18 @@ public abstract class IrisRenderTargetsScaleMixin {
     private static int modernopt$scaledDimension(int dimension, boolean horizontal) {
         if (dimension <= 0 || !ModernOptConfig.ENABLED.get() || !RenderScaleController.isEnabled()) {
             return dimension;
+        }
+
+        // Iris can construct/recreate its pipeline while renderLevel is already
+        // using ModernOPT's scaled main target. In that case the constructor
+        // arguments are already scaled; scaling them again creates undersized
+        // buffers and forces Iris to reallocate them on its next size check.
+        if (RenderScalePhase.isActive()) {
+            var activeTarget = Minecraft.getInstance().getMainRenderTarget();
+            int activeDimension = horizontal ? activeTarget.width : activeTarget.height;
+            if (dimension == activeDimension) {
+                return dimension;
+            }
         }
 
         // Use the same bounded dimensions as the main ModernOPT world target.
