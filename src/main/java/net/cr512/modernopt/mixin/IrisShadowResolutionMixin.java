@@ -30,7 +30,7 @@ public abstract class IrisShadowResolutionMixin {
 
         int resolution = ModernOptConfig.IRIS_SHADOW_RESOLUTION.get();
         // Keep dimensions aligned to 16-pixel boundaries for common GPU formats.
-        resolution = Math.max(256, Math.min(8192, (resolution / 16) * 16));
+        resolution = Math.max(512, Math.min(8192, (resolution / 16) * 16));
         cir.setReturnValue(resolution);
     }
 }
