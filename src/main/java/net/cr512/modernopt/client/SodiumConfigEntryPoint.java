@@ -16,6 +16,7 @@ import net.minecraft.resources.ResourceLocation;
 public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
     private static final ResourceLocation ENABLED_ID = id("enabled");
     private static final ResourceLocation SCALE_ID = id("render_scale");
+    private static final ResourceLocation PRESET_ID = id("upscaling_preset");
     private static final ResourceLocation UPSCALER_ID = id("upscaler");
     private static final ResourceLocation FXAA_ID = id("fxaa");
     private static final ResourceLocation SSAA_ID = id("ssaa");
@@ -46,6 +47,20 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                 )
                 .addOptionGroup(builder.createOptionGroup()
                     .setName(Component.translatable("modernopt.sodium.group.upscaling"))
+                    .addOption(builder.createEnumOption(PRESET_ID, UpscalingPreset.class)
+                        .setName(Component.translatable("modernopt.profile.title"))
+                        .setTooltip(Component.translatable("modernopt.profile.desc"))
+                        .setElementNameProvider(value -> Component.translatable(switch (value) {
+                            case QUALITY -> "modernopt.profile.quality";
+                            case BALANCED -> "modernopt.profile.balanced";
+                            case PERFORMANCE -> "modernopt.profile.performance";
+                            case ULTRA_PERFORMANCE -> "modernopt.profile.ultra_performance";
+                            case CUSTOM -> "modernopt.profile.custom";
+                        }))
+                        .setBinding(SodiumConfigEntryPoint::applyPreset, SodiumConfigEntryPoint::currentPreset)
+                        .setStorageHandler(storage)
+                        .setDefaultValue(UpscalingPreset.BALANCED)
+                        .setEnabled(true))
                     .addOption(builder.createIntegerOption(SCALE_ID)
                         .setName(Component.translatable("modernopt.option.scale"))
                         .setTooltip(Component.translatable("modernopt.option.scale.desc"))
@@ -58,11 +73,12 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                     .addOption(builder.createEnumOption(UPSCALER_ID, UpscalerMode.class)
                         .setName(Component.translatable("modernopt.option.upscaler"))
                         .setTooltip(Component.translatable("modernopt.option.upscaler.desc"))
-                        .setElementNameProvider(value -> Component.literal(switch (value) {
-                            case FSR1 -> "FSR 1";
-                            case BILINEAR -> "Bilinear";
-                            case NEAREST_NEIGHBOR -> "Nearest Neighbor";
-                            case SOFT_SCALE -> "SoftScale";
+                        .setElementNameProvider(value -> Component.translatable(switch (value) {
+                            case NONE -> "modernopt.upscaler.none";
+                            case FSR1 -> "modernopt.upscaler.fsr1";
+                            case BILINEAR -> "modernopt.upscaler.bilinear";
+                            case NEAREST_NEIGHBOR -> "modernopt.upscaler.nearest";
+                            case SOFT_SCALE -> "modernopt.upscaler.softscale";
                         }))
                         .setBinding(value -> ModernOptConfig.UPSCALER_MODE.set(value.ordinal()),
                             () -> UpscalerMode.values()[Math.max(0, Math.min(UpscalerMode.values().length - 1, ModernOptConfig.UPSCALER_MODE.get()))])
@@ -176,7 +192,48 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
         ModernOptConfig.SPEC.save();
     }
 
+    private static void applyPreset(UpscalingPreset preset) {
+        switch (preset) {
+            case QUALITY -> {
+                ModernOptConfig.RENDER_SCALE_PERCENT.set(75);
+                ModernOptConfig.UPSCALER_MODE.set(1); // FSR1
+            }
+            case BALANCED -> {
+                ModernOptConfig.RENDER_SCALE_PERCENT.set(60);
+                ModernOptConfig.UPSCALER_MODE.set(1); // FSR1
+            }
+            case PERFORMANCE -> {
+                ModernOptConfig.RENDER_SCALE_PERCENT.set(50);
+                ModernOptConfig.UPSCALER_MODE.set(2); // Bilinear
+            }
+            case ULTRA_PERFORMANCE -> {
+                ModernOptConfig.RENDER_SCALE_PERCENT.set(35);
+                ModernOptConfig.UPSCALER_MODE.set(0); // Direct blit, no post-process shader
+            }
+            case CUSTOM -> { }
+        }
+    }
+
+    private static UpscalingPreset currentPreset() {
+        int scale = ModernOptConfig.RENDER_SCALE_PERCENT.get();
+        int mode = ModernOptConfig.UPSCALER_MODE.get();
+        if (scale == 75 && mode == 1) return UpscalingPreset.QUALITY;
+        if (scale == 60 && mode == 1) return UpscalingPreset.BALANCED;
+        if (scale == 50 && mode == 2) return UpscalingPreset.PERFORMANCE;
+        if (scale == 35 && mode == 0) return UpscalingPreset.ULTRA_PERFORMANCE;
+        return UpscalingPreset.CUSTOM;
+    }
+
+    private enum UpscalingPreset {
+        QUALITY,
+        BALANCED,
+        PERFORMANCE,
+        ULTRA_PERFORMANCE,
+        CUSTOM
+    }
+
     private enum UpscalerMode {
+        NONE,
         FSR1,
         BILINEAR,
         NEAREST_NEIGHBOR,
