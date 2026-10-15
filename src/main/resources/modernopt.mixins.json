@@ -12,6 +12,7 @@
     "WindowMixin",
     "GameRendererMixin",
     "IrisShadowResolutionMixin",
+    "IrisShadowUpdateIntervalMixin",
     "IrisRenderTargetsScaleMixin"
   ],
   "injectors": { "defaultRequire": 1 }
