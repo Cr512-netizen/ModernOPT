@@ -112,7 +112,16 @@ public final class Fsr1Renderer {
             case 4 -> softscale;
             default -> null;
         };
-        if (effectiveMode >= 2 && effectiveMode <= 4 && simpleShader == null) return false;
+        if (effectiveMode >= 2 && effectiveMode <= 4 && simpleShader == null) {
+            // Do not retry a mode with a shader that failed registration on every frame.
+            // Resource reload or changing the selected mode resets this latch.
+            failedUpscalerMode = mode;
+            if (!renderFailureLogged) {
+                renderFailureLogged = true;
+                LOGGER.error("Selected spatial upscaler has no loaded shader (mode={}, effectiveMode={}); using the safe fallback.", mode, effectiveMode);
+            }
+            return false;
+        }
         if (mode < 0 || mode > 4) return false;
 
         Matrix4f oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
