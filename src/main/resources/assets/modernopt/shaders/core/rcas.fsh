@@ -1,4 +1,4 @@
-#version 150
+#version 420
 #define A_GPU 1
 #define A_GLSL 1
 #define FSR_RCAS_F 1
