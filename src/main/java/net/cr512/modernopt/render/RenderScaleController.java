@@ -4,8 +4,8 @@ import net.cr512.modernopt.config.ModernOptConfig;
 
 /** Bounded FPS-targeted world render scale. HUD and GUI keep native resolution. */
 public final class RenderScaleController {
-    private static final int MIN_WIDTH = 320;
-    private static final int MIN_HEIGHT = 180;
+    private static final int MIN_WIDTH = 1;
+    private static final int MIN_HEIGHT = 1;
     private static final long ADJUST_INTERVAL_NANOS = 1_500_000_000L;
     private static final int SCALE_STEP = 1;
     private static final int REQUIRED_SAMPLES = 3;
