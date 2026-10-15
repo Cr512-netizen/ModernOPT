@@ -46,7 +46,7 @@
   "modernopt.benchmark.pacing": "Кадр мс p50/p95/p99: %s / %s / %s · скачки: %s",
   "modernopt.benchmark.diagnostics": "FPS %s · масштаб %s%% · %s · выше лимита: %s",
   "modernopt.profile.title": "Профиль рендера",
-  "modernopt.profile.desc": "Выберите профиль масштаба рендера и апскейлера. «Свой» сохраняет ручные настройки." ,
+  "modernopt.profile.desc": "Выберите профиль масштаба рендера и апскейлера. «Свой» сохраняет ручные настройки.",
   "modernopt.profile.quality": "Качество",
   "modernopt.profile.balanced": "Баланс",
   "modernopt.profile.performance": "Производительность",
@@ -65,5 +65,9 @@
   "modernopt.option.irisShadowScale": "Масштабировать карты теней Iris",
   "modernopt.option.irisShadowScale.desc": "Экспериментально. Уменьшает разрешение карт теней шейдерпака Iris; по умолчанию выключено для совместимости.",
   "modernopt.option.irisShadowResolution": "Разрешение карт теней",
-  "modernopt.option.irisShadowResolution.desc": "Задаёт фиксированное разрешение карт теней Iris в пикселях (512–8192). Включите масштабирование карт теней и перезагрузите шейдерпак."
+  "modernopt.option.irisShadowResolution.desc": "Задаёт фиксированное разрешение карт теней Iris в пикселях (512–8192). Включите масштабирование карт теней и перезагрузите шейдерпак.",
+  "modernopt.option.shadowFrameSkip": "Динамический пропуск кадров теней",
+  "modernopt.option.shadowFrameSkip.desc": "Обновляет карты теней Iris с заданной частотой, повторно используя предыдущую карту в пропущенных кадрах. Экспериментально: тени могут запаздывать за движущимися объектами.",
+  "modernopt.option.shadowUpdateFps": "Частота обновления теней",
+  "modernopt.option.shadowUpdateFps.desc": "Целевая частота обновления теней от 40 до 240 FPS. Если игра работает медленнее цели, тени обновляются каждый кадр."
 }
