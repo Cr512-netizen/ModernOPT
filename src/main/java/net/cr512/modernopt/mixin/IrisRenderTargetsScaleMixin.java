@@ -32,6 +32,24 @@ public abstract class IrisRenderTargetsScaleMixin {
         return modernopt$scaledDimension(height, false);
     }
 
+
+    /**
+     * Iris checks the main framebuffer dimensions every frame. Scaling only the
+     * constructor arguments is insufficient: resizeIfNeeded would immediately
+     * grow its g-buffers back to native resolution. Scale those dimensions too,
+     * so the cached Iris dimensions and all pack-owned color/depth targets stay
+     * aligned with ModernOPT's active world resolution.
+     */
+    @ModifyVariable(method = "resizeIfNeeded", at = @At("HEAD"), argsOnly = true, ordinal = 2, remap = false)
+    private int modernopt$scaleIrisResizeWidth(int width) {
+        return modernopt$scaledDimension(width, true);
+    }
+
+    @ModifyVariable(method = "resizeIfNeeded", at = @At("HEAD"), argsOnly = true, ordinal = 3, remap = false)
+    private int modernopt$scaleIrisResizeHeight(int height) {
+        return modernopt$scaledDimension(height, false);
+    }
+
     private static int modernopt$scaledDimension(int dimension, boolean horizontal) {
         if (dimension <= 0 || !ModernOptConfig.ENABLED.get() || !RenderScaleController.isEnabled()) {
             return dimension;
