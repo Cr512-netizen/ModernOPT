@@ -59,5 +59,7 @@
   "modernopt.option.irisShadowScale": "Scale Iris shadow maps",
   "modernopt.option.irisShadowScale.desc": "Experimental. Reduces Iris shader-pack shadow-map resolution; disabled by default for compatibility.",
   "modernopt.option.irisShadowResolution": "Shadow-map resolution",
-  "modernopt.option.irisShadowResolution.desc": "Set the fixed Iris shadow-map resolution in pixels (256–8192). Reload the shader pack to apply changes."
+  "modernopt.option.irisShadowResolution.desc": "Set the fixed Iris shadow-map resolution in pixels (256–8192). Enable shadow-map scaling and reload the shader pack.",
+  "modernopt.option.irisShadowUpdateInterval": "Shadow-map update interval",
+  "modernopt.option.irisShadowUpdateInterval.desc": "How often shadows are redrawn: 1 (every frame) to 10 frames. Higher values may make shadows visibly lag behind moving objects."
 }
