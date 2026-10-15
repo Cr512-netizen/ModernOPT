@@ -60,6 +60,4 @@
   "modernopt.option.irisShadowScale.desc": "Экспериментально. Уменьшает разрешение карт теней шейдерпака Iris; по умолчанию выключено для совместимости.",
   "modernopt.option.irisShadowResolution": "Разрешение карт теней",
   "modernopt.option.irisShadowResolution.desc": "Задаёт фиксированное разрешение карт теней Iris в пикселях (256–8192). Включите масштабирование карт теней и перезагрузите шейдерпак.",
-  "modernopt.option.irisShadowUpdateInterval": "Обновление карты теней",
-  "modernopt.option.irisShadowUpdateInterval.desc": "Как часто перерисовывать тени: от 1 (каждый кадр) до 10 кадров. Большие значения могут вызывать заметное запаздывание теней при движении."
 }
