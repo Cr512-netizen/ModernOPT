@@ -46,7 +46,7 @@
   "modernopt.benchmark.pacing": "Frame ms p50/p95/p99: %s / %s / %s · spikes: %s",
   "modernopt.benchmark.diagnostics": "FPS %s · scale %s%% · %s · over budget: %s",
   "modernopt.profile.title": "Render profile",
-  "modernopt.profile.desc": "Cycle Quality, Balanced, Performance or Custom presets.",
+  "modernopt.profile.desc": "Choose a render-scale and upscaler preset. Custom keeps your manually selected values." ,
   "modernopt.profile.quality": "Quality",
   "modernopt.profile.balanced": "Balanced",
   "modernopt.profile.performance": "Performance",
