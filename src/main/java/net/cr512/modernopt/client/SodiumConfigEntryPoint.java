@@ -26,6 +26,7 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
     private static final ResourceLocation MAX_SCALE_ID = id("maximum_scale");
     private static final ResourceLocation IRIS_SHADOW_SCALE_ENABLED_ID = id("iris_shadow_scale_enabled");
     private static final ResourceLocation IRIS_SHADOW_RESOLUTION_ID = id("iris_shadow_resolution");
+    private static final ResourceLocation IRIS_SHADOW_UPDATE_INTERVAL_ID = id("iris_shadow_update_interval");
 
     @Override
     public void registerConfigLate(ConfigBuilder builder) {
@@ -115,7 +116,16 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setValueFormatter(value -> Component.literal(value + " px"))
                         .setBinding(ModernOptConfig.IRIS_SHADOW_RESOLUTION::set, ModernOptConfig.IRIS_SHADOW_RESOLUTION::get)
                         .setStorageHandler(storage)
-                        .setDefaultValue(2048)
+                        .setDefaultValue(1024)
+                        .setEnabled(true))
+                    .addOption(builder.createIntegerOption(IRIS_SHADOW_UPDATE_INTERVAL_ID)
+                        .setName(Component.translatable("modernopt.option.irisShadowUpdateInterval"))
+                        .setTooltip(Component.translatable("modernopt.option.irisShadowUpdateInterval.desc"))
+                        .setRange(1, 10, 1)
+                        .setValueFormatter(value -> Component.literal(value == 1 ? "Every frame" : "Every " + value + " frames"))
+                        .setBinding(ModernOptConfig.IRIS_SHADOW_UPDATE_INTERVAL::set, ModernOptConfig.IRIS_SHADOW_UPDATE_INTERVAL::get)
+                        .setStorageHandler(storage)
+                        .setDefaultValue(1)
                         .setEnabled(true))
                 )
                 .addOptionGroup(builder.createOptionGroup()
