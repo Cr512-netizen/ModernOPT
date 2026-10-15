@@ -18,6 +18,8 @@ import net.cr512.modernopt.render.RenderTargetLifecycle;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import org.joml.Matrix4f;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -228,6 +230,40 @@ public abstract class GameRendererMixin {
         this.modernopt$active = true;
     }
 
+    /**
+     * Shader-free framebuffer copy/scale. This is the lowest-overhead path for
+     * the "None" upscaler and also resolves MSAA directly into the native target,
+     * avoiding an intermediate texture resolve followed by a textured draw.
+     */
+    @Unique
+    private boolean modernopt$blitFramebuffer(RenderTarget input, RenderTarget output) {
+        if (input == null || output == null || input.width <= 0 || input.height <= 0
+            || output.width <= 0 || output.height <= 0) return false;
+
+        int previousRead = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
+        int previousDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        try {
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER,
+                ((RenderTargetAccessor) (Object) input).modernopt$getFrameBufferId());
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER,
+                ((RenderTargetAccessor) (Object) output).modernopt$getFrameBufferId());
+            GL30.glBlitFramebuffer(
+                0, 0, input.width, input.height,
+                0, 0, output.width, output.height,
+                GL11.GL_COLOR_BUFFER_BIT, GL11.GL_NEAREST
+            );
+            return GL11.glGetError() == GL11.GL_NO_ERROR;
+        } catch (RuntimeException | LinkageError exception) {
+            MODERNOPT_LOGGER.warn("Direct framebuffer copy failed; falling back to the textured blit.", exception);
+            return false;
+        } finally {
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousRead);
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDraw);
+            output.bindWrite(true);
+            RenderSystem.viewport(0, 0, output.width, output.height);
+        }
+    }
+
     @Unique
     private void modernopt$blitOpaque(RenderTarget input, RenderTarget output) {
         int width = output.width;
@@ -284,16 +320,22 @@ public abstract class GameRendererMixin {
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
 
             if (this.modernopt$active && this.modernopt$scalingActive) {
-                boolean upscaled = this.modernopt$ssaaActive
-                    ? Fsr1Renderer.downsampleSsaa(this.modernopt$worldTarget, this.modernopt$originalTarget)
-                    : Fsr1Renderer.render(this.modernopt$worldTarget, this.modernopt$originalTarget);
+                boolean upscaled;
+                if (this.modernopt$ssaaActive) {
+                    upscaled = Fsr1Renderer.downsampleSsaa(this.modernopt$worldTarget, this.modernopt$originalTarget);
+                } else if (ModernOptConfig.UPSCALER_MODE.get() == 0) {
+                    // "None" performs only a fixed-function framebuffer blit.
+                    upscaled = modernopt$blitFramebuffer(this.modernopt$worldTarget, this.modernopt$originalTarget);
+                } else {
+                    upscaled = Fsr1Renderer.render(this.modernopt$worldTarget, this.modernopt$originalTarget);
+                }
                 if (!upscaled) {
-                    // A failed shader pass restores vanilla state, including blending.
+                    // A failed optimized pass restores the image using the safe textured fallback.
                     modernopt$blitOpaque(this.modernopt$worldTarget, this.modernopt$originalTarget);
                 }
             } else if (this.modernopt$active && this.modernopt$msaaActive) {
-                if (!Fsr1Renderer.copyResolved(this.modernopt$worldTarget, this.modernopt$originalTarget)) {
-                    // A missing copy shader must not leave the native framebuffer blank.
+                // Resolve MSAA directly into the native framebuffer without an intermediate texture draw.
+                if (!modernopt$blitFramebuffer(this.modernopt$worldTarget, this.modernopt$originalTarget)) {
                     modernopt$blitOpaque(this.modernopt$worldTarget, this.modernopt$originalTarget);
                 }
             }
