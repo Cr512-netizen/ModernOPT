@@ -66,7 +66,7 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                     .addOption(builder.createIntegerOption(SCALE_ID)
                         .setName(Component.translatable("modernopt.option.scale"))
                         .setTooltip(Component.translatable("modernopt.option.scale.desc"))
-                        .setRange(25, 100, 5)
+                        .setRange(1, 100, 1)
                         .setValueFormatter(value -> Component.literal(value + "%"))
                         .setBinding(ModernOptConfig.RENDER_SCALE_PERCENT::set, ModernOptConfig.RENDER_SCALE_PERCENT::get)
                         .setStorageHandler(storage)
