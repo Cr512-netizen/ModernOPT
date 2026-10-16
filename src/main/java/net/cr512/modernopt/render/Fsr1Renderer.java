@@ -48,6 +48,8 @@ public final class Fsr1Renderer {
     private static boolean nativeEasuFailureLogged;
     private static boolean fp16FsrFailed;
     private static boolean fp16FsrFailureLogged;
+    private static String diagnosticPath = "not yet selected";
+    private static String lastLoggedDiagnosticPath = "";
 
     private Fsr1Renderer() {}
 
@@ -90,6 +92,21 @@ public final class Fsr1Renderer {
         registerShader(event, "softscale", shader -> softscale = shader);
         registerShader(event, "fxaa", shader -> fxaa = shader);
         registerShader(event, "ssaa_downsample", shader -> ssaaDownsample = shader);
+    }
+
+    public static String diagnosticStatus() {
+        String capability = easuFp16 != null && rcasFp16 != null ? "FP16 shaders loaded"
+            : "FP16 unavailable";
+        if (fp16FsrFailed) capability = "FP16 runtime failure; FP32 fallback latched";
+        return capability + "; selectedPath=" + diagnosticPath;
+    }
+
+    private static void setDiagnosticPath(String path) {
+        diagnosticPath = path;
+        if (!path.equals(lastLoggedDiagnosticPath)) {
+            lastLoggedDiagnosticPath = path;
+            LOGGER.info("Render diagnostic: selected upscaler path={}", path);
+        }
     }
 
     private static boolean supportsNvFp16() {
@@ -142,7 +159,7 @@ public final class Fsr1Renderer {
         // Mode 0 skips every ModernOPT post-process shader. The caller performs
         // one direct opaque blit to native resolution, avoiding extra texture reads,
         // shader invocations, and the FSR intermediate allocation.
-        if (mode == 0) return false;
+        if (mode == 0) { setDiagnosticPath("mode=none; caller should direct-blit"); return false; }
 
         // If FSR1 shaders are unavailable, fall back to bilinear rather than leaving
         // the world unresolved. The no-upscaler mode above remains shader-free.
@@ -160,13 +177,17 @@ public final class Fsr1Renderer {
             // Do not retry a mode with a shader that failed registration on every frame.
             // Resource reload or changing the selected mode resets this latch.
             failedUpscalerMode = mode;
+            setDiagnosticPath("mode=" + mode + " failed; safe blit fallback");
             if (!renderFailureLogged) {
                 renderFailureLogged = true;
                 LOGGER.error("Selected spatial upscaler has no loaded shader (mode={}, effectiveMode={}); using the safe fallback.", mode, effectiveMode);
             }
             return false;
         }
-        if (mode < 0 || mode > 4) return false;
+        if (mode < 0 || mode > 4) { setDiagnosticPath("invalid mode=" + mode); return false; }
+        if (useFp16Fsr) setDiagnosticPath("FSR1 FP16 EASU+RCAS");
+        else if (useFsr1) setDiagnosticPath("FSR1 FP32 " + (easuShader == easuNative ? "native textureGather" : "explicit texelFetch"));
+        else setDiagnosticPath("spatial mode=" + effectiveMode + " (" + (simpleShader == null ? "missing shader" : "simple shader") + ")");
 
         Matrix4f oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
         VertexSorting oldSorting = RenderSystem.getVertexSorting();
@@ -189,14 +210,17 @@ public final class Fsr1Renderer {
                         // FP16 is an optimization, never a requirement. Fall back on
                         // this frame and disable the path for the current resource load.
                         fp16FsrFailed = true;
+                        setDiagnosticPath("FSR1 FP16 failed; attempting FP32 fallback");
                         if (!fp16FsrFailureLogged) {
                             fp16FsrFailureLogged = true;
                             LOGGER.warn("FP16 FSR1 path failed at runtime; falling back to FP32.", fp16Failure);
                         }
                         if (easuShader != null && rcas != null) {
                             drawFsr1Fp32(input, output, width, height, easuShader);
+                            setDiagnosticPath("FSR1 FP32 fallback after FP16 failure");
                         } else if (bilinear != null) {
                             drawPass(input, output, bilinear, width, height, false);
+                            setDiagnosticPath("bilinear fallback after FP16 failure");
                         } else {
                             throw fp16Failure;
                         }
