@@ -15,6 +15,7 @@
     "IrisShadowFrameSkipMixin",
     "ScreenMixin",
     "GuiPerformanceOverlayMixin",
+    "ParticleAccessor",
     "ParticleRenderDistanceMixin",
     "IrisRenderTargetsScaleMixin"
   ],
