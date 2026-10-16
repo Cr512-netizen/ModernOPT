@@ -37,7 +37,7 @@
 - **Native-resolution interface:** the intended render pipeline keeps HUD and GUI rendering at the window resolution.
 - **Client-side settings:** use the native Sodium options page or the standalone configuration screen from the Mods list (Sodium is not required). Presets change both world scale and upscaler.
 - **Performance HUD and TXT logging:** configurable FPS, approximate frame interval, Java heap usage, render scale/upscaler and particle-culling status, plus estimated 1% low FPS and frame-time p95.
-- **Built-in CSV benchmark capture:** start/stop from the standalone settings screen or Sodium page. Reports are written to `config/modernopt-benchmarks/benchmark-*.csv`; the capture measures client frame intervals and Java heap, not GPU execution time.
+- **Diagnostic CSV benchmark:** records frame intervals, process/system CPU load, native output and internal world-target dimensions/pixel ratio, effective render scale, active shader-pack state, and CPU-side world/post-process timings to `config/modernopt-benchmarks/benchmark-*.csv`. It does not measure GPU execution time, VRAM, or temperature.
 - **Master disable switch:** disables ModernOPT render modifications, HUD/logging, profiling, particle culling and Iris shadow-resolution changes. Benchmark capture stops when disabled.
 - **Optional particle draw-distance culling:** skips rendering distant particles without deleting them or changing their ticking/simulation. Disabled by default and controlled by the master switch.
 
@@ -78,7 +78,7 @@ The on-disk client configuration uses keys such as `rendering.renderScalePercent
 
 Open ModernOPT's configuration screen from the Mods list even when Sodium is not installed. The Rendering page provides paired presets plus individual world-scale and upscaler controls; the other pages configure the overlay, text log, and optional particle draw-distance culling. Tooltips describe expected performance impact, which varies by hardware and scene.
 
-Enable **Write TXT log** to append periodic samples to `config/modernopt-performance.txt`. The overlay can also show an estimated 1% low FPS, frame-time p95, and configurable background opacity. The **Benchmark** page or Sodium's **Performance HUD & benchmark** group starts a CSV capture saved under `config/modernopt-benchmarks/`. This capture is intended for repeatable comparisons, but it records client-side frame intervals and Java heap—not GPU execution time, utilization, temperature, or VRAM. Benchmarking can add a small measurement overhead, so compare repeated runs under the same conditions.
+Enable **Write TXT log** to append periodic samples to `config/modernopt-performance.txt`. The overlay can also show an estimated 1% low FPS, frame-time p95, and configurable background opacity. The **Benchmark** page or Sodium's **Performance HUD & benchmark** group starts a CSV capture saved under `config/modernopt-benchmarks/`. This capture is intended for repeatable comparisons. It also records CPU load, actual native/world target dimensions and CPU-side world/post-process wall time; it does not measure GPU execution time, VRAM, or temperature. Benchmarking can add a small measurement overhead, so compare repeated runs under the same conditions.
 
 Iris shadow-frame skipping is currently disabled internally: cancelling Iris' complete shadow pass caused shadows to become stale or disappear. The corresponding old setting is retained for config compatibility but does not currently change the shadow update rate. Iris shadow resolution scaling remains separately optional and is disabled by default.
 
@@ -86,7 +86,9 @@ Particle culling is a visual-only draw-distance check: particles still tick and 
 
 ### Render diagnostics (opt-in)
 
-For troubleshooting, set `general.profilingEnabled=true` in ModernOPT's client config and restart the world. ModernOPT will periodically log CPU-side frame and post-process timings plus the native and internal world-target dimensions. Disable it after collecting a short sample.
+For troubleshooting, enable **Profiling** on the Dynamic page and turn on the performance HUD. The HUD then shows the actual output → world-target dimensions and CPU-side world/post-process wall times. The CSV recorder captures these fields along with process/system CPU load, effective scale, upscaler and whether an Iris shader pack is actually active. The measurements deliberately avoid OpenGL GPU timer queries to reduce the risk of stalls or conflicts with Iris.
+
+To investigate a small gain at 50%, capture a 30–60 second CSV at 100%, then repeat at 50% in the same world, location, camera direction, weather, shader-pack settings, FPS cap, and VSync state. Let the scene warm up first and compare average FPS, frame-time percentiles, CPU load, actual target dimensions, and world/post CPU times. If the internal target is genuinely about 25% of the output pixels but FPS barely changes, pixel shading probably is not the only limiting cost; CPU/game-thread work, shader passes that stay at full resolution, an FPS cap/VSync, or upscaling overhead may dominate. CPU wall times are diagnostic clues, not GPU timings, so they cannot by themselves prove which GPU pass is slow. Repeat each run at least twice.
 
 These timings **do not measure GPU execution time**; GPU work can continue asynchronously after the CPU submits a draw. The diagnostics intentionally avoid OpenGL timer queries and per-frame error polling so they are less likely to conflict with other render mods. Share the relevant `Render diagnostics (CPU only)` lines from `logs/latest.log` when reporting a performance issue.
 
@@ -198,9 +200,15 @@ Sodium не является обязательной зависимостью, 
 
 Откройте настройки ModernOPT через кнопку конфигурации мода в списке модов NeoForge — Sodium для этого не нужен. Вкладки позволяют настроить рендеринг, экранную статистику и отсечение частиц. Подсказки описывают ожидаемое влияние на производительность; фактический результат зависит от оборудования и сцены.
 
-Включите **Записывать TXT**, чтобы добавлять периодические измерения в `config/modernopt-performance.txt`. Оверлей показывает FPS Minecraft, приблизительное время между отрисовками HUD, загрузку CPU (если её предоставляет Java), использование heap-памяти Java, масштаб мира и апскейлер. Он не показывает загрузку GPU, температуру GPU или видеопамять: Minecraft/NeoForge не предоставляют эти аппаратные данные универсальным способом.
+Включите **Записывать TXT**, чтобы добавлять периодические измерения в `config/modernopt-performance.txt`. Оверлей показывает FPS Minecraft, приблизительное время между отрисовками HUD, загрузку CPU, heap-память Java, масштаб мира и апскейлер. CSV-бенчмарк в `config/modernopt-benchmarks/` дополнительно записывает загрузку CPU, реальные размеры выходного и внутреннего буфера, долю пикселей, активность шейдерпака Iris и время CPU на проход мира/постобработку. Это не замеры времени выполнения GPU, температуры или VRAM.
 
 Отсечение частиц — только визуальная проверка дистанции при отрисовке: симуляция частиц не меняется. Функция выключена по умолчанию; она может уменьшить работу по отрисовке сцен с большим количеством частиц, но добавляет небольшую проверку расстояния на каждую частицу.
+
+### Как выяснить, почему 50% дают небольшой прирост FPS
+
+Включите **Profiling** на вкладке динамического разрешения и HUD. Сначала запишите CSV на 30–60 секунд при 100%, затем повторите при 50% в том же мире, в той же точке и с тем же направлением камеры, погодой, настройками шейдерпака, лимитом FPS и VSync. Перед каждым замером дайте сцене прогреться; сделайте по два запуска.
+
+Сравните средний FPS и процентили времени кадра, загрузку CPU, размеры буферов и время CPU на проход мира/постобработку. Если внутренний буфер действительно содержит примерно четверть пикселей, а FPS почти не меняется, вероятно, ограничение не только в количестве пикселей: возможны нагрузка CPU/главного потока, полноразмерные проходы шейдерпака, ограничение FPS/VSync или стоимость апскейлинга. Время CPU — лишь подсказка, а не GPU-таймер; по одному CSV нельзя достоверно назвать конкретный медленный GPU-проход.
 
 ## Совместимость и ограничения
 
