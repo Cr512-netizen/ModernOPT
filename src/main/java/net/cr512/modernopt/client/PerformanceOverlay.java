@@ -36,7 +36,10 @@ public final class PerformanceOverlay {
     private PerformanceOverlay() {}
 
     public static void render(GuiGraphics graphics) {
-        if (!ModernOptConfig.ENABLED.get()) return;
+        if (!ModernOptConfig.ENABLED.get()) {
+            if (BenchmarkRecorder.isRecording()) BenchmarkRecorder.stop();
+            return;
+        }
         if (!ModernOptConfig.OVERLAY_ENABLED.get() && !ModernOptConfig.LOGGING_ENABLED.get()
             && !BenchmarkRecorder.isRecording()) return;
         Minecraft minecraft = Minecraft.getInstance();
