@@ -110,5 +110,7 @@
   "modernopt.screen.particle_culling": "Cull distant particles",
   "modernopt.screen.particle_culling.tip": "Skip drawing particles beyond the selected distance; particles still tick and expire normally. Low-to-medium GPU benefit in particle-heavy scenes; adds a small per-particle distance check. Disabled by default.",
   "modernopt.screen.particle_distance": "Particle draw distance",
-  "modernopt.screen.particle_distance.tip": "Maximum distance in blocks at which particles are drawn. Lower values hide distant effects sooner; does not alter particle simulation."
+  "modernopt.screen.particle_distance.tip": "Maximum distance in blocks at which particles are drawn. Lower values hide distant effects sooner; does not alter particle simulation.",
+  "modernopt.screen.show_cpu": "Show CPU usage",
+  "modernopt.screen.show_cpu.tip": "Shows approximate Java-process and whole-system CPU load when the Java runtime exposes it. It may show n/a on unsupported runtimes. Low overhead; this is not GPU utilization."
 }
