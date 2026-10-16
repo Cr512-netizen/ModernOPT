@@ -3,6 +3,7 @@ package net.cr512.modernopt.client;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.minecraft.client.Minecraft;
 import net.neoforged.fml.loading.FMLPaths;
+import net.neoforged.fml.ModList;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -29,7 +30,6 @@ public final class BenchmarkRecorder {
     private static long startedAt;
     private static long frames;
     private static long lastFlushAt;
-    private static double lastFrameTimeMs;
     private static String lastResult = "Not run";
     private static String lastError = "";
 
@@ -61,7 +61,6 @@ public final class BenchmarkRecorder {
             startedAt = System.nanoTime();
             lastFlushAt = startedAt;
             frames = 0;
-            lastFrameTimeMs = 0;
             FRAME_TIMES.clear();
             lastError = "";
             lastResult = "Recording";
@@ -74,7 +73,6 @@ public final class BenchmarkRecorder {
     /** Called once per HUD render; does not allocate a row object per frame. */
     public static void sample(long now, Minecraft minecraft, double frameTimeMs) {
         if (!isRecording()) return;
-        lastFrameTimeMs = frameTimeMs;
         if (frameTimeMs <= 0 || !Double.isFinite(frameTimeMs)) return;
         Runtime runtime = Runtime.getRuntime();
         long usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L);
@@ -83,7 +81,7 @@ public final class BenchmarkRecorder {
             writer.write(String.format(Locale.ROOT, "%d,%.4f,%d,%d,%d,%d,%d,%s,%s%n",
                 (now - startedAt) / 1_000_000L, frameTimeMs, minecraft.getFps(), usedMb, allocatedMb,
                 ModernOptConfig.RENDER_SCALE_PERCENT.get(), ModernOptConfig.UPSCALER_MODE.get(),
-                ModernOptConfig.ENABLED.get(), "unknown"));
+                ModernOptConfig.ENABLED.get(), ModList.get().isLoaded("iris")));
             frames++;
             FRAME_TIMES.add(frameTimeMs);
             // Flush periodically rather than forcing disk I/O every frame.
@@ -109,8 +107,14 @@ public final class BenchmarkRecorder {
             Collections.sort(sorted);
             double p95 = percentile(sorted, 0.95);
             double p99 = percentile(sorted, 0.99);
-            lastResult = String.format(Locale.ROOT, "%d frames · avg %.1f FPS · p95 %.2f ms · p99 %.2f ms",
-                frames, fps, p95, p99);
+            int slowCount = Math.max(1, (int) Math.ceil(sorted.size() * 0.01));
+            double slowAverage = 0;
+            for (int i = sorted.size() - slowCount; i < sorted.size(); i++) slowAverage += sorted.get(i);
+            double onePercentLow = slowAverage > 0 ? 1000.0 / (slowAverage / slowCount) : 0;
+            long spikes = sorted.stream().filter(value -> value > Math.max(10.0, (average > 0 ? average * 2.0 : 50.0))).count();
+            lastResult = String.format(Locale.ROOT,
+                "%d frames · avg %.1f FPS · 1%% low %.1f · p95/p99 %.2f/%.2f ms · spikes %d",
+                frames, fps, onePercentLow, p95, p99, spikes);
             lastError = "";
         } catch (IOException exception) {
             writer = null;
