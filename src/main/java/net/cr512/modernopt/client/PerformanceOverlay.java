@@ -39,7 +39,7 @@ public final class PerformanceOverlay {
         if (previousFrameAt != 0L) frameTimeMs = (now - previousFrameAt) / 1_000_000.0;
         previousFrameAt = now;
 
-        if (ModernOptConfig.OVERLAY_ENABLED.get() && !minecraft.options.hideGui
+        if (ModernOptConfig.OVERLAY_ENABLED.get() && minecraft.level != null
             && !minecraft.getDebugOverlay().showDebugScreen()) {
             List<String> lines = new ArrayList<>();
             if (ModernOptConfig.OVERLAY_SHOW_FPS.get()) lines.add("FPS: " + minecraft.getFps());
