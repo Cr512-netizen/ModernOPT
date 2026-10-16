@@ -26,7 +26,6 @@ public final class ModernOptConfigScreen extends Screen {
         columnX = (this.width - columnWidth) / 2;
         int tabWidth = (columnWidth - 8) / 3;
         int y = 30;
-        // Replace the three temporary full-width tab buttons with a compact tab row.
         clearWidgets();
         addRenderableWidget(Button.builder(Component.translatable("modernopt.page.render"), b -> { page = Page.RENDER; rebuild(); })
             .bounds(columnX, y, tabWidth, 20).tooltip(Tooltip.create(Component.translatable("modernopt.page.render.tip"))).build());
@@ -39,26 +38,27 @@ public final class ModernOptConfigScreen extends Screen {
         switch (page) {
             case RENDER -> {
                 addRow(yRow, "modernopt.screen.master", "modernopt.screen.master.tip", toggle(ModernOptConfig.ENABLED)); yRow += 18;
-                addRow(yRow, "modernopt.screen.preset", "modernopt.screen.preset.tip", this::cyclePreset); yRow += 24;
-                addRow(yRow, "modernopt.screen.scale", "modernopt.screen.scale.tip", this::cycleScale); yRow += 24;
-                addRow(yRow, "modernopt.screen.upscaler", "modernopt.screen.upscaler.tip", this::cycleUpscaler); yRow += 24;
-                addRow(yRow, "modernopt.screen.dynamic", "modernopt.screen.dynamic.tip", toggle(ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED)); yRow += 24;
-                addRow(yRow, "modernopt.screen.fxaa", "modernopt.screen.fxaa.tip", toggle(ModernOptConfig.FXAA_ENABLED)); yRow += 24;
-                addRow(yRow, "modernopt.screen.ssaa", "modernopt.screen.ssaa.tip", toggle(ModernOptConfig.SSAA_ENABLED)); yRow += 24;
+                addRow(yRow, "modernopt.screen.preset", "modernopt.screen.preset.tip", this::cyclePreset); yRow += 18;
+                addRow(yRow, "modernopt.screen.scale", "modernopt.screen.scale.tip", this::cycleScale); yRow += 18;
+                addRow(yRow, "modernopt.screen.upscaler", "modernopt.screen.upscaler.tip", this::cycleUpscaler); yRow += 18;
+                addRow(yRow, "modernopt.screen.dynamic", "modernopt.screen.dynamic.tip", toggle(ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED)); yRow += 18;
+                addRow(yRow, "modernopt.screen.fxaa", "modernopt.screen.fxaa.tip", toggle(ModernOptConfig.FXAA_ENABLED)); yRow += 18;
+                addRow(yRow, "modernopt.screen.ssaa", "modernopt.screen.ssaa.tip", toggle(ModernOptConfig.SSAA_ENABLED)); yRow += 18;
                 addRow(yRow, "modernopt.screen.msaa", "modernopt.screen.msaa.tip", this::cycleMsaa);
             }
             case OVERLAY -> {
-                addRow(yRow, "modernopt.screen.overlay", "modernopt.screen.overlay.tip", toggle(ModernOptConfig.OVERLAY_ENABLED)); yRow += 24;
-                addRow(yRow, "modernopt.screen.logging", "modernopt.screen.logging.tip", toggle(ModernOptConfig.LOGGING_ENABLED)); yRow += 24;
-                addRow(yRow, "modernopt.screen.log_interval", "modernopt.screen.log_interval.tip", this::cycleLogInterval); yRow += 24;
-                addRow(yRow, "modernopt.screen.show_fps", "modernopt.screen.show_fps.tip", toggle(ModernOptConfig.OVERLAY_SHOW_FPS)); yRow += 24;
-                addRow(yRow, "modernopt.screen.show_frame", "modernopt.screen.show_frame.tip", toggle(ModernOptConfig.OVERLAY_SHOW_FRAME_TIME)); yRow += 24;
-                addRow(yRow, "modernopt.screen.show_memory", "modernopt.screen.show_memory.tip", toggle(ModernOptConfig.OVERLAY_SHOW_MEMORY)); yRow += 24;
-                addRow(yRow, "modernopt.screen.show_render", "modernopt.screen.show_render.tip", toggle(ModernOptConfig.OVERLAY_SHOW_RENDER_INFO)); yRow += 24;
+                addRow(yRow, "modernopt.screen.overlay", "modernopt.screen.overlay.tip", toggle(ModernOptConfig.OVERLAY_ENABLED)); yRow += 18;
+                addRow(yRow, "modernopt.screen.logging", "modernopt.screen.logging.tip", toggle(ModernOptConfig.LOGGING_ENABLED)); yRow += 18;
+                addRow(yRow, "modernopt.screen.log_interval", "modernopt.screen.log_interval.tip", this::cycleLogInterval); yRow += 18;
+                addRow(yRow, "modernopt.screen.show_fps", "modernopt.screen.show_fps.tip", toggle(ModernOptConfig.OVERLAY_SHOW_FPS)); yRow += 18;
+                addRow(yRow, "modernopt.screen.show_cpu", "modernopt.screen.show_cpu.tip", toggle(ModernOptConfig.OVERLAY_SHOW_CPU)); yRow += 18;
+                addRow(yRow, "modernopt.screen.show_frame", "modernopt.screen.show_frame.tip", toggle(ModernOptConfig.OVERLAY_SHOW_FRAME_TIME)); yRow += 18;
+                addRow(yRow, "modernopt.screen.show_memory", "modernopt.screen.show_memory.tip", toggle(ModernOptConfig.OVERLAY_SHOW_MEMORY)); yRow += 18;
+                addRow(yRow, "modernopt.screen.show_render", "modernopt.screen.show_render.tip", toggle(ModernOptConfig.OVERLAY_SHOW_RENDER_INFO)); yRow += 18;
                 addRow(yRow, "modernopt.screen.position", "modernopt.screen.position.tip", this::cyclePosition);
             }
             case PARTICLES -> {
-                addRow(yRow, "modernopt.screen.particle_culling", "modernopt.screen.particle_culling.tip", toggle(ModernOptConfig.PARTICLE_CULLING_ENABLED)); yRow += 24;
+                addRow(yRow, "modernopt.screen.particle_culling", "modernopt.screen.particle_culling.tip", toggle(ModernOptConfig.PARTICLE_CULLING_ENABLED)); yRow += 18;
                 addRow(yRow, "modernopt.screen.particle_distance", "modernopt.screen.particle_distance.tip", this::cycleParticleDistance);
             }
         }
