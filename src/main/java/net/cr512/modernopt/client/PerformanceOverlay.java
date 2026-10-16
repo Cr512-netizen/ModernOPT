@@ -18,6 +18,8 @@ import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -29,15 +31,25 @@ public final class PerformanceOverlay {
     private static double frameTimeMs;
     private static long lastLogAt;
     private static boolean logErrorReported;
+    private static final ArrayDeque<Double> FRAME_HISTORY = new ArrayDeque<>();
 
     private PerformanceOverlay() {}
 
     public static void render(GuiGraphics graphics) {
-        if (!ModernOptConfig.OVERLAY_ENABLED.get() && !ModernOptConfig.LOGGING_ENABLED.get()) return;
+        if (!ModernOptConfig.ENABLED.get()) return;
+        if (!ModernOptConfig.OVERLAY_ENABLED.get() && !ModernOptConfig.LOGGING_ENABLED.get()
+            && !BenchmarkRecorder.isRecording()) return;
         Minecraft minecraft = Minecraft.getInstance();
         long now = System.nanoTime();
-        if (previousFrameAt != 0L) frameTimeMs = (now - previousFrameAt) / 1_000_000.0;
+        if (previousFrameAt != 0L) {
+            frameTimeMs = (now - previousFrameAt) / 1_000_000.0;
+            if (frameTimeMs > 0 && Double.isFinite(frameTimeMs)) {
+                FRAME_HISTORY.addLast(frameTimeMs);
+                while (FRAME_HISTORY.size() > 240) FRAME_HISTORY.removeFirst();
+            }
+        }
         previousFrameAt = now;
+        BenchmarkRecorder.sample(now, minecraft, frameTimeMs);
 
         if (ModernOptConfig.OVERLAY_ENABLED.get() && minecraft.level != null
             && !minecraft.getDebugOverlay().showDebugScreen()) {
@@ -50,6 +62,20 @@ public final class PerformanceOverlay {
             if (ModernOptConfig.OVERLAY_SHOW_FRAME_TIME.get() && frameTimeMs > 0) {
                 lines.add(String.format(Locale.ROOT, "Frame time: %.2f ms", frameTimeMs));
             }
+            if (ModernOptConfig.OVERLAY_SHOW_ONE_PERCENT_LOW.get() && !FRAME_HISTORY.isEmpty()) {
+                double[] times = FRAME_HISTORY.stream().mapToDouble(Double::doubleValue).sorted().toArray();
+                int slowCount = Math.max(1, (int) Math.ceil(times.length * 0.01));
+                double slowAverage = 0;
+                for (int i = times.length - slowCount; i < times.length; i++) slowAverage += times[i];
+                slowAverage /= slowCount;
+                lines.add(String.format(Locale.ROOT, "1%% low: %.0f FPS", slowAverage > 0 ? 1000.0 / slowAverage : 0));
+            }
+            if (ModernOptConfig.OVERLAY_SHOW_P95_FRAME_TIME.get() && FRAME_HISTORY.size() >= 10) {
+                double[] times = FRAME_HISTORY.stream().mapToDouble(Double::doubleValue).sorted().toArray();
+                double p95 = times[Math.min(times.length - 1, (int) Math.ceil(times.length * 0.95) - 1)];
+                lines.add(String.format(Locale.ROOT, "Frame time p95: %.2f ms", p95));
+            }
+            if (BenchmarkRecorder.isRecording()) lines.add("BENCHMARK: recording " + BenchmarkRecorder.status());
             if (ModernOptConfig.OVERLAY_SHOW_MEMORY.get()) {
                 Runtime runtime = Runtime.getRuntime();
                 long used = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L);
@@ -96,7 +122,8 @@ public final class PerformanceOverlay {
         int y = (corner == 2 || corner == 3)
             ? minecraft.getWindow().getGuiScaledHeight() - lines.size() * lineHeight - margin : margin;
         for (String line : lines) {
-            graphics.fill(x - 3, y - 2, x + maxWidth + 3, y + 9, 0x90000000);
+            int alpha = Math.max(0, Math.min(255, Math.round(ModernOptConfig.OVERLAY_BACKGROUND_OPACITY.get() * 2.55f)));
+            graphics.fill(x - 3, y - 2, x + maxWidth + 3, y + 9, (alpha << 24));
             graphics.drawString(minecraft.font, Component.literal(line), x, y, 0xFFE8F2FF, false);
             y += lineHeight;
         }
