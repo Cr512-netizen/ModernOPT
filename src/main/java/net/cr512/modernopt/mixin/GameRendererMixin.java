@@ -38,6 +38,7 @@ public abstract class GameRendererMixin {
     @Shadow @Final private Minecraft minecraft;
 
     @Unique private RenderTarget modernopt$originalTarget;
+    @Unique private RenderTarget modernopt$frameNativeTarget;
     @Unique private TextureTarget modernopt$scaledTarget;
     @Unique private MultisampleRenderTarget modernopt$msaaTarget;
     @Unique private RenderTarget modernopt$worldTarget;
@@ -112,6 +113,7 @@ public abstract class GameRendererMixin {
         RenderScaleController.update(this.minecraft.getFps());
 
         RenderTarget nativeTarget = this.minecraft.getMainRenderTarget();
+        this.modernopt$frameNativeTarget = nativeTarget;
         int nativeWidth = nativeTarget.width;
         int nativeHeight = nativeTarget.height;
         if (!ModernOptConfig.ENABLED.get() || this.minecraft.level == null) {
@@ -410,9 +412,13 @@ public abstract class GameRendererMixin {
         RenderTarget worldTarget = this.modernopt$worldTarget;
         int renderWidth = worldTarget == null ? nativeWidth : worldTarget.width;
         int renderHeight = worldTarget == null ? nativeHeight : worldTarget.height;
+        boolean targetRestored = nativeTarget != null && nativeTarget == this.modernopt$frameNativeTarget;
+        RenderDiagnostics.recordFrameState(targetRestored, Fsr1Renderer.diagnosticStatus(),
+            RenderTargetLifecycle.diagnosticSummary(this.minecraft));
         RenderDiagnostics.endFrame(nativeWidth, nativeHeight, renderWidth, renderHeight,
             ModernOptConfig.UPSCALER_MODE.get(), ModernOptConfig.ENABLED.get(),
             this.modernopt$shaderPackInUseThisFrame);
+        this.modernopt$frameNativeTarget = null;
     }
 
 }
