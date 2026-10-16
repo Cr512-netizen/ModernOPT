@@ -75,7 +75,7 @@ The on-disk client configuration uses keys such as `rendering.renderScalePercent
 
 Open ModernOPT's configuration screen from the Mods list even when Sodium is not installed. The Rendering page provides paired presets plus individual world-scale and upscaler controls; the other pages configure the overlay, text log, and optional particle draw-distance culling. Tooltips describe expected performance impact, which varies by hardware and scene.
 
-Enable **Write TXT log** to append periodic samples to `config/modernopt-performance.txt`. The overlay reports Minecraft FPS, approximate time between HUD renders, Java heap memory (not GPU VRAM), render scale, and upscaler. It does not currently report GPU utilization, GPU temperature, or VRAM usage because those require hardware-specific telemetry not supplied by Minecraft/NeoForge.
+Enable **Write TXT log** to append periodic samples to `config/modernopt-performance.txt`. The overlay reports Minecraft FPS, approximate time between HUD renders, Java-process/system CPU load when available, Java heap memory (not GPU VRAM), render scale, and upscaler. It does not currently report GPU utilization, GPU temperature, or VRAM usage because those require hardware-specific telemetry not supplied by Minecraft/NeoForge.
 
 Particle culling is a visual-only draw-distance check: particles still tick and expire normally. It is disabled by default. It can reduce draw work in particle-heavy scenes, but the per-particle distance check itself has a small CPU cost.
 
