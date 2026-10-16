@@ -148,5 +148,13 @@
   "modernopt.screen.benchmark_recording": "Запись бенчмарка в CSV",
   "modernopt.screen.benchmark_recording.tip": "Начать или остановить запись каждого кадра в config/modernopt-benchmarks/benchmark-*.csv. Записываются интервалы кадров клиента, а не время выполнения GPU.",
   "modernopt.screen.benchmark_status": "Последний бенчмарк / статус",
-  "modernopt.screen.benchmark_status.tip": "Показывает состояние записи и сводку последнего завершённого замера."
+  "modernopt.screen.benchmark_status.tip": "Показывает состояние записи и сводку последнего завершённого замера.",
+  "modernopt.screen.diag_sample_interval": "Частота записи",
+  "modernopt.screen.diag_sample_interval.tip": "Записывать строку CSV каждый N-й кадр: меньше накладные расходы, но меньше точек измерения.",
+  "modernopt.screen.benchmark_duration": "Длительность замера",
+  "modernopt.screen.benchmark_duration.tip": "Автоматически остановить CSV-запись через заданное время; 0 — остановка вручную.",
+  "modernopt.screen.benchmark_cpu": "Записывать загрузку CPU",
+  "modernopt.screen.benchmark_cpu.tip": "Добавляет загрузку процесса и системы в CSV; отключите, чтобы уменьшить объём измерений.",
+  "modernopt.screen.benchmark_memory": "Записывать память",
+  "modernopt.screen.benchmark_memory.tip": "Добавляет использование Java heap в CSV; отключите, чтобы не собирать эти значения."
 }
