@@ -14,6 +14,7 @@
 
 **Project status: experimental / alpha.** ModernOPT is under active development. A successful build does not mean every feature or mod combination has been runtime-tested. Back up your worlds and configuration before testing, and report reproducible issues with logs and mod versions.
 
+- [Project context and long-term roadmap](PROJECT_CONTEXT_AND_ROADMAP.md)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
