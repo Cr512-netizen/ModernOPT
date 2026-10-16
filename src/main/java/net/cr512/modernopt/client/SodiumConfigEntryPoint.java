@@ -279,8 +279,12 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setName(Component.translatable("modernopt.screen.benchmark_recording"))
                         .setTooltip(Component.translatable("modernopt.screen.benchmark_recording.tip"))
                         .setBinding(value -> {
-                            if (value) BenchmarkRecorder.start();
-                            else BenchmarkRecorder.stop();
+                            if (value) {
+                                ModernOptConfig.ENABLED.set(true);
+                                BenchmarkRecorder.start();
+                            } else {
+                                BenchmarkRecorder.stop();
+                            }
                         }, BenchmarkRecorder::isRecording)
                         .setStorageHandler(storage).setDefaultValue(false).setEnabled(true))
                 )
