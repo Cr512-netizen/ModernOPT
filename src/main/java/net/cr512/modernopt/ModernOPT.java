@@ -1,6 +1,8 @@
 package net.cr512.modernopt;
 
 import net.cr512.modernopt.config.ModernOptConfig;
+import net.cr512.modernopt.client.ModernOptConfigScreen;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.cr512.modernopt.render.Fsr1Renderer;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.api.distmarker.Dist;
@@ -15,6 +17,7 @@ public final class ModernOPT {
 
     public ModernOPT(IEventBus modEventBus, ModContainer container) {
         container.registerConfig(ModConfig.Type.CLIENT, ModernOptConfig.SPEC);
+        container.registerExtensionPoint(IConfigScreenFactory.class, (minecraft, screen) -> new ModernOptConfigScreen(screen));
 
         // Keep shader registration wired even while the world render-target mixins
         // are disabled during the pipeline rebuild. This lets resource reload validate
