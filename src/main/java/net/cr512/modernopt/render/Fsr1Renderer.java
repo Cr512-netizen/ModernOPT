@@ -28,7 +28,9 @@ import org.slf4j.LoggerFactory;
 public final class Fsr1Renderer {
     private static ShaderInstance easu;
     private static ShaderInstance easuNative;
+    private static ShaderInstance easuFp16;
     private static ShaderInstance rcas;
+    private static ShaderInstance rcasFp16;
     private static ShaderInstance bilinear;
     private static ShaderInstance nearest;
     private static ShaderInstance softscale;
@@ -62,7 +64,10 @@ public final class Fsr1Renderer {
         // with four texelFetch calls. If the driver/mod shader pipeline rejects it,
         // the explicit-gather shader above remains the compatibility fallback.
         registerShader(event, "easu_native", shader -> easuNative = shader);
+        // FP16 is enabled only when both shaders compile. Unsupported drivers keep the FP32 path.
+        registerShader(event, "easu_fp16", shader -> easuFp16 = shader);
         registerShader(event, "rcas", shader -> rcas = shader);
+        registerShader(event, "rcas_fp16", shader -> rcasFp16 = shader);
         registerShader(event, "bilinear", shader -> bilinear = shader);
         registerShader(event, "nearest", shader -> nearest = shader);
         registerShader(event, "softscale", shader -> softscale = shader);
@@ -83,7 +88,9 @@ public final class Fsr1Renderer {
             switch (name) {
                 case "easu" -> easu = null;
                 case "easu_native" -> easuNative = null;
+                case "easu_fp16" -> easuFp16 = null;
                 case "rcas" -> rcas = null;
+                case "rcas_fp16" -> rcasFp16 = null;
                 case "bilinear" -> bilinear = null;
                 case "nearest" -> nearest = null;
                 case "softscale" -> softscale = null;
@@ -113,8 +120,10 @@ public final class Fsr1Renderer {
 
         // If FSR1 shaders are unavailable, fall back to bilinear rather than leaving
         // the world unresolved. The no-upscaler mode above remains shader-free.
-        ShaderInstance easuShader = easuNative != null && !nativeEasuFailed ? easuNative : easu;
-        boolean useFsr1 = mode == 1 && easuShader != null && rcas != null;
+        boolean useFp16 = easuFp16 != null && rcasFp16 != null;
+        ShaderInstance easuShader = useFp16 ? easuFp16 : (easuNative != null && !nativeEasuFailed ? easuNative : easu);
+        ShaderInstance rcasShader = useFp16 ? rcasFp16 : rcas;
+        boolean useFsr1 = mode == 1 && easuShader != null && rcasShader != null;
         int effectiveMode = mode == 1 && !useFsr1 ? 2 : mode;
         ShaderInstance simpleShader = switch (effectiveMode) {
             case 2 -> bilinear;
@@ -161,7 +170,7 @@ public final class Fsr1Renderer {
                     }
                     drawPass(input, intermediate, easu, width, height, true);
                 }
-                drawPass(intermediate, output, rcas, width, height, false);
+                drawPass(intermediate, output, rcasShader, width, height, false);
             } else {
                 drawPass(input, output, simpleShader, width, height, false);
             }
