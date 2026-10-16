@@ -112,5 +112,10 @@
   "modernopt.screen.particle_distance": "Дальность отрисовки частиц",
   "modernopt.screen.particle_distance.tip": "Максимальная дистанция в блоках, на которой видны частицы. Меньшее значение раньше скрывает дальние эффекты, не меняя симуляцию.",
   "modernopt.screen.show_cpu": "Показывать загрузку CPU",
-  "modernopt.screen.show_cpu.tip": "Показывает примерную загрузку процесса Java и всей системы, если это предоставляет Java runtime. На неподдерживаемых средах может отображаться n/a. Низкая нагрузка; это не загрузка GPU."
+  "modernopt.screen.show_cpu.tip": "Показывает примерную загрузку процесса Java и всей системы, если это предоставляет Java runtime. На неподдерживаемых средах может отображаться n/a. Низкая нагрузка; это не загрузка GPU.",
+  "modernopt.profile.native": "Исходное",
+  "modernopt.position.top_left": "Сверху слева",
+  "modernopt.position.top_right": "Сверху справа",
+  "modernopt.position.bottom_left": "Снизу слева",
+  "modernopt.position.bottom_right": "Снизу справа"
 }
