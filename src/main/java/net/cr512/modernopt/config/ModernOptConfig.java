@@ -6,6 +6,16 @@ public final class ModernOptConfig {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
     public static final ModConfigSpec.BooleanValue ENABLED;
     public static final ModConfigSpec.BooleanValue PROFILING_ENABLED;
+    public static final ModConfigSpec.BooleanValue OVERLAY_ENABLED;
+    public static final ModConfigSpec.BooleanValue LOGGING_ENABLED;
+    public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_FPS;
+    public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_FRAME_TIME;
+    public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_MEMORY;
+    public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_RENDER_INFO;
+    public static final ModConfigSpec.IntValue OVERLAY_POSITION;
+    public static final ModConfigSpec.IntValue LOG_INTERVAL_SECONDS;
+    public static final ModConfigSpec.BooleanValue PARTICLE_CULLING_ENABLED;
+    public static final ModConfigSpec.IntValue PARTICLE_RENDER_DISTANCE;
     public static final ModConfigSpec.IntValue RENDER_SCALE_PERCENT;
     public static final ModConfigSpec.IntValue UPSCALER_MODE;
     public static final ModConfigSpec.BooleanValue FXAA_ENABLED;
@@ -26,6 +36,16 @@ public final class ModernOptConfig {
         // Keep render hooks disabled until the user explicitly enables the experimental pipeline.
         ENABLED = BUILDER.comment("Master switch for ModernOPT rendering features.").define("enabled", false);
         PROFILING_ENABLED = BUILDER.comment("Log low-overhead CPU timing and render-target dimensions every few seconds. Does not measure GPU execution time.").define("profilingEnabled", false);
+        OVERLAY_ENABLED = BUILDER.comment("Show the configurable performance overlay in-game.").define("overlayEnabled", true);
+        LOGGING_ENABLED = BUILDER.comment("Append performance samples to config/modernopt-performance.txt.").define("loggingEnabled", false);
+        OVERLAY_SHOW_FPS = BUILDER.define("overlayShowFps", true);
+        OVERLAY_SHOW_FRAME_TIME = BUILDER.define("overlayShowFrameTime", true);
+        OVERLAY_SHOW_MEMORY = BUILDER.define("overlayShowMemory", true);
+        OVERLAY_SHOW_RENDER_INFO = BUILDER.define("overlayShowRenderInfo", true);
+        OVERLAY_POSITION = BUILDER.comment("Overlay corner: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right.").defineInRange("overlayPosition", 0, 0, 3);
+        LOG_INTERVAL_SECONDS = BUILDER.comment("Performance log sampling interval in seconds.").defineInRange("logIntervalSeconds", 5, 1, 60);
+        PARTICLE_CULLING_ENABLED = BUILDER.comment("Skip drawing particles farther than the configured distance; particles still tick normally.").define("particleCullingEnabled", false);
+        PARTICLE_RENDER_DISTANCE = BUILDER.comment("Maximum particle draw distance in blocks when particle culling is enabled.").defineInRange("particleRenderDistance", 96, 16, 256);
         BUILDER.pop();
         BUILDER.push("rendering");
         RENDER_SCALE_PERCENT = BUILDER.comment("Internal render resolution as a percentage of the window size.").defineInRange("renderScalePercent", 100, 25, 100);
