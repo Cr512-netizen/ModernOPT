@@ -17,7 +17,7 @@ public final class ModernOPT {
 
     public ModernOPT(IEventBus modEventBus, ModContainer container) {
         container.registerConfig(ModConfig.Type.CLIENT, ModernOptConfig.SPEC);
-        container.registerExtensionPoint(IConfigScreenFactory.class, () -> (minecraft, screen) -> new ModernOptConfigScreen(screen));
+        container.registerExtensionPoint(IConfigScreenFactory.class, (minecraft, screen) -> new ModernOptConfigScreen(screen));
 
         // Keep shader registration wired even while the world render-target mixins
         // are disabled during the pipeline rebuild. This lets resource reload validate
