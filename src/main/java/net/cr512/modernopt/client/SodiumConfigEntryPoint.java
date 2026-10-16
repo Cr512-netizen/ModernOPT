@@ -40,6 +40,11 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
     private static final ResourceLocation OVERLAY_POSITION_ID = id("overlay_position");
     private static final ResourceLocation OVERLAY_OPACITY_ID = id("overlay_opacity");
     private static final ResourceLocation BENCHMARK_RECORDING_ID = id("benchmark_recording");
+    private static final ResourceLocation PROFILING_ID = id("profiling_enabled");
+    private static final ResourceLocation DIAGNOSTICS_SAMPLE_INTERVAL_ID = id("diagnostics_sample_interval");
+    private static final ResourceLocation BENCHMARK_DURATION_ID = id("benchmark_duration");
+    private static final ResourceLocation BENCHMARK_CPU_ID = id("benchmark_cpu");
+    private static final ResourceLocation BENCHMARK_MEMORY_ID = id("benchmark_memory");
 
     @Override
     public void registerConfigLate(ConfigBuilder builder) {
@@ -216,6 +221,35 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                 )
                 .addOptionGroup(builder.createOptionGroup()
                     .setName(Component.translatable("modernopt.sodium.group.performance"))
+                    .addOption(builder.createBooleanOption(PROFILING_ID)
+                        .setName(Component.translatable("modernopt.screen.profiling"))
+                        .setTooltip(Component.translatable("modernopt.screen.profiling.tip"))
+                        .setBinding(ModernOptConfig.PROFILING_ENABLED::set, ModernOptConfig.PROFILING_ENABLED::get)
+                        .setStorageHandler(storage).setDefaultValue(false).setEnabled(true))
+                    .addOption(builder.createIntegerOption(DIAGNOSTICS_SAMPLE_INTERVAL_ID)
+                        .setName(Component.translatable("modernopt.screen.diag_sample_interval"))
+                        .setTooltip(Component.translatable("modernopt.screen.diag_sample_interval.tip"))
+                        .setRange(1, 10, 1)
+                        .setValueFormatter(value -> Component.literal("1 / " + value + " frames"))
+                        .setBinding(ModernOptConfig.DIAGNOSTICS_SAMPLE_INTERVAL_FRAMES::set, ModernOptConfig.DIAGNOSTICS_SAMPLE_INTERVAL_FRAMES::get)
+                        .setStorageHandler(storage).setDefaultValue(1).setEnabled(true))
+                    .addOption(builder.createIntegerOption(BENCHMARK_DURATION_ID)
+                        .setName(Component.translatable("modernopt.screen.benchmark_duration"))
+                        .setTooltip(Component.translatable("modernopt.screen.benchmark_duration.tip"))
+                        .setRange(0, 300, 15)
+                        .setValueFormatter(value -> Component.literal(value == 0 ? "Manual" : value + " s"))
+                        .setBinding(ModernOptConfig.BENCHMARK_DURATION_SECONDS::set, ModernOptConfig.BENCHMARK_DURATION_SECONDS::get)
+                        .setStorageHandler(storage).setDefaultValue(60).setEnabled(true))
+                    .addOption(builder.createBooleanOption(BENCHMARK_CPU_ID)
+                        .setName(Component.translatable("modernopt.screen.benchmark_cpu"))
+                        .setTooltip(Component.translatable("modernopt.screen.benchmark_cpu.tip"))
+                        .setBinding(ModernOptConfig.BENCHMARK_CAPTURE_CPU::set, ModernOptConfig.BENCHMARK_CAPTURE_CPU::get)
+                        .setStorageHandler(storage).setDefaultValue(true).setEnabled(true))
+                    .addOption(builder.createBooleanOption(BENCHMARK_MEMORY_ID)
+                        .setName(Component.translatable("modernopt.screen.benchmark_memory"))
+                        .setTooltip(Component.translatable("modernopt.screen.benchmark_memory.tip"))
+                        .setBinding(ModernOptConfig.BENCHMARK_CAPTURE_MEMORY::set, ModernOptConfig.BENCHMARK_CAPTURE_MEMORY::get)
+                        .setStorageHandler(storage).setDefaultValue(true).setEnabled(true))
                     .addOption(builder.createBooleanOption(OVERLAY_ENABLED_ID)
                         .setName(Component.translatable("modernopt.screen.overlay"))
                         .setTooltip(Component.translatable("modernopt.screen.overlay.tip"))
