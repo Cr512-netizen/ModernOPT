@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 /** Spatial upscalers used by ModernOPT. */
 public final class Fsr1Renderer {
     private static ShaderInstance easu;
+    private static ShaderInstance easuNative;
     private static ShaderInstance rcas;
     private static ShaderInstance bilinear;
     private static ShaderInstance nearest;
@@ -54,6 +55,10 @@ public final class Fsr1Renderer {
         lastRequestedUpscalerMode = -1;
         renderFailureLogged = false;
         registerShader(event, "easu", shader -> easu = shader);
+        // Native textureGather is substantially cheaper than emulating each gather
+        // with four texelFetch calls. If the driver/mod shader pipeline rejects it,
+        // the explicit-gather shader above remains the compatibility fallback.
+        registerShader(event, "easu_native", shader -> easuNative = shader);
         registerShader(event, "rcas", shader -> rcas = shader);
         registerShader(event, "bilinear", shader -> bilinear = shader);
         registerShader(event, "nearest", shader -> nearest = shader);
@@ -74,6 +79,7 @@ public final class Fsr1Renderer {
             LOGGER.error("Could not load ModernOPT shader '{}'. Features requiring it will be unavailable; continuing resource loading.", name, exception);
             switch (name) {
                 case "easu" -> easu = null;
+                case "easu_native" -> easuNative = null;
                 case "rcas" -> rcas = null;
                 case "bilinear" -> bilinear = null;
                 case "nearest" -> nearest = null;
@@ -104,7 +110,8 @@ public final class Fsr1Renderer {
 
         // If FSR1 shaders are unavailable, fall back to bilinear rather than leaving
         // the world unresolved. The no-upscaler mode above remains shader-free.
-        boolean useFsr1 = mode == 1 && easu != null && rcas != null;
+        ShaderInstance easuShader = easuNative != null ? easuNative : easu;
+        boolean useFsr1 = mode == 1 && easuShader != null && rcas != null;
         int effectiveMode = mode == 1 && !useFsr1 ? 2 : mode;
         ShaderInstance simpleShader = switch (effectiveMode) {
             case 2 -> bilinear;
@@ -137,7 +144,7 @@ public final class Fsr1Renderer {
                 }
             }
             if (useFsr1) {
-                drawPass(input, intermediate, easu, width, height, true);
+                drawPass(input, intermediate, easuShader, width, height, true);
                 drawPass(intermediate, output, rcas, width, height, false);
             } else {
                 drawPass(input, output, simpleShader, width, height, false);
