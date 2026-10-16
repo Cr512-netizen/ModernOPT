@@ -413,7 +413,7 @@ public abstract class GameRendererMixin {
         int renderWidth = worldTarget == null ? nativeWidth : worldTarget.width;
         int renderHeight = worldTarget == null ? nativeHeight : worldTarget.height;
         boolean targetRestored = nativeTarget != null && nativeTarget == this.modernopt$frameNativeTarget;
-        RenderDiagnostics.recordFrameState(targetRestored, Fsr1Renderer.diagnosticStatus(),
+        RenderDiagnostics.recordFrameState(targetRestored, ModernOptConfig.ENABLED.get() ? Fsr1Renderer.diagnosticStatus() : "disabled; vanilla path",
             RenderTargetLifecycle.diagnosticSummary(this.minecraft));
         RenderDiagnostics.endFrame(nativeWidth, nativeHeight, renderWidth, renderHeight,
             ModernOptConfig.UPSCALER_MODE.get(), ModernOptConfig.ENABLED.get(),
