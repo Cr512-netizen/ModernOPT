@@ -33,45 +33,46 @@ public final class PerformanceOverlay {
     private PerformanceOverlay() {}
 
     public static void render(GuiGraphics graphics) {
-        if (!ModernOptConfig.OVERLAY_ENABLED.get()) return;
+        if (!ModernOptConfig.OVERLAY_ENABLED.get() && !ModernOptConfig.LOGGING_ENABLED.get()) return;
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.options.hideGui || minecraft.getDebugOverlay().showDebugScreen()) return;
-
         long now = System.nanoTime();
         if (previousFrameAt != 0L) frameTimeMs = (now - previousFrameAt) / 1_000_000.0;
         previousFrameAt = now;
 
-        List<String> lines = new ArrayList<>();
-        if (ModernOptConfig.OVERLAY_SHOW_FPS.get()) lines.add("FPS: " + minecraft.getFps());
-        if (ModernOptConfig.OVERLAY_SHOW_CPU.get()) {
-            OperatingSystemMXBean os = operatingSystem();
-            if (os != null) lines.add("CPU process/system: " + percent(os.getProcessCpuLoad()) + " / " + percent(os.getCpuLoad()));
+        if (ModernOptConfig.OVERLAY_ENABLED.get() && !minecraft.options.hideGui
+            && !minecraft.getDebugOverlay().showDebugScreen()) {
+            List<String> lines = new ArrayList<>();
+            if (ModernOptConfig.OVERLAY_SHOW_FPS.get()) lines.add("FPS: " + minecraft.getFps());
+            if (ModernOptConfig.OVERLAY_SHOW_CPU.get()) {
+                OperatingSystemMXBean os = operatingSystem();
+                if (os != null) lines.add("CPU process/system: " + percent(os.getProcessCpuLoad()) + " / " + percent(os.getCpuLoad()));
+            }
+            if (ModernOptConfig.OVERLAY_SHOW_FRAME_TIME.get() && frameTimeMs > 0) {
+                lines.add(String.format(Locale.ROOT, "Frame time: %.2f ms", frameTimeMs));
+            }
+            if (ModernOptConfig.OVERLAY_SHOW_MEMORY.get()) {
+                Runtime runtime = Runtime.getRuntime();
+                long used = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L);
+                long allocated = runtime.totalMemory() / (1024L * 1024L);
+                long maximum = runtime.maxMemory() / (1024L * 1024L);
+                lines.add("Java heap: " + used + " / " + allocated + " MB (max " + maximum + ")");
+            }
+            if (ModernOptConfig.OVERLAY_SHOW_RENDER_INFO.get()) {
+                int scale = ModernOptConfig.RENDER_SCALE_PERCENT.get();
+                String upscaler = switch (ModernOptConfig.UPSCALER_MODE.get()) {
+                    case 0 -> "None";
+                    case 1 -> "FSR 1";
+                    case 2 -> "Bilinear";
+                    case 3 -> "Nearest";
+                    case 4 -> "SoftScale";
+                    default -> "Unknown";
+                };
+                lines.add("World: " + scale + "% · " + upscaler);
+                lines.add("Particle culling: " + (ModernOptConfig.PARTICLE_CULLING_ENABLED.get()
+                    ? ModernOptConfig.PARTICLE_RENDER_DISTANCE.get() + " blocks" : "off"));
+            }
+            drawLines(graphics, minecraft, lines);
         }
-        if (ModernOptConfig.OVERLAY_SHOW_FRAME_TIME.get() && frameTimeMs > 0) {
-            lines.add(String.format(Locale.ROOT, "Frame time: %.2f ms", frameTimeMs));
-        }
-        if (ModernOptConfig.OVERLAY_SHOW_MEMORY.get()) {
-            Runtime runtime = Runtime.getRuntime();
-            long used = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L);
-            long allocated = runtime.totalMemory() / (1024L * 1024L);
-            long maximum = runtime.maxMemory() / (1024L * 1024L);
-            lines.add("RAM: " + used + " / " + allocated + " MB (max " + maximum + ")");
-        }
-        if (ModernOptConfig.OVERLAY_SHOW_RENDER_INFO.get()) {
-            int scale = ModernOptConfig.RENDER_SCALE_PERCENT.get();
-            String upscaler = switch (ModernOptConfig.UPSCALER_MODE.get()) {
-                case 0 -> "None";
-                case 1 -> "FSR 1";
-                case 2 -> "Bilinear";
-                case 3 -> "Nearest";
-                case 4 -> "SoftScale";
-                default -> "Unknown";
-            };
-            lines.add("World: " + scale + "% · " + upscaler);
-            lines.add("Particle culling: " + (ModernOptConfig.PARTICLE_CULLING_ENABLED.get()
-                ? ModernOptConfig.PARTICLE_RENDER_DISTANCE.get() + " blocks" : "off"));
-        }
-        drawLines(graphics, minecraft, lines);
         if (ModernOptConfig.LOGGING_ENABLED.get()) writeSample(now, minecraft);
     }
 
