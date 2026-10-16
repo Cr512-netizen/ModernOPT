@@ -98,7 +98,12 @@ public final class ModernOptConfigScreen extends Screen {
             case "modernopt.screen.preset" -> presetName();
             case "modernopt.screen.msaa" -> ModernOptConfig.MSAA_SAMPLES.get() == 0 ? "Off" : ModernOptConfig.MSAA_SAMPLES.get() + "x";
             case "modernopt.screen.log_interval" -> ModernOptConfig.LOG_INTERVAL_SECONDS.get() + " s";
-            case "modernopt.screen.position" -> Integer.toString(ModernOptConfig.OVERLAY_POSITION.get() + 1);
+            case "modernopt.screen.position" -> Component.translatable(switch (ModernOptConfig.OVERLAY_POSITION.get()) {
+                case 1 -> "modernopt.position.top_right";
+                case 2 -> "modernopt.position.bottom_left";
+                case 3 -> "modernopt.position.bottom_right";
+                default -> "modernopt.position.top_left";
+            }).getString();
             case "modernopt.screen.particle_distance" -> ModernOptConfig.PARTICLE_RENDER_DISTANCE.get() + " blocks";
             default -> "";
         };
@@ -122,12 +127,12 @@ public final class ModernOptConfigScreen extends Screen {
     private String presetName() {
         int scale = ModernOptConfig.RENDER_SCALE_PERCENT.get();
         int mode = ModernOptConfig.UPSCALER_MODE.get();
-        if (scale == 100 && mode == 2) return "Native";
-        if (scale == 75 && mode == 1) return "Quality";
-        if (scale == 60 && mode == 1) return "Balanced";
-        if (scale == 50 && mode == 2) return "Performance";
-        if (scale == 35 && mode == 0) return "Ultra performance";
-        return "Custom";
+        if (scale == 100 && mode == 2) return Component.translatable("modernopt.profile.native").getString();
+        if (scale == 75 && mode == 1) return Component.translatable("modernopt.profile.quality").getString();
+        if (scale == 60 && mode == 1) return Component.translatable("modernopt.profile.balanced").getString();
+        if (scale == 50 && mode == 2) return Component.translatable("modernopt.profile.performance").getString();
+        if (scale == 35 && mode == 0) return Component.translatable("modernopt.profile.ultra_performance").getString();
+        return Component.translatable("modernopt.profile.custom").getString();
     }
 
     private void cycleScale() {
@@ -167,16 +172,16 @@ public final class ModernOptConfigScreen extends Screen {
 
     private String upscalerName(int mode) {
         return switch (mode) {
-            case 0 -> "None";
-            case 1 -> "FSR 1";
-            case 2 -> "Bilinear";
-            case 3 -> "Nearest";
-            case 4 -> "SoftScale";
+            case 0 -> Component.translatable("modernopt.upscaler.none").getString();
+            case 1 -> Component.translatable("modernopt.upscaler.fsr1").getString();
+            case 2 -> Component.translatable("modernopt.upscaler.bilinear").getString();
+            case 3 -> Component.translatable("modernopt.upscaler.nearest").getString();
+            case 4 -> Component.translatable("modernopt.upscaler.softscale").getString();
             default -> "Unknown";
         };
     }
 
-    private String onOff(boolean value) { return value ? "On" : "Off"; }
+    private String onOff(boolean value) { return Component.translatable(value ? "modernopt.value.on" : "modernopt.value.off").getString(); }
 
     private void save() {
         ModernOptConfig.SPEC.save();
