@@ -8,6 +8,8 @@ import net.cr512.modernopt.mixin.PostChainAccessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.StringJoiner;
+
 /**
  * Keeps vanilla's screen-space world targets aligned with the active world
  * resolution. This is intentionally scoped to world-render targets; the main
@@ -42,6 +44,30 @@ public final class RenderTargetLifecycle {
             LOGGER.warn("Could not synchronize world auxiliary targets to {}x{}; ModernOPT will bypass scaled rendering for this frame.", width, height, exception);
             return false;
         }
+    }
+
+    /** Reports the actual vanilla/Iris-adjacent world targets known to this integration. */
+    public static String diagnosticSummary(Minecraft minecraft) {
+        if (minecraft == null || minecraft.levelRenderer == null) return "levelRenderer=unavailable";
+        try {
+            RenderTarget entity = minecraft.levelRenderer.entityTarget();
+            String entitySize = describe(entity);
+            PostChain entityEffect = ((LevelRendererAccessor) (Object) minecraft.levelRenderer).modernopt$getEntityEffect();
+            StringJoiner targets = new StringJoiner(",", "[", "]");
+            if (entityEffect != null) {
+                var fullSizedTargets = ((PostChainAccessor) (Object) entityEffect).modernopt$getFullSizedTargets();
+                if (fullSizedTargets != null) {
+                    for (RenderTarget target : fullSizedTargets) targets.add(describe(target));
+                }
+            }
+            return "entityTarget=" + entitySize + ", entityPostChain=" + (entityEffect == null ? "none" : targets);
+        } catch (RuntimeException | LinkageError exception) {
+            return "targetInspectionFailed=" + exception.getClass().getSimpleName();
+        }
+    }
+
+    private static String describe(RenderTarget target) {
+        return target == null ? "null" : target.width + "x" + target.height;
     }
 
     private static void resizeIfNeeded(RenderTarget target, int width, int height) {
