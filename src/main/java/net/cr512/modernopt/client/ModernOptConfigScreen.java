@@ -1,6 +1,7 @@
 package net.cr512.modernopt.client;
 
 import net.cr512.modernopt.config.ModernOptConfig;
+import net.cr512.modernopt.client.BenchmarkRecorder;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
@@ -9,7 +10,7 @@ import net.minecraft.network.chat.Component;
 
 /** Standalone configuration screen available from the Mods list without Sodium. */
 public final class ModernOptConfigScreen extends Screen {
-    private enum Page { RENDER, DYNAMIC, OVERLAY, PARTICLES }
+    private enum Page { RENDER, DYNAMIC, OVERLAY, PARTICLES, BENCHMARK }
     private final Screen parent;
     private Page page = Page.RENDER;
     private int columnX;
@@ -24,7 +25,7 @@ public final class ModernOptConfigScreen extends Screen {
     protected void init() {
         columnWidth = Math.min(360, this.width - 24);
         columnX = (this.width - columnWidth) / 2;
-        int tabWidth = (columnWidth - 12) / 4;
+        int tabWidth = (columnWidth - 16) / 5;
         int y = 30;
         clearWidgets();
         addRenderableWidget(Button.builder(Component.translatable("modernopt.page.render"), b -> { page = Page.RENDER; rebuild(); })
@@ -35,6 +36,8 @@ public final class ModernOptConfigScreen extends Screen {
             .bounds(columnX + (tabWidth + 4) * 2, y, tabWidth, 20).tooltip(Tooltip.create(Component.translatable("modernopt.page.overlay.tip"))).build());
         addRenderableWidget(Button.builder(Component.translatable("modernopt.page.particles"), b -> { page = Page.PARTICLES; rebuild(); })
             .bounds(columnX + (tabWidth + 4) * 3, y, tabWidth, 20).tooltip(Tooltip.create(Component.translatable("modernopt.page.particles.tip"))).build());
+        addRenderableWidget(Button.builder(Component.translatable("modernopt.page.benchmark"), b -> { page = Page.BENCHMARK; rebuild(); })
+            .bounds(columnX + (tabWidth + 4) * 4, y, tabWidth, 20).tooltip(Tooltip.create(Component.translatable("modernopt.page.benchmark.tip"))).build());
 
         int yRow = 51;
         switch (page) {
@@ -68,11 +71,20 @@ public final class ModernOptConfigScreen extends Screen {
                 addRow(yRow, "modernopt.screen.show_frame", "modernopt.screen.show_frame.tip", toggle(ModernOptConfig.OVERLAY_SHOW_FRAME_TIME)); yRow += 18;
                 addRow(yRow, "modernopt.screen.show_memory", "modernopt.screen.show_memory.tip", toggle(ModernOptConfig.OVERLAY_SHOW_MEMORY)); yRow += 18;
                 addRow(yRow, "modernopt.screen.show_render", "modernopt.screen.show_render.tip", toggle(ModernOptConfig.OVERLAY_SHOW_RENDER_INFO)); yRow += 18;
+                addRow(yRow, "modernopt.screen.show_one_percent_low", "modernopt.screen.show_one_percent_low.tip", toggle(ModernOptConfig.OVERLAY_SHOW_ONE_PERCENT_LOW)); yRow += 18;
+                addRow(yRow, "modernopt.screen.show_p95", "modernopt.screen.show_p95.tip", toggle(ModernOptConfig.OVERLAY_SHOW_P95_FRAME_TIME)); yRow += 18;
+                addRow(yRow, "modernopt.screen.opacity", "modernopt.screen.opacity.tip", this::cycleOpacity); yRow += 18;
                 addRow(yRow, "modernopt.screen.position", "modernopt.screen.position.tip", this::cyclePosition);
             }
             case PARTICLES -> {
                 addRow(yRow, "modernopt.screen.particle_culling", "modernopt.screen.particle_culling.tip", toggle(ModernOptConfig.PARTICLE_CULLING_ENABLED)); yRow += 18;
                 addRow(yRow, "modernopt.screen.particle_distance", "modernopt.screen.particle_distance.tip", this::cycleParticleDistance);
+            }
+            case BENCHMARK -> {
+                addRow(yRow, "modernopt.screen.benchmark_recording", "modernopt.screen.benchmark_recording.tip", this::toggleBenchmarkRecording); yRow += 18;
+                addRow(yRow, "modernopt.screen.benchmark_status", "modernopt.screen.benchmark_status.tip", () -> {}); yRow += 18;
+                addRow(yRow, "modernopt.screen.logging", "modernopt.screen.logging.tip", toggle(ModernOptConfig.LOGGING_ENABLED)); yRow += 18;
+                addRow(yRow, "modernopt.screen.log_interval", "modernopt.screen.log_interval.tip", this::cycleLogInterval);
             }
         }
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose())
@@ -104,6 +116,11 @@ public final class ModernOptConfigScreen extends Screen {
             case "modernopt.screen.shadow_skip" -> onOff(ModernOptConfig.SHADOW_FRAME_SKIP_ENABLED.get());
             case "modernopt.screen.shadow_fps" -> ModernOptConfig.SHADOW_UPDATE_FPS.get() + " FPS";
             case "modernopt.screen.profiling" -> onOff(ModernOptConfig.PROFILING_ENABLED.get());
+            case "modernopt.screen.show_one_percent_low" -> onOff(ModernOptConfig.OVERLAY_SHOW_ONE_PERCENT_LOW.get());
+            case "modernopt.screen.show_p95" -> onOff(ModernOptConfig.OVERLAY_SHOW_P95_FRAME_TIME.get());
+            case "modernopt.screen.opacity" -> ModernOptConfig.OVERLAY_BACKGROUND_OPACITY.get() + "%";
+            case "modernopt.screen.benchmark_recording" -> onOff(BenchmarkRecorder.isRecording());
+            case "modernopt.screen.benchmark_status" -> BenchmarkRecorder.status();
             case "modernopt.screen.fxaa" -> onOff(ModernOptConfig.FXAA_ENABLED.get());
             case "modernopt.screen.ssaa" -> onOff(ModernOptConfig.SSAA_ENABLED.get());
             case "modernopt.screen.overlay" -> onOff(ModernOptConfig.OVERLAY_ENABLED.get());
@@ -207,6 +224,22 @@ public final class ModernOptConfigScreen extends Screen {
 
     private void cycleShadowFps() {
         ModernOptConfig.SHADOW_UPDATE_FPS.set(nextValue(new int[]{40, 60, 90, 120, 144, 180, 240}, ModernOptConfig.SHADOW_UPDATE_FPS.get()));
+    }
+
+    private void cycleOpacity() {
+        ModernOptConfig.OVERLAY_BACKGROUND_OPACITY.set(nextValue(new int[]{0, 20, 40, 56, 70, 85, 100}, ModernOptConfig.OVERLAY_BACKGROUND_OPACITY.get()));
+    }
+
+    private void toggleBenchmarkRecording() {
+        if (BenchmarkRecorder.isRecording()) {
+            BenchmarkRecorder.stop();
+        } else if (ModernOptConfig.ENABLED.get()) {
+            BenchmarkRecorder.start();
+        } else {
+            // The master switch is a true kill switch for all ModernOPT features.
+            ModernOptConfig.ENABLED.set(true);
+            BenchmarkRecorder.start();
+        }
     }
 
     private void cyclePosition() {
