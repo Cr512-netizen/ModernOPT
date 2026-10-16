@@ -35,10 +35,10 @@ public final class ModernOptConfigScreen extends Screen {
         addRenderableWidget(Button.builder(Component.translatable("modernopt.page.particles"), b -> { page = Page.PARTICLES; rebuild(); })
             .bounds(columnX + (tabWidth + 4) * 2, y, tabWidth, 20).tooltip(Tooltip.create(Component.translatable("modernopt.page.particles.tip"))).build());
 
-        int yRow = 53;
+        int yRow = 51;
         switch (page) {
             case RENDER -> {
-                addRow(yRow, "modernopt.screen.master", "modernopt.screen.master.tip", toggle(ModernOptConfig.ENABLED)); yRow += 19;
+                addRow(yRow, "modernopt.screen.master", "modernopt.screen.master.tip", toggle(ModernOptConfig.ENABLED)); yRow += 18;
                 addRow(yRow, "modernopt.screen.preset", "modernopt.screen.preset.tip", this::cyclePreset); yRow += 24;
                 addRow(yRow, "modernopt.screen.scale", "modernopt.screen.scale.tip", this::cycleScale); yRow += 24;
                 addRow(yRow, "modernopt.screen.upscaler", "modernopt.screen.upscaler.tip", this::cycleUpscaler); yRow += 24;
@@ -72,7 +72,7 @@ public final class ModernOptConfigScreen extends Screen {
             action.run();
             save();
             rebuild();
-        }).bounds(columnX, y, columnWidth, 18).tooltip(Tooltip.create(Component.translatable(tip))).build());
+        }).bounds(columnX, y, columnWidth, 17).tooltip(Tooltip.create(Component.translatable(tip))).build());
     }
 
     private Runnable toggle(net.neoforged.neoforge.common.ModConfigSpec.BooleanValue value) {
@@ -88,6 +88,7 @@ public final class ModernOptConfigScreen extends Screen {
             case "modernopt.screen.overlay" -> onOff(ModernOptConfig.OVERLAY_ENABLED.get());
             case "modernopt.screen.logging" -> onOff(ModernOptConfig.LOGGING_ENABLED.get());
             case "modernopt.screen.show_fps" -> onOff(ModernOptConfig.OVERLAY_SHOW_FPS.get());
+            case "modernopt.screen.show_cpu" -> onOff(ModernOptConfig.OVERLAY_SHOW_CPU.get());
             case "modernopt.screen.show_frame" -> onOff(ModernOptConfig.OVERLAY_SHOW_FRAME_TIME.get());
             case "modernopt.screen.show_memory" -> onOff(ModernOptConfig.OVERLAY_SHOW_MEMORY.get());
             case "modernopt.screen.show_render" -> onOff(ModernOptConfig.OVERLAY_SHOW_RENDER_INFO.get());
@@ -191,7 +192,6 @@ public final class ModernOptConfigScreen extends Screen {
         renderBackground(graphics, mouseX, mouseY, partialTick);
         super.render(graphics, mouseX, mouseY, partialTick);
         graphics.drawCenteredString(this.font, this.title, this.width / 2, 10, 0xFFFFFF);
-        graphics.drawCenteredString(this.font, Component.translatable("modernopt.screen.subtitle"), this.width / 2, this.height - 43, 0xAABBD0);
     }
 
     @Override
