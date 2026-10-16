@@ -69,6 +69,12 @@ ModernOPT exposes its rendering options in Sodium's own options UI when a compat
 
 The on-disk client configuration uses keys such as `rendering.renderScalePercent`, `rendering.upscalerMode`, `rendering.ssaaEnabled`, `rendering.fxaaEnabled`, and `rendering.msaaSamples`. Exact availability depends on the build. Back up the config before editing it manually.
 
+### Render diagnostics (opt-in)
+
+For troubleshooting, set `general.profilingEnabled=true` in ModernOPT's client config and restart the world. ModernOPT will periodically log CPU-side frame and post-process timings plus the native and internal world-target dimensions. Disable it after collecting a short sample.
+
+These timings **do not measure GPU execution time**; GPU work can continue asynchronously after the CPU submits a draw. The diagnostics intentionally avoid OpenGL timer queries and per-frame error polling so they are less likely to conflict with other render mods. Share the relevant `Render diagnostics (CPU only)` lines from `logs/latest.log` when reporting a performance issue.
+
 ## Compatibility and limitations
 
 - **Iris / shader packs:** full render-scale integration is not currently claimed. The mod is designed to fail closed or bypass selected passes when a shader-pack pipeline is active. Do not assume that world scaling, FXAA, or MSAA will work with Iris.
