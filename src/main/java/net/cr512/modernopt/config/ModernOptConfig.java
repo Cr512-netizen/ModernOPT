@@ -13,6 +13,9 @@ public final class ModernOptConfig {
     public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_FRAME_TIME;
     public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_MEMORY;
     public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_RENDER_INFO;
+    public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_ONE_PERCENT_LOW;
+    public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_P95_FRAME_TIME;
+    public static final ModConfigSpec.IntValue OVERLAY_BACKGROUND_OPACITY;
     public static final ModConfigSpec.IntValue OVERLAY_POSITION;
     public static final ModConfigSpec.IntValue LOG_INTERVAL_SECONDS;
     public static final ModConfigSpec.BooleanValue PARTICLE_CULLING_ENABLED;
@@ -44,6 +47,9 @@ public final class ModernOptConfig {
         OVERLAY_SHOW_FRAME_TIME = BUILDER.define("overlayShowFrameTime", true);
         OVERLAY_SHOW_MEMORY = BUILDER.define("overlayShowMemory", true);
         OVERLAY_SHOW_RENDER_INFO = BUILDER.define("overlayShowRenderInfo", true);
+        OVERLAY_SHOW_ONE_PERCENT_LOW = BUILDER.define("overlayShowOnePercentLow", true);
+        OVERLAY_SHOW_P95_FRAME_TIME = BUILDER.define("overlayShowP95FrameTime", true);
+        OVERLAY_BACKGROUND_OPACITY = BUILDER.defineInRange("overlayBackgroundOpacity", 56, 0, 100);
         OVERLAY_POSITION = BUILDER.comment("Overlay corner: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right.").defineInRange("overlayPosition", 0, 0, 3);
         LOG_INTERVAL_SECONDS = BUILDER.comment("Performance log sampling interval in seconds.").defineInRange("logIntervalSeconds", 5, 1, 60);
         PARTICLE_CULLING_ENABLED = BUILDER.comment("Skip drawing particles farther than the configured distance; particles still tick normally.").define("particleCullingEnabled", false);
