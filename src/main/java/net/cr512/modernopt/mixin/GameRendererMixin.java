@@ -377,7 +377,10 @@ public abstract class GameRendererMixin {
                 }
             }
 
-            if (!this.modernopt$shaderPackInUseThisFrame && ModernOptConfig.FXAA_ENABLED.get()) {
+            // SSAA already performs a full-frame reconstruction filter. Keep AA modes exclusive:
+            // do not spend another fullscreen pass on FXAA when SSAA has priority.
+            if (!this.modernopt$shaderPackInUseThisFrame && !this.modernopt$ssaaActive
+                && ModernOptConfig.FXAA_ENABLED.get()) {
                 Fsr1Renderer.applyFxaa(this.modernopt$originalTarget);
             }
         } finally {
