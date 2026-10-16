@@ -156,5 +156,13 @@
   "modernopt.screen.benchmark_cpu": "Capture CPU load",
   "modernopt.screen.benchmark_cpu.tip": "Include process and system CPU load in CSV; disable to reduce measured overhead.",
   "modernopt.screen.benchmark_memory": "Capture memory",
-  "modernopt.screen.benchmark_memory.tip": "Include Java heap usage in CSV; disable to omit these measurements."
+  "modernopt.screen.benchmark_memory.tip": "Include Java heap usage in CSV; disable to omit these measurements.",
+  "modernopt.advisor.collecting": "Advice: collecting enough frame-time samples…",
+  "modernopt.advisor.memory": "Advice: Java heap is near its limit; check memory pressure and GC pauses before changing render settings.",
+  "modernopt.advisor.world_cpu": "Advice: world-pass CPU time is high; try lower simulation/render distance or reduce entity-heavy workloads. Lower render scale may not help a CPU-bound scene.",
+  "modernopt.advisor.post_cpu": "Advice: ModernOPT post-processing CPU time is noticeable; try Bilinear or None and compare with FXAA off. These are CPU timings, not GPU timings.",
+  "modernopt.advisor.shaderpack": "Advice: a shader pack is active; these timings do not measure GPU execution. Compare the same scene with the pack disabled before attributing the slowdown.",
+  "modernopt.advisor.cpu_load": "Advice: CPU load is high; check background tasks and reduce CPU-heavy world/entity settings before lowering render scale.",
+  "modernopt.advisor.compare_scale": "Advice: no clear CPU bottleneck was detected. Compare 100% and 50% render scale in the same scene; pixel reduction helps mainly when GPU-bound.",
+  "modernopt.advisor.healthy": "Advice: no obvious CPU-side bottleneck detected in these samples. Compare frame-time p95 across identical test runs."
 }
