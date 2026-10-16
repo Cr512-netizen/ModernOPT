@@ -29,6 +29,17 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
     private static final ResourceLocation IRIS_SHADOW_RESOLUTION_ID = id("iris_shadow_resolution");
     private static final ResourceLocation SHADOW_FRAME_SKIP_ENABLED_ID = id("shadow_frame_skip_enabled");
     private static final ResourceLocation SHADOW_UPDATE_FPS_ID = id("shadow_update_fps");
+    private static final ResourceLocation OVERLAY_ENABLED_ID = id("overlay_enabled");
+    private static final ResourceLocation OVERLAY_FPS_ID = id("overlay_fps");
+    private static final ResourceLocation OVERLAY_CPU_ID = id("overlay_cpu");
+    private static final ResourceLocation OVERLAY_FRAME_TIME_ID = id("overlay_frame_time");
+    private static final ResourceLocation OVERLAY_MEMORY_ID = id("overlay_memory");
+    private static final ResourceLocation OVERLAY_RENDER_INFO_ID = id("overlay_render_info");
+    private static final ResourceLocation OVERLAY_ONE_PERCENT_ID = id("overlay_one_percent_low");
+    private static final ResourceLocation OVERLAY_P95_ID = id("overlay_p95");
+    private static final ResourceLocation OVERLAY_POSITION_ID = id("overlay_position");
+    private static final ResourceLocation OVERLAY_OPACITY_ID = id("overlay_opacity");
+    private static final ResourceLocation BENCHMARK_RECORDING_ID = id("benchmark_recording");
 
     @Override
     public void registerConfigLate(ConfigBuilder builder) {
@@ -44,7 +55,7 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setTooltip(Component.translatable("modernopt.option.enabled.desc"))
                         .setBinding(ModernOptConfig.ENABLED::set, ModernOptConfig.ENABLED::get)
                         .setStorageHandler(storage)
-                        .setDefaultValue(true)
+                        .setDefaultValue(false)
                         .setEnabled(true))
                 )
                 .addOptionGroup(builder.createOptionGroup()
@@ -202,6 +213,76 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                         .setStorageHandler(storage)
                         .setDefaultValue(0)
                         .setEnabled(true))
+                )
+                .addOptionGroup(builder.createOptionGroup()
+                    .setName(Component.translatable("modernopt.sodium.group.performance"))
+                    .addOption(builder.createBooleanOption(OVERLAY_ENABLED_ID)
+                        .setName(Component.translatable("modernopt.screen.overlay"))
+                        .setTooltip(Component.translatable("modernopt.screen.overlay.tip"))
+                        .setBinding(ModernOptConfig.OVERLAY_ENABLED::set, ModernOptConfig.OVERLAY_ENABLED::get)
+                        .setStorageHandler(storage).setDefaultValue(true).setEnabled(true))
+                    .addOption(builder.createBooleanOption(OVERLAY_FPS_ID)
+                        .setName(Component.translatable("modernopt.screen.show_fps"))
+                        .setTooltip(Component.translatable("modernopt.screen.show_fps.tip"))
+                        .setBinding(ModernOptConfig.OVERLAY_SHOW_FPS::set, ModernOptConfig.OVERLAY_SHOW_FPS::get)
+                        .setStorageHandler(storage).setDefaultValue(true).setEnabled(true))
+                    .addOption(builder.createBooleanOption(OVERLAY_CPU_ID)
+                        .setName(Component.translatable("modernopt.screen.show_cpu"))
+                        .setTooltip(Component.translatable("modernopt.screen.show_cpu.tip"))
+                        .setBinding(ModernOptConfig.OVERLAY_SHOW_CPU::set, ModernOptConfig.OVERLAY_SHOW_CPU::get)
+                        .setStorageHandler(storage).setDefaultValue(true).setEnabled(true))
+                    .addOption(builder.createBooleanOption(OVERLAY_FRAME_TIME_ID)
+                        .setName(Component.translatable("modernopt.screen.show_frame"))
+                        .setTooltip(Component.translatable("modernopt.screen.show_frame.tip"))
+                        .setBinding(ModernOptConfig.OVERLAY_SHOW_FRAME_TIME::set, ModernOptConfig.OVERLAY_SHOW_FRAME_TIME::get)
+                        .setStorageHandler(storage).setDefaultValue(true).setEnabled(true))
+                    .addOption(builder.createBooleanOption(OVERLAY_MEMORY_ID)
+                        .setName(Component.translatable("modernopt.screen.show_memory"))
+                        .setTooltip(Component.translatable("modernopt.screen.show_memory.tip"))
+                        .setBinding(ModernOptConfig.OVERLAY_SHOW_MEMORY::set, ModernOptConfig.OVERLAY_SHOW_MEMORY::get)
+                        .setStorageHandler(storage).setDefaultValue(true).setEnabled(true))
+                    .addOption(builder.createBooleanOption(OVERLAY_RENDER_INFO_ID)
+                        .setName(Component.translatable("modernopt.screen.show_render"))
+                        .setTooltip(Component.translatable("modernopt.screen.show_render.tip"))
+                        .setBinding(ModernOptConfig.OVERLAY_SHOW_RENDER_INFO::set, ModernOptConfig.OVERLAY_SHOW_RENDER_INFO::get)
+                        .setStorageHandler(storage).setDefaultValue(true).setEnabled(true))
+                    .addOption(builder.createBooleanOption(OVERLAY_ONE_PERCENT_ID)
+                        .setName(Component.translatable("modernopt.screen.show_one_percent_low"))
+                        .setTooltip(Component.translatable("modernopt.screen.show_one_percent_low.tip"))
+                        .setBinding(ModernOptConfig.OVERLAY_SHOW_ONE_PERCENT_LOW::set, ModernOptConfig.OVERLAY_SHOW_ONE_PERCENT_LOW::get)
+                        .setStorageHandler(storage).setDefaultValue(true).setEnabled(true))
+                    .addOption(builder.createBooleanOption(OVERLAY_P95_ID)
+                        .setName(Component.translatable("modernopt.screen.show_p95"))
+                        .setTooltip(Component.translatable("modernopt.screen.show_p95.tip"))
+                        .setBinding(ModernOptConfig.OVERLAY_SHOW_P95_FRAME_TIME::set, ModernOptConfig.OVERLAY_SHOW_P95_FRAME_TIME::get)
+                        .setStorageHandler(storage).setDefaultValue(true).setEnabled(true))
+                    .addOption(builder.createIntegerOption(OVERLAY_POSITION_ID)
+                        .setName(Component.translatable("modernopt.screen.position"))
+                        .setTooltip(Component.translatable("modernopt.screen.position.tip"))
+                        .setRange(0, 3, 1)
+                        .setValueFormatter(value -> Component.translatable(switch (value) {
+                            case 1 -> "modernopt.position.top_right";
+                            case 2 -> "modernopt.position.bottom_left";
+                            case 3 -> "modernopt.position.bottom_right";
+                            default -> "modernopt.position.top_left";
+                        }))
+                        .setBinding(ModernOptConfig.OVERLAY_POSITION::set, ModernOptConfig.OVERLAY_POSITION::get)
+                        .setStorageHandler(storage).setDefaultValue(0).setEnabled(true))
+                    .addOption(builder.createIntegerOption(OVERLAY_OPACITY_ID)
+                        .setName(Component.translatable("modernopt.screen.opacity"))
+                        .setTooltip(Component.translatable("modernopt.screen.opacity.tip"))
+                        .setRange(0, 100, 5)
+                        .setValueFormatter(value -> Component.literal(value + "%"))
+                        .setBinding(ModernOptConfig.OVERLAY_BACKGROUND_OPACITY::set, ModernOptConfig.OVERLAY_BACKGROUND_OPACITY::get)
+                        .setStorageHandler(storage).setDefaultValue(56).setEnabled(true))
+                    .addOption(builder.createBooleanOption(BENCHMARK_RECORDING_ID)
+                        .setName(Component.translatable("modernopt.screen.benchmark_recording"))
+                        .setTooltip(Component.translatable("modernopt.screen.benchmark_recording.tip"))
+                        .setBinding(value -> {
+                            if (value) BenchmarkRecorder.start();
+                            else BenchmarkRecorder.stop();
+                        }, BenchmarkRecorder::isRecording)
+                        .setStorageHandler(storage).setDefaultValue(false).setEnabled(true))
                 )
             );
     }
