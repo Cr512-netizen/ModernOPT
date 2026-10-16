@@ -3,11 +3,14 @@ package net.cr512.modernopt.mixin;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.render.RenderScaleController;
 import net.cr512.modernopt.render.RenderScalePhase;
+import net.cr512.modernopt.render.RenderDiagnostics;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Iris owns its gbuffer color targets independently of Minecraft's main target.
@@ -48,6 +51,17 @@ public abstract class IrisRenderTargetsScaleMixin {
     @ModifyVariable(method = "resizeIfNeeded", at = @At("HEAD"), argsOnly = true, ordinal = 3, remap = false)
     private int modernopt$scaleIrisResizeHeight(int height) {
         return modernopt$scaledDimension(height, false);
+    }
+
+
+    @Inject(method = "<init>", at = @At("RETURN"), remap = false)
+    private void modernopt$diagnoseIrisTargets(CallbackInfo ci) {
+        RenderDiagnostics.recordIrisTargets(this);
+    }
+
+    @Inject(method = "resizeIfNeeded", at = @At("RETURN"), remap = false)
+    private void modernopt$diagnoseIrisTargetResize(CallbackInfo ci) {
+        RenderDiagnostics.recordIrisTargets(this);
     }
 
     private static int modernopt$scaledDimension(int dimension, boolean horizontal) {
