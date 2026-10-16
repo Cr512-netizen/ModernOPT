@@ -2,6 +2,7 @@ package net.cr512.modernopt.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.cr512.modernopt.config.ModernOptConfig;
+import net.cr512.modernopt.render.RenderDiagnostics;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -100,6 +101,20 @@ public final class PerformanceOverlay {
                     default -> "Unknown";
                 };
                 lines.add("World: " + scale + "% · " + upscaler);
+                int outputWidth = RenderDiagnostics.lastWindowWidth();
+                int outputHeight = RenderDiagnostics.lastWindowHeight();
+                int worldWidth = RenderDiagnostics.lastWorldWidth();
+                int worldHeight = RenderDiagnostics.lastWorldHeight();
+                if (outputWidth > 0 && outputHeight > 0 && worldWidth > 0 && worldHeight > 0) {
+                    double pixelRatio = 100.0 * worldWidth * (double) worldHeight / (outputWidth * (double) outputHeight);
+                    lines.add(String.format(Locale.ROOT, "Pixels: %dx%d → %dx%d (%.1f%%)", outputWidth, outputHeight,
+                        worldWidth, worldHeight, pixelRatio));
+                }
+                if (ModernOptConfig.PROFILING_ENABLED.get()) {
+                    lines.add(String.format(Locale.ROOT, "World CPU: %.2f ms · post CPU: %.2f ms",
+                        RenderDiagnostics.lastFrameCpuMs(), RenderDiagnostics.lastPostCpuMs()));
+                    lines.add("Shader pack active: " + RenderDiagnostics.lastShaderPackInUse());
+                }
                 lines.add("Particle culling: " + (ModernOptConfig.PARTICLE_CULLING_ENABLED.get()
                     ? ModernOptConfig.PARTICLE_RENDER_DISTANCE.get() + " blocks" : "off"));
             }
