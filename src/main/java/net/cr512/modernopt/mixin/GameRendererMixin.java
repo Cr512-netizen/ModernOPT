@@ -11,6 +11,7 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.render.Fsr1Renderer;
+import net.cr512.modernopt.render.RenderDiagnostics;
 import net.cr512.modernopt.render.MultisampleRenderTarget;
 import net.cr512.modernopt.render.RenderScaleController;
 import net.cr512.modernopt.render.RenderScalePhase;
@@ -78,6 +79,8 @@ public abstract class GameRendererMixin {
 
     @Inject(method = "renderLevel", at = @At("HEAD"))
     private void modernopt$beginWorldPass(CallbackInfo ci) {
+        RenderDiagnostics.beginFrame();
+        this.modernopt$shaderPackInUseThisFrame = false;
         RenderScalePhase.end();
         this.modernopt$active = false;
         this.modernopt$scalingActive = false;
@@ -303,8 +306,12 @@ public abstract class GameRendererMixin {
     @Inject(method = "renderLevel", at = @At("RETURN"))
     private void modernopt$endWorldPass(CallbackInfo ci) {
         RenderScalePhase.end();
-        if (!this.modernopt$active && !this.modernopt$fxaaOnly) return;
+        if (!this.modernopt$active && !this.modernopt$fxaaOnly) {
+            modernopt$finishDiagnostics();
+            return;
+        }
 
+        RenderDiagnostics.beginPostProcess();
         try {
             ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$originalTarget);
             this.modernopt$originalTarget.bindWrite(true);
@@ -364,6 +371,7 @@ public abstract class GameRendererMixin {
             }
             ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$originalTarget);
             this.modernopt$originalTarget.bindWrite(true);
+            modernopt$finishDiagnostics();
             this.modernopt$active = false;
             this.modernopt$scalingActive = false;
             this.modernopt$msaaActive = false;
@@ -373,4 +381,17 @@ public abstract class GameRendererMixin {
             this.modernopt$worldTarget = null;
         }
     }
+    @Unique
+    private void modernopt$finishDiagnostics() {
+        RenderTarget nativeTarget = this.minecraft.getMainRenderTarget();
+        int nativeWidth = nativeTarget == null ? 0 : nativeTarget.width;
+        int nativeHeight = nativeTarget == null ? 0 : nativeTarget.height;
+        RenderTarget worldTarget = this.modernopt$worldTarget;
+        int renderWidth = worldTarget == null ? nativeWidth : worldTarget.width;
+        int renderHeight = worldTarget == null ? nativeHeight : worldTarget.height;
+        RenderDiagnostics.endFrame(nativeWidth, nativeHeight, renderWidth, renderHeight,
+            ModernOptConfig.UPSCALER_MODE.get(), ModernOptConfig.ENABLED.get(),
+            this.modernopt$shaderPackInUseThisFrame);
+    }
+
 }
