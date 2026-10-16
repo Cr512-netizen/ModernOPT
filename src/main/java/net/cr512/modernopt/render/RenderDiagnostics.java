@@ -1,13 +1,14 @@
 package net.cr512.modernopt.render;
 
+import net.cr512.modernopt.client.BenchmarkRecorder;
 import net.cr512.modernopt.config.ModernOptConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Opt-in CPU-side render diagnostics. This deliberately avoids OpenGL timer
- * queries and glGetError polling, which can interfere with other render mods
- * or introduce synchronization stalls.
+ * CPU-side render timings and render-target telemetry.
+ * Deliberately avoids OpenGL timer queries, which can synchronize the GPU and
+ * conflict with shader packs. Timings are CPU wall-clock durations, not GPU time.
  */
 public final class RenderDiagnostics {
     private static final Logger LOGGER = LoggerFactory.getLogger("ModernOPT");
@@ -22,10 +23,20 @@ public final class RenderDiagnostics {
     private static long maxPostNanos;
     private static int frames;
 
+    private static volatile double lastFrameCpuMs;
+    private static volatile double lastPostCpuMs;
+    private static volatile int lastWindowWidth;
+    private static volatile int lastWindowHeight;
+    private static volatile int lastWorldWidth;
+    private static volatile int lastWorldHeight;
+    private static volatile boolean lastShaderPackInUse;
+    private static volatile int lastUpscalerMode;
+
     private RenderDiagnostics() {}
 
     public static void beginFrame() {
-        if (!ModernOptConfig.ENABLED.get() || !ModernOptConfig.PROFILING_ENABLED.get()) {
+        if (!ModernOptConfig.ENABLED.get()
+            || (!ModernOptConfig.PROFILING_ENABLED.get() && !BenchmarkRecorder.isRecording())) {
             frameStartedAt = 0L;
             postStartedAt = 0L;
             return;
@@ -40,10 +51,19 @@ public final class RenderDiagnostics {
 
     public static void endFrame(int nativeWidth, int nativeHeight, int renderWidth, int renderHeight,
                                 int upscalerMode, boolean enabled, boolean shaderPack) {
+        lastWindowWidth = nativeWidth;
+        lastWindowHeight = nativeHeight;
+        lastWorldWidth = renderWidth;
+        lastWorldHeight = renderHeight;
+        lastShaderPackInUse = shaderPack;
+        lastUpscalerMode = upscalerMode;
         if (frameStartedAt == 0L) return;
+
         long now = System.nanoTime();
-        long frameNanos = now - frameStartedAt;
+        long frameNanos = Math.max(0L, now - frameStartedAt);
         long postNanos = postStartedAt == 0L ? 0L : Math.max(0L, now - postStartedAt);
+        lastFrameCpuMs = frameNanos / 1_000_000.0;
+        lastPostCpuMs = postNanos / 1_000_000.0;
         frameStartedAt = 0L;
         postStartedAt = 0L;
 
@@ -53,10 +73,11 @@ public final class RenderDiagnostics {
         maxPostNanos = Math.max(maxPostNanos, postNanos);
         frames++;
 
-        if (lastReportAt != 0L && now - lastReportAt < REPORT_INTERVAL_NANOS) return;
+        if (!ModernOptConfig.PROFILING_ENABLED.get()
+            || (lastReportAt != 0L && now - lastReportAt < REPORT_INTERVAL_NANOS)) return;
         long averageFrame = totalFrameNanos / Math.max(1, frames);
         long averagePost = totalPostNanos / Math.max(1, frames);
-        LOGGER.info("Render diagnostics (CPU only): frames={}, frame avg/max={}/{} ms, post avg/max={}/{} ms, output={}x{}, world={}x{}, upscaler={}, enabled={}, shaderPack={}",
+        LOGGER.info("Render diagnostics (CPU wall time, not GPU time): frames={}, world-pass avg/max={}/{} ms, post-process avg/max={}/{} ms, output={}x{}, world={}x{}, upscaler={}, enabled={}, shaderPack={}",
             frames, millis(averageFrame), millis(maxFrameNanos), millis(averagePost), millis(maxPostNanos),
             nativeWidth, nativeHeight, renderWidth, renderHeight, upscalerMode, enabled, shaderPack);
 
@@ -67,6 +88,15 @@ public final class RenderDiagnostics {
         maxPostNanos = 0L;
         frames = 0;
     }
+
+    public static double lastFrameCpuMs() { return lastFrameCpuMs; }
+    public static double lastPostCpuMs() { return lastPostCpuMs; }
+    public static int lastWindowWidth() { return lastWindowWidth; }
+    public static int lastWindowHeight() { return lastWindowHeight; }
+    public static int lastWorldWidth() { return lastWorldWidth; }
+    public static int lastWorldHeight() { return lastWorldHeight; }
+    public static boolean lastShaderPackInUse() { return lastShaderPackInUse; }
+    public static int lastUpscalerMode() { return lastUpscalerMode; }
 
     private static double millis(long nanos) {
         return Math.round(nanos / 100_000.0) / 10.0;
