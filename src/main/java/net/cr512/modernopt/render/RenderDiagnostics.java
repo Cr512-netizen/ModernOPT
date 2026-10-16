@@ -25,7 +25,7 @@ public final class RenderDiagnostics {
     private RenderDiagnostics() {}
 
     public static void beginFrame() {
-        if (!ModernOptConfig.PROFILING_ENABLED.get()) {
+        if (!ModernOptConfig.ENABLED.get() || !ModernOptConfig.PROFILING_ENABLED.get()) {
             frameStartedAt = 0L;
             postStartedAt = 0L;
             return;
