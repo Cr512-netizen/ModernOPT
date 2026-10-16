@@ -56,8 +56,7 @@ public final class RenderDiagnostics {
 
     public static void beginFrame() {
         pollGpuQueries();
-        if (!ModernOptConfig.ENABLED.get()
-            || (!ModernOptConfig.PROFILING_ENABLED.get() && !BenchmarkRecorder.isRecording())) {
+        if (!ModernOptConfig.PROFILING_ENABLED.get() && !BenchmarkRecorder.isRecording()) {
             frameStartedAt = 0L;
             postStartedAt = 0L;
             activeQuerySlot = -1;
@@ -92,6 +91,11 @@ public final class RenderDiagnostics {
 
         long now = System.nanoTime();
         if (activeQuerySlot >= 0) {
+            // Frames without a ModernOPT post-process still need all three query
+            // timestamps issued; otherwise that ring slot could remain pending forever.
+            if (postStartedAt == 0L) {
+                GL33.glQueryCounter(timestampQueries[activeQuerySlot][1], GL33.GL_TIMESTAMP);
+            }
             GL33.glQueryCounter(timestampQueries[activeQuerySlot][2], GL33.GL_TIMESTAMP);
             queryPending[activeQuerySlot] = true;
             activeQuerySlot = -1;
