@@ -71,9 +71,9 @@ public final class Fsr1Renderer {
         // with four texelFetch calls. If the driver/mod shader pipeline rejects it,
         // the explicit-gather shader above remains the compatibility fallback.
         registerShader(event, "easu_native", shader -> easuNative = shader);
-        // Optional fast path for NVIDIA GPUs with native FP16 arithmetic.
+        // Optional fast path for GPUs exposing native OpenGL FP16 arithmetic.
         // Other GPUs continue using the portable FP32 shaders.
-        if (supportsNvFp16()) {
+        if (supportsFp16()) {
             registerShader(event, "easu_fp16", shader -> easuFp16 = shader);
             registerShader(event, "rcas_fp16", shader -> rcasFp16 = shader);
             if (easuFp16 != null && rcasFp16 != null) {
@@ -84,7 +84,7 @@ public final class Fsr1Renderer {
         } else {
             easuFp16 = null;
             rcasFp16 = null;
-            LOGGER.debug("Native NVIDIA FP16 arithmetic is unavailable; using the portable FP32 FSR1 path.");
+            LOGGER.debug("Native OpenGL FP16 arithmetic is unavailable; using the portable FP32 FSR1 path.");
         }
         registerShader(event, "rcas", shader -> rcas = shader);
         registerShader(event, "bilinear", shader -> bilinear = shader);
@@ -109,9 +109,10 @@ public final class Fsr1Renderer {
         }
     }
 
-    private static boolean supportsNvFp16() {
+    private static boolean supportsFp16() {
         try {
-            return GL.getCapabilities().GL_NV_gpu_shader5;
+            var caps = GL.getCapabilities();
+            return caps.GL_NV_gpu_shader5 || caps.GL_AMD_gpu_shader_half_float;
         } catch (IllegalStateException noCurrentContext) {
             // Some launch paths can register shaders before a context is current.
             return false;
