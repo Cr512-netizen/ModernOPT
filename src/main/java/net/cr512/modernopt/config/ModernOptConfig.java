@@ -5,6 +5,7 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public final class ModernOptConfig {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
     public static final ModConfigSpec.BooleanValue ENABLED;
+    public static final ModConfigSpec.BooleanValue PROFILING_ENABLED;
     public static final ModConfigSpec.IntValue RENDER_SCALE_PERCENT;
     public static final ModConfigSpec.IntValue UPSCALER_MODE;
     public static final ModConfigSpec.BooleanValue FXAA_ENABLED;
@@ -24,6 +25,7 @@ public final class ModernOptConfig {
         BUILDER.push("general");
         // Keep render hooks disabled until the user explicitly enables the experimental pipeline.
         ENABLED = BUILDER.comment("Master switch for ModernOPT rendering features.").define("enabled", false);
+        PROFILING_ENABLED = BUILDER.comment("Log low-overhead CPU timing and render-target dimensions every few seconds. Does not measure GPU execution time.").define("profilingEnabled", false);
         BUILDER.pop();
         BUILDER.push("rendering");
         RENDER_SCALE_PERCENT = BUILDER.comment("Internal render resolution as a percentage of the window size.").defineInRange("renderScalePercent", 100, 25, 100);
