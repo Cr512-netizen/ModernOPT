@@ -67,7 +67,7 @@
   "modernopt.option.irisShadowResolution": "Shadow-map resolution",
   "modernopt.option.irisShadowResolution.desc": "Set the fixed Iris shadow-map resolution in pixels (512–8192). Enable shadow-map scaling and reload the shader pack.",
   "modernopt.option.shadowFrameSkip": "Dynamic shadow frame skipping",
-  "modernopt.option.shadowFrameSkip.desc": "Refreshes Iris shadow maps at a target rate and reuses the previous map on skipped frames. Experimental: shadows may lag behind moving objects.",
+  "modernopt.option.shadowFrameSkip.desc": "Temporarily inactive for safety: cancelling Iris' full shadow pass caused stale or disappearing shadows. Shadow rendering is now allowed every frame.",
   "modernopt.option.shadowUpdateFps": "Shadow refresh rate",
   "modernopt.option.shadowUpdateFps.desc": "Target shadow refresh rate from 40 to 240 FPS. If the game runs below the target, shadows update every frame.",
   "modernopt.page.render": "Rendering",
@@ -135,5 +135,18 @@
   "modernopt.screen.shadow_fps": "Shadow refresh target",
   "modernopt.screen.shadow_fps.tip": "Target update rate for shadow maps when skipping is enabled. Lower values can reduce GPU work but make shadows lag more. Impact: MEDIUM.",
   "modernopt.screen.profiling": "CPU render diagnostics",
-  "modernopt.screen.profiling.tip": "Writes periodic CPU-side render timing and target dimensions to latest.log. Does not measure GPU execution time. Impact: LOW; turn off after collecting a sample."
+  "modernopt.screen.profiling.tip": "Writes periodic CPU-side render timing and target dimensions to latest.log. Does not measure GPU execution time. Impact: LOW; turn off after collecting a sample.",
+  "modernopt.page.benchmark": "Benchmark",
+  "modernopt.page.benchmark.tip": "Record per-frame timing and export a CSV report.",
+  "modernopt.sodium.group.performance": "Performance HUD & benchmark",
+  "modernopt.screen.show_one_percent_low": "Show 1% low FPS",
+  "modernopt.screen.show_one_percent_low.tip": "Estimates 1% low FPS from the slowest 1% of recent frame intervals. CPU-side estimate, not a GPU timer.",
+  "modernopt.screen.show_p95": "Show frame-time p95",
+  "modernopt.screen.show_p95.tip": "Shows the 95th percentile of recent HUD frame intervals to expose stutter spikes.",
+  "modernopt.screen.opacity": "HUD background opacity",
+  "modernopt.screen.opacity.tip": "Adjust the on-screen statistics background opacity from transparent to opaque.",
+  "modernopt.screen.benchmark_recording": "CSV benchmark capture",
+  "modernopt.screen.benchmark_recording.tip": "Start or stop recording one row per rendered HUD frame to config/modernopt-benchmarks/benchmark-*.csv. This records client frame intervals, not GPU execution time.",
+  "modernopt.screen.benchmark_status": "Last benchmark / current status",
+  "modernopt.screen.benchmark_status.tip": "Shows whether a capture is active and the summary from the last finished capture."
 }
