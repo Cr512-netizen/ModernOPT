@@ -69,8 +69,8 @@ public final class ModernOptConfig {
         BUILDER.push("iris");
         IRIS_SHADOW_SCALE_ENABLED = BUILDER.comment("Scale Iris shader-pack shadow maps. Disabled by default for maximum shader-pack compatibility.").define("shadowScaleEnabled", false);
         IRIS_SHADOW_RESOLUTION = BUILDER.comment("Fixed Iris shadow-map resolution in pixels when shadow scaling is enabled.").defineInRange("shadowResolution", 1024, 512, 8192);
-        SHADOW_FRAME_SKIP_ENABLED = BUILDER.comment("Update Iris shadow maps at a capped rate, reusing the previous shadow map on skipped frames.").define("shadowFrameSkipEnabled", false);
-        SHADOW_UPDATE_FPS = BUILDER.comment("Target shadow-map refresh rate in FPS when dynamic shadow frame skipping is enabled.").defineInRange("shadowUpdateFps", 60, 40, 240);
+        SHADOW_FRAME_SKIP_ENABLED = BUILDER.comment("Reserved setting; shadow-frame skipping is temporarily inactive because cancelling Iris shadow rendering caused missing shadows.").define("shadowFrameSkipEnabled", false);
+        SHADOW_UPDATE_FPS = BUILDER.comment("Reserved setting; currently has no effect while safe Iris shadow-frame skipping is unavailable.").defineInRange("shadowUpdateFps", 60, 40, 240);
         BUILDER.pop();
         SPEC = BUILDER.build();
     }
