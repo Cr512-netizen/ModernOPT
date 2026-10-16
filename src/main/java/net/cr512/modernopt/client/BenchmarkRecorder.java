@@ -60,7 +60,7 @@ public final class BenchmarkRecorder {
             outputFile = directory.resolve("benchmark-" + LocalDateTime.now().format(FILE_TIME) + ".csv");
             writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-            writer.write("elapsed_ms,frame_time_ms,fps,heap_used_mb,heap_allocated_mb,cpu_process_pct,cpu_system_pct,window_width,window_height,world_width,world_height,world_pixel_ratio_pct,render_scale_config_pct,render_scale_effective_pct,upscaler,modernopt_enabled,iris_shader_pack_in_use,world_pass_cpu_ms,upscale_post_cpu_ms\n");
+            writer.write("elapsed_ms,frame_time_ms,fps,heap_used_mb,heap_allocated_mb,cpu_process_pct,cpu_system_pct,window_width,window_height,world_width,world_height,world_pixel_ratio_pct,render_scale_config_pct,render_scale_effective_pct,upscaler,modernopt_enabled,iris_shader_pack_in_use,world_pass_cpu_ms,upscale_post_cpu_ms,gpu_world_ms,gpu_post_ms,main_target_restored,upscaler_path,auxiliary_targets\n");
             writer.flush();
             startedAt = System.nanoTime();
             lastFlushAt = startedAt;
@@ -117,12 +117,15 @@ public final class BenchmarkRecorder {
 
         try {
             writer.write(String.format(Locale.ROOT,
-                "%d,%.4f,%d,%d,%d,%.2f,%.2f,%d,%d,%d,%d,%.2f,%d,%d,%d,%s,%s,%.4f,%.4f%n",
+                "%d,%.4f,%d,%d,%d,%.2f,%.2f,%d,%d,%d,%d,%.2f,%d,%d,%d,%s,%s,%.4f,%.4f,%.4f,%.4f,%s,%s,%s%n",
                 (now - startedAt) / 1_000_000L, frameTimeMs, minecraft.getFps(), usedMb, allocatedMb,
                 processCpu, systemCpu, windowWidth, windowHeight, worldWidth, worldHeight, pixelRatio,
                 ModernOptConfig.RENDER_SCALE_PERCENT.get(), RenderScaleController.effectivePercent(),
                 RenderDiagnostics.lastUpscalerMode(), ModernOptConfig.ENABLED.get(),
-                RenderDiagnostics.lastShaderPackInUse(), worldCpuMs, postCpuMs));
+                RenderDiagnostics.lastShaderPackInUse(), worldCpuMs, postCpuMs,
+                RenderDiagnostics.lastGpuWorldMs(), RenderDiagnostics.lastGpuPostMs(),
+                RenderDiagnostics.lastMainTargetRestored(), csvEscape(RenderDiagnostics.lastUpscalerPath()),
+                csvEscape(RenderDiagnostics.lastAuxiliaryTargets())));
             frames++;
             FRAME_TIMES.add(frameTimeMs);
             if (worldCpuMs > 0 && Double.isFinite(worldCpuMs)) WORLD_CPU_TIMES.add(worldCpuMs);
@@ -165,6 +168,11 @@ public final class BenchmarkRecorder {
             writer = null;
             lastError = exception.getClass().getSimpleName() + ": " + exception.getMessage();
         }
+    }
+
+    private static String csvEscape(String value) {
+        if (value == null) return "\"\"";
+        return "\"" + value.replace("\"", "\"\"") + "\"";
     }
 
     private static OperatingSystemMXBean operatingSystem() {
