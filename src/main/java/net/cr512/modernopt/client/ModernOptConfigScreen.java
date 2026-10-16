@@ -84,7 +84,12 @@ public final class ModernOptConfigScreen extends Screen {
                 addRow(yRow, "modernopt.screen.benchmark_recording", "modernopt.screen.benchmark_recording.tip", this::toggleBenchmarkRecording); yRow += 18;
                 addRow(yRow, "modernopt.screen.benchmark_status", "modernopt.screen.benchmark_status.tip", () -> {}); yRow += 18;
                 addRow(yRow, "modernopt.screen.logging", "modernopt.screen.logging.tip", toggle(ModernOptConfig.LOGGING_ENABLED)); yRow += 18;
-                addRow(yRow, "modernopt.screen.log_interval", "modernopt.screen.log_interval.tip", this::cycleLogInterval);
+                addRow(yRow, "modernopt.screen.log_interval", "modernopt.screen.log_interval.tip", this::cycleLogInterval); yRow += 18;
+                addRow(yRow, "modernopt.screen.profiling", "modernopt.screen.profiling.tip", toggle(ModernOptConfig.PROFILING_ENABLED)); yRow += 18;
+                addRow(yRow, "modernopt.screen.diag_sample_interval", "modernopt.screen.diag_sample_interval.tip", this::cycleDiagnosticSampleInterval); yRow += 18;
+                addRow(yRow, "modernopt.screen.benchmark_duration", "modernopt.screen.benchmark_duration.tip", this::cycleBenchmarkDuration); yRow += 18;
+                addRow(yRow, "modernopt.screen.benchmark_cpu", "modernopt.screen.benchmark_cpu.tip", toggle(ModernOptConfig.BENCHMARK_CAPTURE_CPU)); yRow += 18;
+                addRow(yRow, "modernopt.screen.benchmark_memory", "modernopt.screen.benchmark_memory.tip", toggle(ModernOptConfig.BENCHMARK_CAPTURE_MEMORY));
             }
         }
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose())
@@ -121,6 +126,10 @@ public final class ModernOptConfigScreen extends Screen {
             case "modernopt.screen.opacity" -> ModernOptConfig.OVERLAY_BACKGROUND_OPACITY.get() + "%";
             case "modernopt.screen.benchmark_recording" -> onOff(BenchmarkRecorder.isRecording());
             case "modernopt.screen.benchmark_status" -> BenchmarkRecorder.status();
+            case "modernopt.screen.diag_sample_interval" -> "1 / " + ModernOptConfig.DIAGNOSTICS_SAMPLE_INTERVAL_FRAMES.get() + " frames";
+            case "modernopt.screen.benchmark_duration" -> ModernOptConfig.BENCHMARK_DURATION_SECONDS.get() == 0 ? "Manual" : ModernOptConfig.BENCHMARK_DURATION_SECONDS.get() + " s";
+            case "modernopt.screen.benchmark_cpu" -> onOff(ModernOptConfig.BENCHMARK_CAPTURE_CPU.get());
+            case "modernopt.screen.benchmark_memory" -> onOff(ModernOptConfig.BENCHMARK_CAPTURE_MEMORY.get());
             case "modernopt.screen.fxaa" -> onOff(ModernOptConfig.FXAA_ENABLED.get());
             case "modernopt.screen.ssaa" -> onOff(ModernOptConfig.SSAA_ENABLED.get());
             case "modernopt.screen.overlay" -> onOff(ModernOptConfig.OVERLAY_ENABLED.get());
@@ -228,6 +237,14 @@ public final class ModernOptConfigScreen extends Screen {
 
     private void cycleOpacity() {
         ModernOptConfig.OVERLAY_BACKGROUND_OPACITY.set(nextValue(new int[]{0, 20, 40, 56, 70, 85, 100}, ModernOptConfig.OVERLAY_BACKGROUND_OPACITY.get()));
+    }
+
+    private void cycleDiagnosticSampleInterval() {
+        ModernOptConfig.DIAGNOSTICS_SAMPLE_INTERVAL_FRAMES.set(nextValue(new int[]{1, 2, 3, 5, 10}, ModernOptConfig.DIAGNOSTICS_SAMPLE_INTERVAL_FRAMES.get()));
+    }
+
+    private void cycleBenchmarkDuration() {
+        ModernOptConfig.BENCHMARK_DURATION_SECONDS.set(nextValue(new int[]{0, 15, 30, 60, 120, 300}, ModernOptConfig.BENCHMARK_DURATION_SECONDS.get()));
     }
 
     private void toggleBenchmarkRecording() {
