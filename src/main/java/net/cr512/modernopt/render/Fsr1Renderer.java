@@ -35,7 +35,6 @@ public final class Fsr1Renderer {
     private static ShaderInstance fxaa;
     private static ShaderInstance ssaaDownsample;
     private static TextureTarget intermediate;
-    private static TextureTarget fxaaIntermediate;
     private static final Logger LOGGER = LoggerFactory.getLogger("ModernOPT");
     private static boolean renderFailureLogged;
     // Avoid retrying a shader path that has already thrown every frame; a mode change or resource reload permits retry.
@@ -199,15 +198,18 @@ public final class Fsr1Renderer {
         Matrix4f oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
         VertexSorting oldSorting = RenderSystem.getVertexSorting();
         try {
-            if (fxaaIntermediate == null) {
-                fxaaIntermediate = new TextureTarget(width, height, false, Minecraft.ON_OSX);
-            } else if (fxaaIntermediate.width != width || fxaaIntermediate.height != height) {
-                fxaaIntermediate.resize(width, height, Minecraft.ON_OSX);
+            // FSR1 and FXAA run sequentially, never concurrently. Reuse the same
+            // full-resolution scratch target instead of allocating a second color buffer.
+            // The scratch target is always distinct from output, so this avoids feedback.
+            if (intermediate == null) {
+                intermediate = new TextureTarget(width, height, false, Minecraft.ON_OSX);
+            } else if (intermediate.width != width || intermediate.height != height) {
+                intermediate.resize(width, height, Minecraft.ON_OSX);
             }
-            drawPass(output, fxaaIntermediate, fxaa, width, height, false);
+            drawPass(output, intermediate, fxaa, width, height, false);
             // The FXAA output already has the same dimensions as the destination.
             // Copy it with a framebuffer blit rather than launching a redundant full-screen shader pass.
-            if (!blitColor(fxaaIntermediate, output)) return false;
+            if (!blitColor(intermediate, output)) return false;
             return true;
         } catch (RuntimeException | LinkageError exception) {
             if (!fxaaFailureLogged) {
