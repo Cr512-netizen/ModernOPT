@@ -19,7 +19,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class IrisShadowResolutionMixin {
     @Inject(method = "getResolution", at = @At("RETURN"), cancellable = true, remap = false, require = 0)
     private void modernopt$setIrisShadowResolution(CallbackInfoReturnable<Integer> cir) {
-        if (!ModList.get().isLoaded("iris") || !ModernOptConfig.IRIS_SHADOW_SCALE_ENABLED.get()) {
+        if (!ModernOptConfig.ENABLED.get() || !ModList.get().isLoaded("iris")
+            || !ModernOptConfig.IRIS_SHADOW_SCALE_ENABLED.get()) {
             return;
         }
 
