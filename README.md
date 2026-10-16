@@ -36,7 +36,9 @@
 - **FXAA:** optional post-process edge smoothing.
 - **Native-resolution interface:** the intended render pipeline keeps HUD and GUI rendering at the window resolution.
 - **Client-side settings:** use the native Sodium options page or the standalone configuration screen from the Mods list (Sodium is not required). Presets change both world scale and upscaler.
-- **Performance HUD and TXT logging:** configurable FPS, approximate frame interval, Java heap usage, render scale/upscaler and particle-culling status. Optional samples append to `config/modernopt-performance.txt`.
+- **Performance HUD and TXT logging:** configurable FPS, approximate frame interval, Java heap usage, render scale/upscaler and particle-culling status, plus estimated 1% low FPS and frame-time p95.
+- **Built-in CSV benchmark capture:** start/stop from the standalone settings screen or Sodium page. Reports are written to `config/modernopt-benchmarks/benchmark-*.csv`; the capture measures client frame intervals and Java heap, not GPU execution time.
+- **Master disable switch:** disables ModernOPT render modifications, HUD/logging, profiling, particle culling and Iris shadow-resolution changes. Benchmark capture stops when disabled.
 - **Optional particle draw-distance culling:** skips rendering distant particles without deleting them or changing their ticking/simulation. Disabled by default and controlled by the master switch.
 
 Features may be bypassed when the active render pipeline is incompatible. See the compatibility notes below and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for implementation and attribution details.
@@ -76,7 +78,9 @@ The on-disk client configuration uses keys such as `rendering.renderScalePercent
 
 Open ModernOPT's configuration screen from the Mods list even when Sodium is not installed. The Rendering page provides paired presets plus individual world-scale and upscaler controls; the other pages configure the overlay, text log, and optional particle draw-distance culling. Tooltips describe expected performance impact, which varies by hardware and scene.
 
-Enable **Write TXT log** to append periodic samples to `config/modernopt-performance.txt`. The overlay reports Minecraft FPS, approximate time between HUD renders, Java-process/system CPU load when available, Java heap memory (not GPU VRAM), render scale, and upscaler. It does not currently report GPU utilization, GPU temperature, or VRAM usage because those require hardware-specific telemetry not supplied by Minecraft/NeoForge.
+Enable **Write TXT log** to append periodic samples to `config/modernopt-performance.txt`. The overlay can also show an estimated 1% low FPS, frame-time p95, and configurable background opacity. The **Benchmark** page or Sodium's **Performance HUD & benchmark** group starts a CSV capture saved under `config/modernopt-benchmarks/`. This capture is intended for repeatable comparisons, but it records client-side frame intervals and Java heap—not GPU execution time, utilization, temperature, or VRAM. Benchmarking can add a small measurement overhead, so compare repeated runs under the same conditions.
+
+Iris shadow-frame skipping is currently disabled internally: cancelling Iris' complete shadow pass caused shadows to become stale or disappear. The corresponding old setting is retained for config compatibility but does not currently change the shadow update rate. Iris shadow resolution scaling remains separately optional and is disabled by default.
 
 Particle culling is a visual-only draw-distance check: particles still tick and expire normally. It is disabled by default. It can reduce draw work in particle-heavy scenes, but the per-particle distance check itself has a small CPU cost.
 
