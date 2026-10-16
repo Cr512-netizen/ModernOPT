@@ -1,13 +1,20 @@
-#version 450
+#version 420
+#if defined(GL_AMD_gpu_shader_half_float)
+#extension GL_AMD_gpu_shader_half_float : require
+#elif defined(GL_NV_gpu_shader5)
 #extension GL_NV_gpu_shader5 : require
+#else
+#error ModernOPT FP16 requires GL_AMD_gpu_shader_half_float or GL_NV_gpu_shader5
+#endif
 #define A_GPU 1
 #define A_GLSL 1
 #define A_HALF 1
+#define A_SKIP_EXT 1
 #define FSR_RCAS_H 1
 #define FSR_COLOUR AH3
 #define FSR_SCALAR AH1
 #define FSR_LOAD AH4
-#define FSR_POSITION ASU2
+#define FSR_POSITION ASW2
 #define FSR_RCAS_LOAD FsrRcasLoadH
 #define FSR_RCAS_INPUT FsrRcasInputH
 #define FSR_RCAS FsrRcasH
