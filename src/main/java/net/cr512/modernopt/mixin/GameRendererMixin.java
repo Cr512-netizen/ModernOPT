@@ -53,15 +53,36 @@ public abstract class GameRendererMixin {
     @Unique private int modernopt$allocatedSamples;
     @Unique private int modernopt$failedMsaaRequest;
 
+    // Iris is optional, so avoid a hard dependency. Resolve its API once instead of
+    // repeating class/method lookup on every rendered frame.
+    @Unique private static java.lang.reflect.Method modernopt$irisShaderPackMethod;
+    @Unique private static Object modernopt$irisApiInstance;
+    @Unique private static boolean modernopt$irisApiResolved;
+
     @Unique
     private static boolean modernopt$shaderPackInUse() {
         if (!net.neoforged.fml.ModList.get().isLoaded("iris")) return false;
+        if (!modernopt$irisApiResolved) {
+            // Set the latch first: a broken/incompatible Iris API must not trigger
+            // repeated reflective discovery on every frame.
+            modernopt$irisApiResolved = true;
+            try {
+                Class<?> apiClass = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+                modernopt$irisApiInstance = apiClass.getMethod("getInstance").invoke(null);
+                modernopt$irisShaderPackMethod = apiClass.getMethod("isShaderPackInUse");
+            } catch (ReflectiveOperationException | LinkageError ignored) {
+                modernopt$irisApiInstance = null;
+                modernopt$irisShaderPackMethod = null;
+                // Fail closed: if Iris is present but its API cannot be queried,
+                // skip ModernOPT AA to avoid double-processing an unknown shader path.
+                return true;
+            }
+        }
+        if (modernopt$irisShaderPackMethod == null || modernopt$irisApiInstance == null) return true;
         try {
-            Class<?> apiClass = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
-            Object api = apiClass.getMethod("getInstance").invoke(null);
-            Object result = apiClass.getMethod("isShaderPackInUse").invoke(api);
-            return Boolean.TRUE.equals(result);
+            return Boolean.TRUE.equals(modernopt$irisShaderPackMethod.invoke(modernopt$irisApiInstance));
         } catch (ReflectiveOperationException | LinkageError ignored) {
+            // Preserve shader-pack safety if Iris changes or throws at runtime.
             return true;
         }
     }
