@@ -74,9 +74,15 @@ public final class Fsr1Renderer {
         if (supportsNvFp16()) {
             registerShader(event, "easu_fp16", shader -> easuFp16 = shader);
             registerShader(event, "rcas_fp16", shader -> rcasFp16 = shader);
+            if (easuFp16 != null && rcasFp16 != null) {
+                LOGGER.info("FP16 FSR1 shaders are available; they will be used when FSR1 is selected.");
+            } else {
+                LOGGER.info("FP16 FSR1 shaders could not be loaded; the existing FP32 path remains active.");
+            }
         } else {
             easuFp16 = null;
             rcasFp16 = null;
+            LOGGER.debug("Native NVIDIA FP16 arithmetic is unavailable; using the portable FP32 FSR1 path.");
         }
         registerShader(event, "rcas", shader -> rcas = shader);
         registerShader(event, "bilinear", shader -> bilinear = shader);
