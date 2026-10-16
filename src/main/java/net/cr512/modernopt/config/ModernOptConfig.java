@@ -6,6 +6,10 @@ public final class ModernOptConfig {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
     public static final ModConfigSpec.BooleanValue ENABLED;
     public static final ModConfigSpec.BooleanValue PROFILING_ENABLED;
+    public static final ModConfigSpec.IntValue DIAGNOSTICS_SAMPLE_INTERVAL_FRAMES;
+    public static final ModConfigSpec.IntValue BENCHMARK_DURATION_SECONDS;
+    public static final ModConfigSpec.BooleanValue BENCHMARK_CAPTURE_CPU;
+    public static final ModConfigSpec.BooleanValue BENCHMARK_CAPTURE_MEMORY;
     public static final ModConfigSpec.BooleanValue OVERLAY_ENABLED;
     public static final ModConfigSpec.BooleanValue LOGGING_ENABLED;
     public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_FPS;
@@ -40,6 +44,10 @@ public final class ModernOptConfig {
         // Keep render hooks disabled until the user explicitly enables the experimental pipeline.
         ENABLED = BUILDER.comment("Master switch for ModernOPT rendering features.").define("enabled", false);
         PROFILING_ENABLED = BUILDER.comment("Log low-overhead CPU timing and render-target dimensions every few seconds. Does not measure GPU execution time.").define("profilingEnabled", false);
+        DIAGNOSTICS_SAMPLE_INTERVAL_FRAMES = BUILDER.comment("Record one benchmark row every N rendered HUD frames to reduce measurement overhead.").defineInRange("diagnosticsSampleIntervalFrames", 1, 1, 10);
+        BENCHMARK_DURATION_SECONDS = BUILDER.comment("Automatic benchmark stop duration in seconds; 0 means manual stop.").defineInRange("benchmarkDurationSeconds", 60, 0, 300);
+        BENCHMARK_CAPTURE_CPU = BUILDER.comment("Include process and system CPU load in diagnostic CSV samples.").define("benchmarkCaptureCpu", true);
+        BENCHMARK_CAPTURE_MEMORY = BUILDER.comment("Include Java heap usage in diagnostic CSV samples.").define("benchmarkCaptureMemory", true);
         OVERLAY_ENABLED = BUILDER.comment("Show the configurable performance overlay in-game.").define("overlayEnabled", true);
         LOGGING_ENABLED = BUILDER.comment("Append performance samples to config/modernopt-performance.txt.").define("loggingEnabled", false);
         OVERLAY_SHOW_FPS = BUILDER.define("overlayShowFps", true);
