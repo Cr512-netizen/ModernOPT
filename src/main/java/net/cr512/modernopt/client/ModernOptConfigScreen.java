@@ -13,7 +13,6 @@ public final class ModernOptConfigScreen extends Screen {
     private final Screen parent;
     private Page page = Page.RENDER;
     private int columnX;
-    private int rowY;
     private int columnWidth;
 
     public ModernOptConfigScreen(Screen parent) {
@@ -25,10 +24,6 @@ public final class ModernOptConfigScreen extends Screen {
     protected void init() {
         columnWidth = Math.min(360, this.width - 24);
         columnX = (this.width - columnWidth) / 2;
-        rowY = Math.max(54, (this.height - 230) / 2);
-        addButton("modernopt.page.render", "modernopt.page.render.tip", () -> { page = Page.RENDER; rebuild(); });
-        addButton("modernopt.page.overlay", "modernopt.page.overlay.tip", () -> { page = Page.OVERLAY; rebuild(); });
-        addButton("modernopt.page.particles", "modernopt.page.particles.tip", () -> { page = Page.PARTICLES; rebuild(); });
         int tabWidth = (columnWidth - 8) / 3;
         int y = 30;
         // Replace the three temporary full-width tab buttons with a compact tab row.
@@ -40,10 +35,10 @@ public final class ModernOptConfigScreen extends Screen {
         addRenderableWidget(Button.builder(Component.translatable("modernopt.page.particles"), b -> { page = Page.PARTICLES; rebuild(); })
             .bounds(columnX + (tabWidth + 4) * 2, y, tabWidth, 20).tooltip(Tooltip.create(Component.translatable("modernopt.page.particles.tip"))).build());
 
-        int yRow = 57;
+        int yRow = 53;
         switch (page) {
             case RENDER -> {
-                addRow(yRow, "modernopt.screen.master", "modernopt.screen.master.tip", toggle(ModernOptConfig.ENABLED)); yRow += 24;
+                addRow(yRow, "modernopt.screen.master", "modernopt.screen.master.tip", toggle(ModernOptConfig.ENABLED)); yRow += 19;
                 addRow(yRow, "modernopt.screen.preset", "modernopt.screen.preset.tip", this::cyclePreset); yRow += 24;
                 addRow(yRow, "modernopt.screen.scale", "modernopt.screen.scale.tip", this::cycleScale); yRow += 24;
                 addRow(yRow, "modernopt.screen.upscaler", "modernopt.screen.upscaler.tip", this::cycleUpscaler); yRow += 24;
@@ -68,7 +63,7 @@ public final class ModernOptConfigScreen extends Screen {
             }
         }
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose())
-            .bounds(columnX, this.height - 28, columnWidth, 20).build());
+            .bounds(columnX, this.height - 22, columnWidth, 18).build());
     }
 
     private void addButton(String name, String tip, Runnable action) {
@@ -82,7 +77,7 @@ public final class ModernOptConfigScreen extends Screen {
             action.run();
             save();
             rebuild();
-        }).bounds(columnX, y, columnWidth, 20).tooltip(Tooltip.create(Component.translatable(tip))).build());
+        }).bounds(columnX, y, columnWidth, 18).tooltip(Tooltip.create(Component.translatable(tip))).build());
     }
 
     private Runnable toggle(net.neoforged.neoforge.common.ModConfigSpec.BooleanValue value) {
@@ -116,9 +111,9 @@ public final class ModernOptConfigScreen extends Screen {
     private void cyclePreset() {
         int scale = ModernOptConfig.RENDER_SCALE_PERCENT.get();
         int mode = ModernOptConfig.UPSCALER_MODE.get();
-        if (scale == 100 && mode == 2) { setPreset(85, 1); }
-        else if (scale == 85 && mode == 1) { setPreset(70, 1); }
-        else if (scale == 70 && mode == 1) { setPreset(50, 2); }
+        if (scale == 100 && mode == 2) { setPreset(75, 1); }
+        else if (scale == 75 && mode == 1) { setPreset(60, 1); }
+        else if (scale == 60 && mode == 1) { setPreset(50, 2); }
         else if (scale == 50 && mode == 2) { setPreset(35, 0); }
         else setPreset(100, 2);
     }
@@ -132,8 +127,8 @@ public final class ModernOptConfigScreen extends Screen {
         int scale = ModernOptConfig.RENDER_SCALE_PERCENT.get();
         int mode = ModernOptConfig.UPSCALER_MODE.get();
         if (scale == 100 && mode == 2) return "Native";
-        if (scale == 85 && mode == 1) return "Quality";
-        if (scale == 70 && mode == 1) return "Balanced";
+        if (scale == 75 && mode == 1) return "Quality";
+        if (scale == 60 && mode == 1) return "Balanced";
         if (scale == 50 && mode == 2) return "Performance";
         if (scale == 35 && mode == 0) return "Ultra performance";
         return "Custom";
