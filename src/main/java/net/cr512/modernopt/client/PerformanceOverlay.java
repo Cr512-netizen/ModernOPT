@@ -38,6 +38,9 @@ public final class PerformanceOverlay {
     public static void render(GuiGraphics graphics) {
         if (!ModernOptConfig.ENABLED.get()) {
             if (BenchmarkRecorder.isRecording()) BenchmarkRecorder.stop();
+            previousFrameAt = 0L;
+            frameTimeMs = 0.0;
+            FRAME_HISTORY.clear();
             return;
         }
         if (!ModernOptConfig.OVERLAY_ENABLED.get() && !ModernOptConfig.LOGGING_ENABLED.get()
