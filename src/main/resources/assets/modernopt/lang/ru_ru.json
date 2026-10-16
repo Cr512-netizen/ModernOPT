@@ -67,7 +67,7 @@
   "modernopt.option.irisShadowResolution": "Разрешение карт теней",
   "modernopt.option.irisShadowResolution.desc": "Задаёт фиксированное разрешение карт теней Iris в пикселях (512–8192). Включите масштабирование карт теней и перезагрузите шейдерпак.",
   "modernopt.option.shadowFrameSkip": "Динамический пропуск кадров теней",
-  "modernopt.option.shadowFrameSkip.desc": "Обновляет карты теней Iris с заданной частотой, повторно используя предыдущую карту в пропущенных кадрах. Экспериментально: тени могут запаздывать за движущимися объектами.",
+  "modernopt.option.shadowFrameSkip.desc": "Временно отключено ради стабильности: отмена полного прохода теней Iris вызывала устаревшие или пропадающие тени. Теперь тени рендерятся каждый кадр.",
   "modernopt.option.shadowUpdateFps": "Частота обновления теней",
   "modernopt.option.shadowUpdateFps.desc": "Целевая частота обновления теней от 40 до 240 FPS. Если игра работает медленнее цели, тени обновляются каждый кадр.",
   "modernopt.page.render": "Рендеринг",
@@ -135,5 +135,18 @@
   "modernopt.screen.shadow_fps": "Частота обновления теней",
   "modernopt.screen.shadow_fps.tip": "Целевая частота обновления карт теней при включённом пропуске. Низкое значение может снизить нагрузку GPU, но увеличивает запаздывание теней. Влияние: СРЕДНЕЕ.",
   "modernopt.screen.profiling": "Диагностика CPU рендеринга",
-  "modernopt.screen.profiling.tip": "Периодически записывает в latest.log время CPU-операций рендеринга и размеры буферов. Не измеряет выполнение GPU. Влияние: НИЗКОЕ; выключите после сбора данных."
+  "modernopt.screen.profiling.tip": "Периодически записывает в latest.log время CPU-операций рендеринга и размеры буферов. Не измеряет выполнение GPU. Влияние: НИЗКОЕ; выключите после сбора данных.",
+  "modernopt.page.benchmark": "Бенчмарк",
+  "modernopt.page.benchmark.tip": "Запись времени каждого кадра и экспорт отчёта CSV.",
+  "modernopt.sodium.group.performance": "Экранная статистика и бенчмарк",
+  "modernopt.screen.show_one_percent_low": "Показывать 1% low FPS",
+  "modernopt.screen.show_one_percent_low.tip": "Оценка 1% low по самому медленному 1% недавних интервалов кадров. Это оценка на стороне клиента, не замер GPU.",
+  "modernopt.screen.show_p95": "Показывать p95 времени кадра",
+  "modernopt.screen.show_p95.tip": "Показывает 95-й перцентиль недавних интервалов кадров и помогает выявлять рывки.",
+  "modernopt.screen.opacity": "Непрозрачность фона статистики",
+  "modernopt.screen.opacity.tip": "Настройка прозрачности фона экранной статистики от прозрачного до непрозрачного.",
+  "modernopt.screen.benchmark_recording": "Запись бенчмарка в CSV",
+  "modernopt.screen.benchmark_recording.tip": "Начать или остановить запись каждого кадра в config/modernopt-benchmarks/benchmark-*.csv. Записываются интервалы кадров клиента, а не время выполнения GPU.",
+  "modernopt.screen.benchmark_status": "Последний бенчмарк / статус",
+  "modernopt.screen.benchmark_status.tip": "Показывает состояние записи и сводку последнего завершённого замера."
 }
