@@ -9,7 +9,7 @@ import net.minecraft.network.chat.Component;
 
 /** Standalone configuration screen available from the Mods list without Sodium. */
 public final class ModernOptConfigScreen extends Screen {
-    private enum Page { RENDER, OVERLAY, PARTICLES }
+    private enum Page { RENDER, DYNAMIC, OVERLAY, PARTICLES }
     private final Screen parent;
     private Page page = Page.RENDER;
     private int columnX;
@@ -24,15 +24,17 @@ public final class ModernOptConfigScreen extends Screen {
     protected void init() {
         columnWidth = Math.min(360, this.width - 24);
         columnX = (this.width - columnWidth) / 2;
-        int tabWidth = (columnWidth - 8) / 3;
+        int tabWidth = (columnWidth - 12) / 4;
         int y = 30;
         clearWidgets();
         addRenderableWidget(Button.builder(Component.translatable("modernopt.page.render"), b -> { page = Page.RENDER; rebuild(); })
             .bounds(columnX, y, tabWidth, 20).tooltip(Tooltip.create(Component.translatable("modernopt.page.render.tip"))).build());
+        addRenderableWidget(Button.builder(Component.translatable("modernopt.page.dynamic"), b -> { page = Page.DYNAMIC; rebuild(); })
+            .bounds(columnX + (tabWidth + 4), y, tabWidth, 20).tooltip(Tooltip.create(Component.translatable("modernopt.page.dynamic.tip"))).build());
         addRenderableWidget(Button.builder(Component.translatable("modernopt.page.overlay"), b -> { page = Page.OVERLAY; rebuild(); })
-            .bounds(columnX + tabWidth + 4, y, tabWidth, 20).tooltip(Tooltip.create(Component.translatable("modernopt.page.overlay.tip"))).build());
+            .bounds(columnX + (tabWidth + 4) * 2, y, tabWidth, 20).tooltip(Tooltip.create(Component.translatable("modernopt.page.overlay.tip"))).build());
         addRenderableWidget(Button.builder(Component.translatable("modernopt.page.particles"), b -> { page = Page.PARTICLES; rebuild(); })
-            .bounds(columnX + (tabWidth + 4) * 2, y, tabWidth, 20).tooltip(Tooltip.create(Component.translatable("modernopt.page.particles.tip"))).build());
+            .bounds(columnX + (tabWidth + 4) * 3, y, tabWidth, 20).tooltip(Tooltip.create(Component.translatable("modernopt.page.particles.tip"))).build());
 
         int yRow = 51;
         switch (page) {
@@ -45,6 +47,17 @@ public final class ModernOptConfigScreen extends Screen {
                 addRow(yRow, "modernopt.screen.fxaa", "modernopt.screen.fxaa.tip", toggle(ModernOptConfig.FXAA_ENABLED)); yRow += 18;
                 addRow(yRow, "modernopt.screen.ssaa", "modernopt.screen.ssaa.tip", toggle(ModernOptConfig.SSAA_ENABLED)); yRow += 18;
                 addRow(yRow, "modernopt.screen.msaa", "modernopt.screen.msaa.tip", this::cycleMsaa);
+            }
+            case DYNAMIC -> {
+                addRow(yRow, "modernopt.screen.dynamic", "modernopt.screen.dynamic.tip", toggle(ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED)); yRow += 18;
+                addRow(yRow, "modernopt.screen.target_fps", "modernopt.screen.target_fps.tip", this::cycleTargetFps); yRow += 18;
+                addRow(yRow, "modernopt.screen.min_scale", "modernopt.screen.min_scale.tip", this::cycleMinScale); yRow += 18;
+                addRow(yRow, "modernopt.screen.max_scale", "modernopt.screen.max_scale.tip", this::cycleMaxScale); yRow += 18;
+                addRow(yRow, "modernopt.screen.iris_shadow_scale", "modernopt.screen.iris_shadow_scale.tip", toggle(ModernOptConfig.IRIS_SHADOW_SCALE_ENABLED)); yRow += 18;
+                addRow(yRow, "modernopt.screen.iris_shadow_resolution", "modernopt.screen.iris_shadow_resolution.tip", this::cycleIrisShadowResolution); yRow += 18;
+                addRow(yRow, "modernopt.screen.shadow_skip", "modernopt.screen.shadow_skip.tip", toggle(ModernOptConfig.SHADOW_FRAME_SKIP_ENABLED)); yRow += 18;
+                addRow(yRow, "modernopt.screen.shadow_fps", "modernopt.screen.shadow_fps.tip", this::cycleShadowFps); yRow += 18;
+                addRow(yRow, "modernopt.screen.profiling", "modernopt.screen.profiling.tip", toggle(ModernOptConfig.PROFILING_ENABLED));
             }
             case OVERLAY -> {
                 addRow(yRow, "modernopt.screen.overlay", "modernopt.screen.overlay.tip", toggle(ModernOptConfig.OVERLAY_ENABLED)); yRow += 18;
@@ -83,6 +96,14 @@ public final class ModernOptConfigScreen extends Screen {
         return switch (key) {
             case "modernopt.screen.master" -> onOff(ModernOptConfig.ENABLED.get());
             case "modernopt.screen.dynamic" -> onOff(ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED.get());
+            case "modernopt.screen.target_fps" -> ModernOptConfig.DYNAMIC_TARGET_FPS.get() + " FPS";
+            case "modernopt.screen.min_scale" -> ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.get() + "%";
+            case "modernopt.screen.max_scale" -> ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.get() + "%";
+            case "modernopt.screen.iris_shadow_scale" -> onOff(ModernOptConfig.IRIS_SHADOW_SCALE_ENABLED.get());
+            case "modernopt.screen.iris_shadow_resolution" -> ModernOptConfig.IRIS_SHADOW_RESOLUTION.get() + " px";
+            case "modernopt.screen.shadow_skip" -> onOff(ModernOptConfig.SHADOW_FRAME_SKIP_ENABLED.get());
+            case "modernopt.screen.shadow_fps" -> ModernOptConfig.SHADOW_UPDATE_FPS.get() + " FPS";
+            case "modernopt.screen.profiling" -> onOff(ModernOptConfig.PROFILING_ENABLED.get());
             case "modernopt.screen.fxaa" -> onOff(ModernOptConfig.FXAA_ENABLED.get());
             case "modernopt.screen.ssaa" -> onOff(ModernOptConfig.SSAA_ENABLED.get());
             case "modernopt.screen.overlay" -> onOff(ModernOptConfig.OVERLAY_ENABLED.get());
@@ -155,8 +176,33 @@ public final class ModernOptConfigScreen extends Screen {
     }
 
     private void cycleLogInterval() {
-        int value = ModernOptConfig.LOG_INTERVAL_SECONDS.get();
-        ModernOptConfig.LOG_INTERVAL_SECONDS.set(value >= 10 ? 1 : value + 1);
+        int[] values = {1, 2, 3, 5, 10, 15, 30, 60};
+        ModernOptConfig.LOG_INTERVAL_SECONDS.set(nextValue(values, ModernOptConfig.LOG_INTERVAL_SECONDS.get()));
+    }
+
+    private int nextValue(int[] values, int current) {
+        for (int i = 0; i < values.length; i++) if (values[i] == current) return values[(i + 1) % values.length];
+        return values[0];
+    }
+
+    private void cycleTargetFps() {
+        ModernOptConfig.DYNAMIC_TARGET_FPS.set(nextValue(new int[]{30, 45, 60, 90, 120, 144, 165, 240, 360, 540}, ModernOptConfig.DYNAMIC_TARGET_FPS.get()));
+    }
+
+    private void cycleMinScale() {
+        ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.set(nextValue(new int[]{25, 35, 50, 60, 75, 100}, ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.get()));
+    }
+
+    private void cycleMaxScale() {
+        ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.set(nextValue(new int[]{25, 35, 50, 60, 75, 100}, ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.get()));
+    }
+
+    private void cycleIrisShadowResolution() {
+        ModernOptConfig.IRIS_SHADOW_RESOLUTION.set(nextValue(new int[]{512, 768, 1024, 1536, 2048, 3072, 4096, 8192}, ModernOptConfig.IRIS_SHADOW_RESOLUTION.get()));
+    }
+
+    private void cycleShadowFps() {
+        ModernOptConfig.SHADOW_UPDATE_FPS.set(nextValue(new int[]{40, 60, 90, 120, 144, 180, 240}, ModernOptConfig.SHADOW_UPDATE_FPS.get()));
     }
 
     private void cyclePosition() {
