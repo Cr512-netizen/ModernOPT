@@ -9,6 +9,7 @@ public final class ModernOptConfig {
     public static final ModConfigSpec.BooleanValue OVERLAY_ENABLED;
     public static final ModConfigSpec.BooleanValue LOGGING_ENABLED;
     public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_FPS;
+    public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_CPU;
     public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_FRAME_TIME;
     public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_MEMORY;
     public static final ModConfigSpec.BooleanValue OVERLAY_SHOW_RENDER_INFO;
@@ -39,6 +40,7 @@ public final class ModernOptConfig {
         OVERLAY_ENABLED = BUILDER.comment("Show the configurable performance overlay in-game.").define("overlayEnabled", true);
         LOGGING_ENABLED = BUILDER.comment("Append performance samples to config/modernopt-performance.txt.").define("loggingEnabled", false);
         OVERLAY_SHOW_FPS = BUILDER.define("overlayShowFps", true);
+        OVERLAY_SHOW_CPU = BUILDER.define("overlayShowCpu", true);
         OVERLAY_SHOW_FRAME_TIME = BUILDER.define("overlayShowFrameTime", true);
         OVERLAY_SHOW_MEMORY = BUILDER.define("overlayShowMemory", true);
         OVERLAY_SHOW_RENDER_INFO = BUILDER.define("overlayShowRenderInfo", true);
