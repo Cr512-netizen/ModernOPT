@@ -23,7 +23,7 @@ public abstract class ParticleRenderDistanceMixin {
 
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
     private void modernopt$cullDistantParticle(VertexConsumer consumer, Camera camera, float partialTick, CallbackInfo ci) {
-        if (!ModernOptConfig.PARTICLE_CULLING_ENABLED.get()) return;
+        if (!ModernOptConfig.ENABLED.get() || !ModernOptConfig.PARTICLE_CULLING_ENABLED.get()) return;
         Vec3 cameraPos = camera.getPosition();
         double distance = ModernOptConfig.PARTICLE_RENDER_DISTANCE.get();
         if (cameraPos.distanceToSqr(this.x, this.y, this.z) > distance * distance) ci.cancel();
