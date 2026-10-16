@@ -190,11 +190,15 @@ public final class ModernOptConfigScreen extends Screen {
     }
 
     private void cycleMinScale() {
-        ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.set(nextValue(new int[]{25, 35, 50, 60, 75, 100}, ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.get()));
+        int next = nextValue(new int[]{25, 35, 50, 60, 75, 100}, ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.get());
+        ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.set(next);
+        if (ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.get() < next) ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.set(next);
     }
 
     private void cycleMaxScale() {
-        ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.set(nextValue(new int[]{25, 35, 50, 60, 75, 100}, ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.get()));
+        int next = nextValue(new int[]{25, 35, 50, 60, 75, 100}, ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.get());
+        ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.set(next);
+        if (ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.get() > next) ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.set(next);
     }
 
     private void cycleIrisShadowResolution() {
