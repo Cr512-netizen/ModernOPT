@@ -16,6 +16,7 @@ import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.client.event.RegisterShadersEvent;
 import org.joml.Matrix4f;
+import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
@@ -28,6 +29,8 @@ import org.slf4j.LoggerFactory;
 public final class Fsr1Renderer {
     private static ShaderInstance easu;
     private static ShaderInstance easuNative;
+    private static ShaderInstance easuFp16;
+    private static ShaderInstance rcasFp16;
     private static ShaderInstance rcas;
     private static ShaderInstance bilinear;
     private static ShaderInstance nearest;
@@ -43,6 +46,8 @@ public final class Fsr1Renderer {
     private static boolean fxaaFailureLogged;
     private static boolean nativeEasuFailed;
     private static boolean nativeEasuFailureLogged;
+    private static boolean fp16FsrFailed;
+    private static boolean fp16FsrFailureLogged;
 
     private Fsr1Renderer() {}
 
@@ -57,17 +62,37 @@ public final class Fsr1Renderer {
         renderFailureLogged = false;
         nativeEasuFailed = false;
         nativeEasuFailureLogged = false;
+        fp16FsrFailed = false;
+        fp16FsrFailureLogged = false;
         registerShader(event, "easu", shader -> easu = shader);
         // Native textureGather is substantially cheaper than emulating each gather
         // with four texelFetch calls. If the driver/mod shader pipeline rejects it,
         // the explicit-gather shader above remains the compatibility fallback.
         registerShader(event, "easu_native", shader -> easuNative = shader);
+        // Optional fast path for NVIDIA GPUs with native FP16 arithmetic.
+        // Other GPUs continue using the portable FP32 shaders.
+        if (supportsNvFp16()) {
+            registerShader(event, "easu_fp16", shader -> easuFp16 = shader);
+            registerShader(event, "rcas_fp16", shader -> rcasFp16 = shader);
+        } else {
+            easuFp16 = null;
+            rcasFp16 = null;
+        }
         registerShader(event, "rcas", shader -> rcas = shader);
         registerShader(event, "bilinear", shader -> bilinear = shader);
         registerShader(event, "nearest", shader -> nearest = shader);
         registerShader(event, "softscale", shader -> softscale = shader);
         registerShader(event, "fxaa", shader -> fxaa = shader);
         registerShader(event, "ssaa_downsample", shader -> ssaaDownsample = shader);
+    }
+
+    private static boolean supportsNvFp16() {
+        try {
+            return GL.getCapabilities().GL_NV_gpu_shader5;
+        } catch (IllegalStateException noCurrentContext) {
+            // Some launch paths can register shaders before a context is current.
+            return false;
+        }
     }
 
     private static void registerShader(RegisterShadersEvent event, String name, Consumer<ShaderInstance> setter) {
@@ -83,6 +108,8 @@ public final class Fsr1Renderer {
             switch (name) {
                 case "easu" -> easu = null;
                 case "easu_native" -> easuNative = null;
+                case "easu_fp16" -> easuFp16 = null;
+                case "rcas_fp16" -> rcasFp16 = null;
                 case "rcas" -> rcas = null;
                 case "bilinear" -> bilinear = null;
                 case "nearest" -> nearest = null;
@@ -114,7 +141,8 @@ public final class Fsr1Renderer {
         // If FSR1 shaders are unavailable, fall back to bilinear rather than leaving
         // the world unresolved. The no-upscaler mode above remains shader-free.
         ShaderInstance easuShader = easuNative != null && !nativeEasuFailed ? easuNative : easu;
-        boolean useFsr1 = mode == 1 && easuShader != null && rcas != null;
+        boolean useFp16Fsr = mode == 1 && !fp16FsrFailed && easuFp16 != null && rcasFp16 != null;
+        boolean useFsr1 = mode == 1 && (useFp16Fsr || (easuShader != null && rcas != null));
         int effectiveMode = mode == 1 && !useFsr1 ? 2 : mode;
         ShaderInstance simpleShader = switch (effectiveMode) {
             case 2 -> bilinear;
@@ -147,21 +175,29 @@ public final class Fsr1Renderer {
                 }
             }
             if (useFsr1) {
-                try {
-                    drawPass(input, intermediate, easuShader, width, height, true);
-                } catch (RuntimeException | LinkageError nativeFailure) {
-                    // Some driver/shader-pack translation paths accept the native shader
-                    // at registration but fail when it is first used. Fall back once to
-                    // the portable explicit-fetch shader instead of disabling FSR1.
-                    if (easuShader != easuNative || easu == null) throw nativeFailure;
-                    nativeEasuFailed = true;
-                    if (!nativeEasuFailureLogged) {
-                        nativeEasuFailureLogged = true;
-                        LOGGER.warn("Native-gather FSR1 shader failed during rendering; switching to the explicit-fetch compatibility shader.", nativeFailure);
+                if (useFp16Fsr) {
+                    try {
+                        drawPass(input, intermediate, easuFp16, width, height, true);
+                        drawPass(intermediate, output, rcasFp16, width, height, false);
+                    } catch (RuntimeException | LinkageError fp16Failure) {
+                        // FP16 is an optimization, never a requirement. Fall back on
+                        // this frame and disable the path for the current resource load.
+                        fp16FsrFailed = true;
+                        if (!fp16FsrFailureLogged) {
+                            fp16FsrFailureLogged = true;
+                            LOGGER.warn("FP16 FSR1 path failed at runtime; falling back to FP32.", fp16Failure);
+                        }
+                        if (easuShader != null && rcas != null) {
+                            drawFsr1Fp32(input, output, width, height, easuShader);
+                        } else if (bilinear != null) {
+                            drawPass(input, output, bilinear, width, height, false);
+                        } else {
+                            throw fp16Failure;
+                        }
                     }
-                    drawPass(input, intermediate, easu, width, height, true);
+                } else {
+                    drawFsr1Fp32(input, output, width, height, easuShader);
                 }
-                drawPass(intermediate, output, rcas, width, height, false);
             } else {
                 drawPass(input, output, simpleShader, width, height, false);
             }
@@ -184,6 +220,24 @@ public final class Fsr1Renderer {
         }
     }
 
+
+    private static void drawFsr1Fp32(RenderTarget input, RenderTarget output, int width, int height,
+                                      ShaderInstance easuShader) {
+        try {
+            drawPass(input, intermediate, easuShader, width, height, true);
+        } catch (RuntimeException | LinkageError nativeFailure) {
+            // Some drivers accept textureGather during registration but fail when
+            // first used. Keep the explicit-fetch shader as a compatibility fallback.
+            if (easuShader != easuNative || easu == null) throw nativeFailure;
+            nativeEasuFailed = true;
+            if (!nativeEasuFailureLogged) {
+                nativeEasuFailureLogged = true;
+                LOGGER.warn("Native-gather FSR1 shader failed during rendering; switching to the explicit-fetch compatibility shader.", nativeFailure);
+            }
+            drawPass(input, intermediate, easu, width, height, true);
+        }
+        drawPass(intermediate, output, rcas, width, height, false);
+    }
 
     /**
      * Applies FXAA to an already-rendered world image. The intermediate target

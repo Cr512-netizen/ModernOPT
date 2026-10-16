@@ -33,7 +33,12 @@ AU4 fsrConst0 = AU4(floatBitsToUint(sharpness), packFloat2x16(AH2(sharpness)), 0
 #else
 // FsrRcasF only uses the 32-bit sharpness in con.x. Avoid generating the unused
 // half-float constants, which require packing functions absent from GLSL 330.
+#ifdef A_HALF
+AF1 sharpness = RENDERSCALE_RCAS_GAIN;
+AU4 fsrConst0 = AU4(floatBitsToUint(sharpness), packFloat2x16(AH2(sharpness)), 0u, 0u);
+#else
 AU4 fsrConst0 = AU4(floatBitsToUint(RENDERSCALE_RCAS_GAIN), 0u, 0u, 0u);
+#endif
 #endif
 
 FSR_COLOUR colour;
