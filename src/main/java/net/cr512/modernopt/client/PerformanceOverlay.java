@@ -6,6 +6,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.neoforged.fml.loading.FMLPaths;
+import java.lang.management.ManagementFactory;
+import com.sun.management.OperatingSystemMXBean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,6 +43,10 @@ public final class PerformanceOverlay {
 
         List<String> lines = new ArrayList<>();
         if (ModernOptConfig.OVERLAY_SHOW_FPS.get()) lines.add("FPS: " + minecraft.getFps());
+        if (ModernOptConfig.OVERLAY_SHOW_CPU.get()) {
+            OperatingSystemMXBean os = operatingSystem();
+            if (os != null) lines.add("CPU process/system: " + percent(os.getProcessCpuLoad()) + " / " + percent(os.getCpuLoad()));
+        }
         if (ModernOptConfig.OVERLAY_SHOW_FRAME_TIME.get() && frameTimeMs > 0) {
             lines.add(String.format(Locale.ROOT, "Frame time: %.2f ms", frameTimeMs));
         }
@@ -69,6 +75,15 @@ public final class PerformanceOverlay {
         if (ModernOptConfig.LOGGING_ENABLED.get()) writeSample(now, minecraft);
     }
 
+    private static OperatingSystemMXBean operatingSystem() {
+        java.lang.management.OperatingSystemMXBean bean = ManagementFactory.getOperatingSystemMXBean();
+        return bean instanceof OperatingSystemMXBean os ? os : null;
+    }
+
+    private static String percent(double load) {
+        return load < 0 ? "n/a" : Math.round(load * 100.0) + "%";
+    }
+
     private static void drawLines(GuiGraphics graphics, Minecraft minecraft, List<String> lines) {
         if (lines.isEmpty()) return;
         int corner = ModernOptConfig.OVERLAY_POSITION.get();
@@ -93,8 +108,10 @@ public final class PerformanceOverlay {
         Runtime runtime = Runtime.getRuntime();
         long used = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L);
         String line = String.format(Locale.ROOT,
-            "%s | fps=%d | frameTimeMs=%.2f | ramUsedMB=%d | ramAllocatedMB=%d | ramMaxMB=%d | enabled=%s | renderScale=%d%% | upscaler=%d | particleCulling=%s | particleDistance=%d%n",
-            LocalDateTime.now().format(TIME), minecraft.getFps(), frameTimeMs, used,
+            "%s | fps=%d | cpuProcess=%s | cpuSystem=%s | frameTimeMs=%.2f | ramUsedMB=%d | ramAllocatedMB=%d | ramMaxMB=%d | enabled=%s | renderScale=%d%% | upscaler=%d | particleCulling=%s | particleDistance=%d%n",
+            LocalDateTime.now().format(TIME), minecraft.getFps(),
+            operatingSystem() == null ? "n/a" : percent(operatingSystem().getProcessCpuLoad()),
+            operatingSystem() == null ? "n/a" : percent(operatingSystem().getCpuLoad()), frameTimeMs, used,
             runtime.totalMemory() / (1024L * 1024L), runtime.maxMemory() / (1024L * 1024L),
             ModernOptConfig.ENABLED.get(), ModernOptConfig.RENDER_SCALE_PERCENT.get(),
             ModernOptConfig.UPSCALER_MODE.get(), ModernOptConfig.PARTICLE_CULLING_ENABLED.get(),
