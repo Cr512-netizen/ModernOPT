@@ -3,7 +3,7 @@ package net.cr512.modernopt.mixin;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.minecraft.client.Camera;
-import net.minecraft.client.particle.Particle;
+import net.minecraft.client.particle.TextureSheetParticle;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * Optional draw-distance culling only: particles keep ticking and are not removed,
  * so enabling this cannot change gameplay or particle simulation.
  */
-@Mixin(Particle.class)
+@Mixin(TextureSheetParticle.class)
 public abstract class ParticleRenderDistanceMixin {
     @Shadow protected double x;
     @Shadow protected double y;
