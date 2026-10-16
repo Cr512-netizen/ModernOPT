@@ -5,6 +5,13 @@ import net.cr512.modernopt.config.ModernOptConfig;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL33;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,6 +58,7 @@ public final class RenderDiagnostics {
     private static volatile boolean lastMainTargetRestored = true;
     private static volatile String lastUpscalerPath = "not sampled";
     private static volatile String lastAuxiliaryTargets = "not sampled";
+    private static volatile String lastIrisTargets = "not sampled";
 
     private RenderDiagnostics() {}
 
@@ -74,10 +82,48 @@ public final class RenderDiagnostics {
         }
     }
 
+    /** Called by optional Iris mixins after its render-target object is constructed/resized. */
+    public static void recordIrisTargets(Object irisTargets) {
+        if (!ModernOptConfig.PROFILING_ENABLED.get() || irisTargets == null) return;
+        List<String> found = new ArrayList<>();
+        IdentityHashMap<Object, Boolean> seen = new IdentityHashMap<>();
+        for (Class<?> type = irisTargets.getClass(); type != null && type != Object.class; type = type.getSuperclass()) {
+            for (Field field : type.getDeclaredFields()) {
+                try {
+                    field.setAccessible(true);
+                    Object value = field.get(irisTargets);
+                    collectTargetDimensions(field.getName(), value, found, seen);
+                } catch (RuntimeException | IllegalAccessException ignored) {
+                    // Diagnostics must never break Iris resource creation.
+                }
+            }
+        }
+        lastIrisTargets = found.isEmpty() ? "no RenderTarget fields found in " + irisTargets.getClass().getSimpleName()
+            : String.join("|", found);
+    }
+
+    private static void collectTargetDimensions(String name, Object value, List<String> found,
+                                                IdentityHashMap<Object, Boolean> seen) {
+        if (value == null || seen.put(value, Boolean.TRUE) != null) return;
+        if (value instanceof RenderTarget target) {
+            found.add(name + "=" + target.width + "x" + target.height);
+            return;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            int index = 0;
+            for (Object element : iterable) collectTargetDimensions(name + "[" + index++ + "]", element, found, seen);
+            return;
+        }
+        if (value.getClass().isArray()) {
+            int length = Array.getLength(value);
+            for (int i = 0; i < length; i++) collectTargetDimensions(name + "[" + i + "]", Array.get(value, i), found, seen);
+        }
+    }
+
     public static void recordFrameState(boolean mainTargetRestored, String upscalerPath, String auxiliaryTargets) {
         lastMainTargetRestored = mainTargetRestored;
         lastUpscalerPath = upscalerPath == null ? "unknown" : upscalerPath;
-        lastAuxiliaryTargets = auxiliaryTargets == null ? "unknown" : auxiliaryTargets;
+        lastAuxiliaryTargets = (auxiliaryTargets == null ? "unknown" : auxiliaryTargets) + "; irisTargets=" + lastIrisTargets;
     }
 
     public static void endFrame(int nativeWidth, int nativeHeight, int renderWidth, int renderHeight,
