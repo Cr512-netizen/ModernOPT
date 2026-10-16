@@ -60,7 +60,8 @@ public final class RenderDiagnostics {
         if (frameStartedAt == 0L) return;
 
         long now = System.nanoTime();
-        long frameNanos = Math.max(0L, now - frameStartedAt);
+        long worldPassEnd = postStartedAt == 0L ? now : postStartedAt;
+        long frameNanos = Math.max(0L, worldPassEnd - frameStartedAt);
         long postNanos = postStartedAt == 0L ? 0L : Math.max(0L, now - postStartedAt);
         lastFrameCpuMs = frameNanos / 1_000_000.0;
         lastPostCpuMs = postNanos / 1_000_000.0;
