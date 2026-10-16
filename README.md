@@ -29,7 +29,8 @@
 ## Features
 
 - **Render-scale control:** adjust the internal world-render resolution from 25% to 100% of the window resolution.
-- **Spatial upscalers:** FSR 1 (EASU + RCAS), bilinear, nearest-neighbour, and SoftScale reconstruction modes.
+- **Render hot-path cleanup:** Iris API reflection is cached after first discovery rather than repeating class and method lookup every frame.
+- **Spatial upscalers:** FSR 1 (EASU + RCAS) prefers the native GPU `textureGather` fast path, with the explicit-fetch shader retained as a compatibility fallback; bilinear, nearest-neighbour, and SoftScale reconstruction modes are also available.
 - **SSAA:** optional 2× width and 2× height world rendering followed by downsampling. This processes four times as many world pixels and can be expensive. SSAA takes priority over render scale and MSAA.
 - **MSAA:** optional world-pass multisampling with Off, 2×, 4×, 8×, and 16× choices; if 16× is unavailable, ModernOPT retries at 8×.
 - **FXAA:** optional post-process edge smoothing.
