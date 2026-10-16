@@ -148,5 +148,13 @@
   "modernopt.screen.benchmark_recording": "CSV benchmark capture",
   "modernopt.screen.benchmark_recording.tip": "Start or stop recording one row per rendered HUD frame to config/modernopt-benchmarks/benchmark-*.csv. This records client frame intervals, not GPU execution time.",
   "modernopt.screen.benchmark_status": "Last benchmark / current status",
-  "modernopt.screen.benchmark_status.tip": "Shows whether a capture is active and the summary from the last finished capture."
+  "modernopt.screen.benchmark_status.tip": "Shows whether a capture is active and the summary from the last finished capture.",
+  "modernopt.screen.diag_sample_interval": "Sampling interval",
+  "modernopt.screen.diag_sample_interval.tip": "Write one CSV row every Nth frame to reduce overhead at the cost of fewer samples.",
+  "modernopt.screen.benchmark_duration": "Capture duration",
+  "modernopt.screen.benchmark_duration.tip": "Automatically stop CSV capture after this duration; 0 means stop manually.",
+  "modernopt.screen.benchmark_cpu": "Capture CPU load",
+  "modernopt.screen.benchmark_cpu.tip": "Include process and system CPU load in CSV; disable to reduce measured overhead.",
+  "modernopt.screen.benchmark_memory": "Capture memory",
+  "modernopt.screen.benchmark_memory.tip": "Include Java heap usage in CSV; disable to omit these measurements."
 }
