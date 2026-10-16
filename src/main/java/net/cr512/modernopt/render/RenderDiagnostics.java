@@ -59,6 +59,7 @@ public final class RenderDiagnostics {
     private static volatile String lastUpscalerPath = "not sampled";
     private static volatile String lastAuxiliaryTargets = "not sampled";
     private static volatile String lastIrisTargets = "not sampled";
+    private static long lastIrisInspectionAt;
 
     private RenderDiagnostics() {}
 
@@ -85,6 +86,11 @@ public final class RenderDiagnostics {
     /** Called by optional Iris mixins after its render-target object is constructed/resized. */
     public static void recordIrisTargets(Object irisTargets) {
         if (!ModernOptConfig.PROFILING_ENABLED.get() || irisTargets == null) return;
+        long now = System.nanoTime();
+        // Iris may check target dimensions every frame; keep reflection strictly
+        // diagnostic and throttle it so enabling profiling does not add per-frame scans.
+        if (lastIrisInspectionAt != 0L && now - lastIrisInspectionAt < 5_000_000_000L) return;
+        lastIrisInspectionAt = now;
         List<String> found = new ArrayList<>();
         IdentityHashMap<Object, Boolean> seen = new IdentityHashMap<>();
         for (Class<?> type = irisTargets.getClass(); type != null && type != Object.class; type = type.getSuperclass()) {
