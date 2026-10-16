@@ -36,6 +36,7 @@ public final class BenchmarkRecorder {
     private static Path outputFile;
     private static long startedAt;
     private static long frames;
+    private static long observedFrames;
     private static long lastFlushAt;
     private static String lastResult = "Not run";
     private static String lastError = "";
@@ -64,6 +65,7 @@ public final class BenchmarkRecorder {
             startedAt = System.nanoTime();
             lastFlushAt = startedAt;
             frames = 0;
+            observedFrames = 0;
             FRAME_TIMES.clear();
             WORLD_CPU_TIMES.clear();
             POST_CPU_TIMES.clear();
@@ -78,11 +80,23 @@ public final class BenchmarkRecorder {
 
     /** Called once per HUD render. */
     public static void sample(long now, Minecraft minecraft, double frameTimeMs) {
-        if (!isRecording() || frameTimeMs <= 0 || !Double.isFinite(frameTimeMs)) return;
+        if (!isRecording()) return;
+        observedFrames++;
+        long elapsedNanos = now - startedAt;
+        int durationSeconds = ModernOptConfig.BENCHMARK_DURATION_SECONDS.get();
+        if (durationSeconds > 0 && elapsedNanos >= durationSeconds * 1_000_000_000L) {
+            stop();
+            return;
+        }
+        int sampleInterval = ModernOptConfig.DIAGNOSTICS_SAMPLE_INTERVAL_FRAMES.get();
+        if (observedFrames % Math.max(1, sampleInterval) != 0) return;
+        if (frameTimeMs <= 0 || !Double.isFinite(frameTimeMs)) return;
         Runtime runtime = Runtime.getRuntime();
-        long usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L);
-        long allocatedMb = runtime.totalMemory() / (1024L * 1024L);
-        OperatingSystemMXBean os = operatingSystem();
+        long usedMb = ModernOptConfig.BENCHMARK_CAPTURE_MEMORY.get()
+            ? (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L) : -1;
+        long allocatedMb = ModernOptConfig.BENCHMARK_CAPTURE_MEMORY.get()
+            ? runtime.totalMemory() / (1024L * 1024L) : -1;
+        OperatingSystemMXBean os = ModernOptConfig.BENCHMARK_CAPTURE_CPU.get() ? operatingSystem() : null;
         double processCpu = os == null ? -1 : os.getProcessCpuLoad() * 100.0;
         double systemCpu = os == null ? -1 : os.getCpuLoad() * 100.0;
 
