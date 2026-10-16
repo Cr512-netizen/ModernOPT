@@ -66,11 +66,6 @@ public final class ModernOptConfigScreen extends Screen {
             .bounds(columnX, this.height - 22, columnWidth, 18).build());
     }
 
-    private void addButton(String name, String tip, Runnable action) {
-        addRenderableWidget(Button.builder(Component.translatable(name), b -> action.run())
-            .bounds(columnX, rowY, columnWidth, 20).tooltip(Tooltip.create(Component.translatable(tip))).build());
-    }
-
     private void addRow(int y, String name, String tip, Runnable action) {
         String current = currentValue(name);
         addRenderableWidget(Button.builder(Component.literal(Component.translatable(name).getString() + ": " + current), b -> {
