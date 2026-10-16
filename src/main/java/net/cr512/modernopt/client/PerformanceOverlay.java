@@ -118,6 +118,22 @@ public final class PerformanceOverlay {
                 lines.add("Particle culling: " + (ModernOptConfig.PARTICLE_CULLING_ENABLED.get()
                     ? ModernOptConfig.PARTICLE_RENDER_DISTANCE.get() + " blocks" : "off"));
             }
+            if (ModernOptConfig.PROFILING_ENABLED.get() || BenchmarkRecorder.isRecording()) {
+                double p95FrameTimeMs = 0.0;
+                if (FRAME_HISTORY.size() >= 10) {
+                    double[] times = FRAME_HISTORY.stream().mapToDouble(Double::doubleValue).sorted().toArray();
+                    p95FrameTimeMs = times[Math.min(times.length - 1, (int) Math.ceil(times.length * 0.95) - 1)];
+                }
+                OperatingSystemMXBean os = operatingSystem();
+                double processCpuPercent = os == null ? -1.0 : os.getProcessCpuLoad() * 100.0;
+                Runtime runtime = Runtime.getRuntime();
+                long heapUsedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L);
+                long heapMaxMb = runtime.maxMemory() / (1024L * 1024L);
+                lines.add(Component.translatable(PerformanceAdvisor.recommendation(
+                    p95FrameTimeMs, processCpuPercent, heapUsedMb, heapMaxMb,
+                    RenderDiagnostics.lastShaderPackInUse()
+                )).getString());
+            }
             drawLines(graphics, minecraft, lines);
         }
         if (ModernOptConfig.LOGGING_ENABLED.get()) writeSample(now, minecraft);
