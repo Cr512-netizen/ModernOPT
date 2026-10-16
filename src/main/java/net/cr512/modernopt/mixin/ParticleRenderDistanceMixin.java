@@ -6,7 +6,6 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.particle.TextureSheetParticle;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -17,15 +16,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(TextureSheetParticle.class)
 public abstract class ParticleRenderDistanceMixin {
-    @Shadow protected double x;
-    @Shadow protected double y;
-    @Shadow protected double z;
-
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
     private void modernopt$cullDistantParticle(VertexConsumer consumer, Camera camera, float partialTick, CallbackInfo ci) {
         if (!ModernOptConfig.ENABLED.get() || !ModernOptConfig.PARTICLE_CULLING_ENABLED.get()) return;
         Vec3 cameraPos = camera.getPosition();
         double distance = ModernOptConfig.PARTICLE_RENDER_DISTANCE.get();
-        if (cameraPos.distanceToSqr(this.x, this.y, this.z) > distance * distance) ci.cancel();
+        ParticleAccessor particle = (ParticleAccessor) (Object) this;
+        if (cameraPos.distanceToSqr(particle.modernopt$getX(), particle.modernopt$getY(), particle.modernopt$getZ())
+            > distance * distance) {
+            ci.cancel();
+        }
     }
 }
