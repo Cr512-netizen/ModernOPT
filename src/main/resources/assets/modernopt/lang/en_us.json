@@ -112,5 +112,10 @@
   "modernopt.screen.particle_distance": "Particle draw distance",
   "modernopt.screen.particle_distance.tip": "Maximum distance in blocks at which particles are drawn. Lower values hide distant effects sooner; does not alter particle simulation.",
   "modernopt.screen.show_cpu": "Show CPU usage",
-  "modernopt.screen.show_cpu.tip": "Shows approximate Java-process and whole-system CPU load when the Java runtime exposes it. It may show n/a on unsupported runtimes. Low overhead; this is not GPU utilization."
+  "modernopt.screen.show_cpu.tip": "Shows approximate Java-process and whole-system CPU load when the Java runtime exposes it. It may show n/a on unsupported runtimes. Low overhead; this is not GPU utilization.",
+  "modernopt.profile.native": "Native",
+  "modernopt.position.top_left": "Top left",
+  "modernopt.position.top_right": "Top right",
+  "modernopt.position.bottom_left": "Bottom left",
+  "modernopt.position.bottom_right": "Bottom right"
 }
