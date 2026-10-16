@@ -377,7 +377,9 @@ public abstract class GameRendererMixin {
                 }
             }
 
-            if (!this.modernopt$shaderPackInUseThisFrame && ModernOptConfig.FXAA_ENABLED.get()) {
+            // SSAA already reconstructs the full frame; avoid a redundant FXAA pass.
+            if (!this.modernopt$shaderPackInUseThisFrame && !this.modernopt$ssaaActive
+                && ModernOptConfig.FXAA_ENABLED.get()) {
                 Fsr1Renderer.applyFxaa(this.modernopt$originalTarget);
             }
         } finally {
