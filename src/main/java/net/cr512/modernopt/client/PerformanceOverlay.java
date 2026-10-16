@@ -113,6 +113,13 @@ public final class PerformanceOverlay {
                 if (ModernOptConfig.PROFILING_ENABLED.get()) {
                     lines.add(String.format(Locale.ROOT, "World CPU: %.2f ms · post CPU: %.2f ms",
                         RenderDiagnostics.lastFrameCpuMs(), RenderDiagnostics.lastPostCpuMs()));
+                    double gpuWorldMs = RenderDiagnostics.lastGpuWorldMs();
+                    double gpuPostMs = RenderDiagnostics.lastGpuPostMs();
+                    lines.add(gpuWorldMs < 0 || gpuPostMs < 0 ? "GPU world/post: waiting for async query"
+                        : String.format(Locale.ROOT, "GPU world/post: %.2f / %.2f ms", gpuWorldMs, gpuPostMs));
+                    lines.add("Main target restored: " + RenderDiagnostics.lastMainTargetRestored());
+                    lines.add("Upscaler path: " + RenderDiagnostics.lastUpscalerPath());
+                    lines.add("Aux targets: " + RenderDiagnostics.lastAuxiliaryTargets());
                     lines.add("Shader pack active: " + RenderDiagnostics.lastShaderPackInUse());
                 }
                 lines.add("Particle culling: " + (ModernOptConfig.PARTICLE_CULLING_ENABLED.get()
