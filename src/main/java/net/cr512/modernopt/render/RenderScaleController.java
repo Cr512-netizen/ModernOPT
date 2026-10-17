@@ -4,12 +4,6 @@ import net.cr512.modernopt.config.ModernOptConfig;
 
 /** Bounded FPS-targeted world render scale. HUD and GUI keep native resolution. */
 public final class RenderScaleController {
-    /**
-     * Temporary safety rollback: the custom render-target pipeline has shown
-     * visual corruption and no verified performance gain. Keep it off until
-     * an in-game validated implementation is ready.
-     */
-    public static final boolean RENDER_PIPELINE_ENABLED = false;
     private static final int MIN_WIDTH = 320;
     private static final int MIN_HEIGHT = 180;
     private static final long ADJUST_INTERVAL_NANOS = 1_500_000_000L;
@@ -26,7 +20,9 @@ public final class RenderScaleController {
     private RenderScaleController() {}
 
     public static boolean isEnabled() {
-        return RENDER_PIPELINE_ENABLED && ModernOptConfig.ENABLED.get() && (ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED.get() || ModernOptConfig.RENDER_SCALE_PERCENT.get() < 100);
+        // The pipeline is opt-in through the master switch (disabled by default).
+        // A hard-coded false here made render scale impossible to test at all.
+        return ModernOptConfig.ENABLED.get() && (ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED.get() || ModernOptConfig.RENDER_SCALE_PERCENT.get() < 100);
     }
 
     public static int effectivePercent() {
