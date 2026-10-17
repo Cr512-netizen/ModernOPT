@@ -1,6 +1,6 @@
 # ModernOPT render-pipeline rewrite plan
 
-Status: staged rewrite proposal for Minecraft 1.21.1 / NeoForge with Sodium and Iris. This document is a plan, not a claim that the new renderer is already implemented or validated in-game.
+Status: implementation work is on `fix/shadow-cache-render-architecture`; custom rendering remains disabled by default pending in-game validation. This document distinguishes code/CI completion from the remaining live Minecraft tests.
 
 ## Why the current path must be replaced
 
@@ -27,28 +27,38 @@ The Iris shadow throttling prototype also demonstrated an unsafe assumption: can
 ## Staged implementation
 
 ### Stage A — safety and observability
+
+Implementation status: **code changes present on the feature branch; live Iris/Complementary validation still required**.
 - Keep the experimental custom world-render path disabled until it passes a live shader-pack test.
 - Cache Iris shadow refreshes as one unit: suppress shadow-target clears and shadow compute passes, skip only the shadow geometry/composite method, retain its previous MODELVIEW/PROJECTION matrices, and still run Iris' non-shadow PREPARE stage. Fail open on unknown target lifecycle or required full clear.
 - Make MSAA color resolve lazy and cached until the target is written again; cap the supported UI/config range at 8x and fall back to the highest successfully allocated level (8x → 4x → 2x).
 - Keep build/test artifacts on a separate feature branch; never merge to the default branch without review.
 
 ### Stage B — target and policy extraction
+
+Implementation status: **implemented on the feature branch; CI build passes**. `RenderTargetManager`, `FramebufferBlitter`, `RenderPipelinePolicy`, `WorldPostProcessStage`, and `WorldUpscalePass` now separate ownership, policy, and final composition. The custom pipeline remains guarded off until live tests.
 - Extract target allocation/reuse/destruction into `RenderTargetManager`; the manager owns only ModernOPT targets and releases them when `GameRenderer` closes.
 - Extract fixed-function and textured fallback copies into `FramebufferBlitter`.
 - Move feature precedence into `RenderPipelinePolicy`; keep shader-pack checks explicit at the adapter boundary.
 - Continue reducing `GameRendererMixin` to lifecycle orchestration; do not switch rendering behavior in the same commit as each extraction.
 
 ### Stage C — safe first backend
+
+Implementation status: **fallback and lifecycle guards are implemented; visual acceptance is pending**. Do not mark spatial scaling as complete until window/fullscreen and HUD/hand/player checks pass in-game.
 - Reintroduce only spatial render scaling without shaders, with exact size/viewport restoration and native-resolution HUD.
 - Add resize/fullscreen/resource-reload checks and fallback-to-vanilla behavior.
 - Test 100%, reduced scale, window resize, fullscreen toggles, hand/player visibility, entity outlines, and modded render targets.
 
 ### Stage D — shader-pack adapter
+
+Implementation status: **fail-closed shader detection and diagnostics exist; full compatibility is not yet established**. Shadow caching remains fail-open if Iris invariants cannot be verified.
 - Add an Iris-specific integration only after verifying the exact supported Iris version and target lifecycle.
 - Test Complementary, shadow casters, block entities, hand/player, world transitions, resource reloads, and resize.
 - If any target/matrix invariant fails, disable the integration for that frame rather than corrupting the image.
 
 ### Stage E — post-processing and AA
+
+Implementation status: **FSR1, bilinear, nearest, SoftScale, FXAA, SSAA, and MSAA code paths exist; behavior/performance still require in-game validation**. Fixed policy precedence so FXAA is not applied after SSAA/MSAA when that mode was rejected.
 - Add one post-process backend at a time (bilinear/nearest, then FSR1, then FXAA).
 - Implement MSAA with a clear ownership/resolve contract and no repeated resolves in one frame.
 - Benchmark 2x/4x/8x on the same scene; 8x is the hard maximum.

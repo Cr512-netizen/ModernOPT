@@ -40,7 +40,9 @@ public final class WorldUpscalePass {
         }
 
         // Iris owns shader-pack AA; never add a second FXAA pass to shader output.
-        if (!shaderPackInUse && ModernOptConfig.FXAA_ENABLED.get()) {
+        // Respect the policy's mutually-exclusive AA modes. Reading the config here
+        // alone would accidentally run FXAA after SSAA even when policy rejected it.
+        if (!shaderPackInUse && !ssaaActive && !msaaActive && ModernOptConfig.FXAA_ENABLED.get()) {
             Fsr1Renderer.applyFxaa(originalTarget);
         }
     }

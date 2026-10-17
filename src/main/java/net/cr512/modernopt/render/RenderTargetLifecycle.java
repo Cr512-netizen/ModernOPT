@@ -38,8 +38,8 @@ public final class RenderTargetLifecycle {
             // Validate every target dimension before mutating any target. This avoids
             // leaving half the world pipeline at scaled dimensions if validation fails.
             if (resizeEntity || resizeChain) {
-                if (width > org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL11.GL_MAX_TEXTURE_SIZE)
-                    || height > org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL11.GL_MAX_TEXTURE_SIZE)) {
+                int maxTextureSize = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL11.GL_MAX_TEXTURE_SIZE);
+                if (width > maxTextureSize || height > maxTextureSize) {
                     throw new IllegalArgumentException("Requested auxiliary target exceeds GL_MAX_TEXTURE_SIZE: " + width + "x" + height);
                 }
             }
