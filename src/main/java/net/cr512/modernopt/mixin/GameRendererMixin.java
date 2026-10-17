@@ -14,6 +14,7 @@ import net.cr512.modernopt.render.Fsr1Renderer;
 import net.cr512.modernopt.render.RenderDiagnostics;
 import net.cr512.modernopt.render.MultisampleRenderTarget;
 import net.cr512.modernopt.render.RenderScaleController;
+import net.cr512.modernopt.render.RenderPipelinePolicy;
 import net.cr512.modernopt.render.RenderScalePhase;
 import net.cr512.modernopt.render.RenderTargetLifecycle;
 import net.minecraft.client.Minecraft;
@@ -127,14 +128,18 @@ public abstract class GameRendererMixin {
         this.modernopt$shaderPackInUseThisFrame = modernopt$shaderPackInUse();
         boolean shaderPackInUse = this.modernopt$shaderPackInUseThisFrame;
 
-        boolean ssaaRequested = !shaderPackInUse && ModernOptConfig.SSAA_ENABLED.get();
-        boolean fxaaRequested = !shaderPackInUse && !ssaaRequested && ModernOptConfig.FXAA_ENABLED.get();
-        // AA modes are exclusive: SSAA takes priority, then FXAA, then MSAA.
-        // Shader packs disable only ModernOPT's AA modes, not its upscaler.
-        int samples = (shaderPackInUse || ssaaRequested || fxaaRequested) ? 0 : modernopt$requestedSamples();
-        boolean scalingRequestedInitially = !ssaaRequested && RenderScaleController.isEnabled();
-        boolean scalingRequested = scalingRequestedInitially;
-        if (samples == this.modernopt$failedMsaaRequest) samples = 0;
+        RenderPipelinePolicy.Selection selection = RenderPipelinePolicy.select(
+            shaderPackInUse,
+            RenderScaleController.isEnabled(),
+            ModernOptConfig.SSAA_ENABLED.get(),
+            ModernOptConfig.FXAA_ENABLED.get(),
+            modernopt$requestedSamples(),
+            this.modernopt$failedMsaaRequest
+        );
+        boolean ssaaRequested = selection.ssaa();
+        boolean fxaaRequested = selection.fxaa();
+        boolean scalingRequested = selection.scaling();
+        int samples = selection.msaaSamples();
         if (!scalingRequested && !ssaaRequested && !fxaaRequested && samples == 0) {
             modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
             return;
