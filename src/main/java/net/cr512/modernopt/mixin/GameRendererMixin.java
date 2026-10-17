@@ -149,11 +149,14 @@ public abstract class GameRendererMixin {
         // Targets with stencil attachments are left untouched for compatibility with mods.
         if (samples > 0 && original.isStencilEnabled()) samples = 0;
 
-        // SSAA doubles each dimension. Respect the actual GPU texture limit before allocating.
-        int maxTextureSize = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL11.GL_MAX_TEXTURE_SIZE);
-        if (ssaaRequested && (targetWidth > maxTextureSize / 2 || targetHeight > maxTextureSize / 2)) {
-            ssaaRequested = false;
-            scalingRequested = RenderScaleController.isEnabled();
+        // SSAA doubles each dimension. Query the driver limit only when SSAA is actually
+        // requested; a GL state query on every ordinary scaled-render frame is needless work.
+        if (ssaaRequested) {
+            int maxTextureSize = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL11.GL_MAX_TEXTURE_SIZE);
+            if (targetWidth > maxTextureSize / 2 || targetHeight > maxTextureSize / 2) {
+                ssaaRequested = false;
+                scalingRequested = RenderScaleController.isEnabled();
+            }
         }
         if (ssaaRequested) samples = 0;
         int width = ssaaRequested ? targetWidth * 2 : (scalingRequested ? RenderScaleController.scaledWidth(targetWidth) : targetWidth);
