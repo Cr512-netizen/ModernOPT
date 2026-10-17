@@ -29,7 +29,7 @@ public final class RenderPipelinePolicy {
 
     private static int normalizeSamples(int samples) {
         return switch (samples) {
-            case 2, 4, 8, 16 -> samples;
+            case 2, 4, 8 -> samples;
             default -> 0;
         };
     }
