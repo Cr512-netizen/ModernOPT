@@ -127,6 +127,17 @@ public abstract class GameRendererMixin {
         this.modernopt$shaderPackInUseThisFrame = modernopt$shaderPackInUse();
         boolean shaderPackInUse = this.modernopt$shaderPackInUseThisFrame;
 
+        // The current scaled-target integration is not safe with Iris shader packs:
+        // Iris owns a separate G-buffer/depth/stencil graph, and partial resizing can
+        // corrupt entity, shadow and post-process passes. Fail closed to the untouched
+        // vanilla/Iris path until the complete Iris target graph can be scaled coherently.
+        // This also ensures that neither the custom framebuffer nor any ModernOPT
+        // post-processing runs while an Iris shader pack is active.
+        if (shaderPackInUse) {
+            modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
+            return;
+        }
+
         boolean ssaaRequested = !shaderPackInUse && ModernOptConfig.SSAA_ENABLED.get();
         boolean fxaaRequested = !shaderPackInUse && !ssaaRequested && ModernOptConfig.FXAA_ENABLED.get();
         // AA modes are exclusive: SSAA takes priority, then FXAA, then MSAA.
