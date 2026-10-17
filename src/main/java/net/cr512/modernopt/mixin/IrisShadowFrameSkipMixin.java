@@ -36,16 +36,14 @@ public abstract class IrisShadowFrameSkipMixin {
     @Unique private static Field modernopt$shadowTargetsField;
     @Unique private static Method modernopt$isFullClearRequired;
 
-    @Unique private static volatile boolean modernopt$skipShadowPass;
-    @Unique private static volatile boolean modernopt$insideShadowSetup;
     @Unique private boolean modernopt$shadowUpdatePending;
     @Unique private long modernopt$lastShadowUpdateNanos;
     @Unique private boolean modernopt$warnedAboutCompatibility;
 
     @Inject(method = "beginLevelRendering", at = @At("HEAD"), remap = false, require = 0)
     private void modernopt$selectShadowRefresh(CallbackInfo ci) {
-        modernopt$skipShadowPass = false;
-        modernopt$insideShadowSetup = false;
+        net.cr512.modernopt.render.IrisShadowFrameSkipState.skipShadowPass = false;
+        net.cr512.modernopt.render.IrisShadowFrameSkipState.insideShadowSetup = false;
         this.modernopt$shadowUpdatePending = false;
 
         if (!ModernOptConfig.ENABLED.get() || !ModernOptConfig.SHADOW_FRAME_SKIP_ENABLED.get()
@@ -71,8 +69,8 @@ public abstract class IrisShadowFrameSkipMixin {
 
         if (this.modernopt$lastShadowUpdateNanos != 0L
             && now - this.modernopt$lastShadowUpdateNanos < minimumIntervalNanos) {
-            modernopt$skipShadowPass = true;
-            modernopt$insideShadowSetup = true;
+            net.cr512.modernopt.render.IrisShadowFrameSkipState.skipShadowPass = true;
+            net.cr512.modernopt.render.IrisShadowFrameSkipState.insideShadowSetup = true;
         } else {
             this.modernopt$shadowUpdatePending = true;
         }
@@ -88,7 +86,7 @@ public abstract class IrisShadowFrameSkipMixin {
     @Redirect(method = "beginLevelRendering", at = @At(value = "INVOKE",
         target = "Lcom/mojang/blaze3d/systems/RenderSystem;clear(IZ)V"), remap = false, require = 0)
     private void modernopt$preserveCachedShadowDepth(int mask, boolean onOSX) {
-        if (!modernopt$skipShadowPass) {
+        if (!net.cr512.modernopt.render.IrisShadowFrameSkipState.skipShadowPass) {
             com.mojang.blaze3d.systems.RenderSystem.clear(mask, onOSX);
         }
         // The only clear(mask, onOSX) in this section clears Iris' shadow depth target.
@@ -102,16 +100,6 @@ public abstract class IrisShadowFrameSkipMixin {
         this.modernopt$shadowUpdatePending = false;
         modernopt$insideShadowSetup = false;
         modernopt$skipShadowPass = false;
-    }
-
-    @Unique
-    public static boolean modernopt$shouldSkipShadowPass() {
-        return modernopt$skipShadowPass;
-    }
-
-    @Unique
-    public static boolean modernopt$shouldSkipShadowSetupWork() {
-        return modernopt$skipShadowPass && modernopt$insideShadowSetup;
     }
 
     @Unique
