@@ -46,6 +46,7 @@ public final class ModernOptConfigScreen extends Screen {
                 addRow(yRow, "modernopt.screen.preset", "modernopt.screen.preset.tip", this::cyclePreset); yRow += 18;
                 addRow(yRow, "modernopt.screen.scale", "modernopt.screen.scale.tip", this::cycleScale); yRow += 18;
                 addRow(yRow, "modernopt.screen.upscaler", "modernopt.screen.upscaler.tip", this::cycleUpscaler); yRow += 18;
+                addRow(yRow, "modernopt.screen.fsr1_fp16", "modernopt.screen.fsr1_fp16.tip", toggle(ModernOptConfig.FSR1_FP16_ENABLED)); yRow += 18;
                 addRow(yRow, "modernopt.screen.dynamic", "modernopt.screen.dynamic.tip", toggle(ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED)); yRow += 18;
                 addRow(yRow, "modernopt.screen.fxaa", "modernopt.screen.fxaa.tip", toggle(ModernOptConfig.FXAA_ENABLED)); yRow += 18;
                 addRow(yRow, "modernopt.screen.ssaa", "modernopt.screen.ssaa.tip", toggle(ModernOptConfig.SSAA_ENABLED)); yRow += 18;
@@ -142,6 +143,7 @@ public final class ModernOptConfigScreen extends Screen {
             case "modernopt.screen.particle_culling" -> onOff(ModernOptConfig.PARTICLE_CULLING_ENABLED.get());
             case "modernopt.screen.scale" -> ModernOptConfig.RENDER_SCALE_PERCENT.get() + "%";
             case "modernopt.screen.upscaler" -> upscalerName(ModernOptConfig.UPSCALER_MODE.get());
+            case "modernopt.screen.fsr1_fp16" -> onOff(ModernOptConfig.FSR1_FP16_ENABLED.get());
             case "modernopt.screen.preset" -> presetName();
             case "modernopt.screen.msaa" -> ModernOptConfig.MSAA_SAMPLES.get() == 0 ? "Off" : ModernOptConfig.MSAA_SAMPLES.get() + "x";
             case "modernopt.screen.log_interval" -> ModernOptConfig.LOG_INTERVAL_SECONDS.get() + " s";
