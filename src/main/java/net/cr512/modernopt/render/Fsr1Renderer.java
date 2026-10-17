@@ -73,11 +73,13 @@ public final class Fsr1Renderer {
         registerShader(event, "easu_native", shader -> easuNative = shader);
         // Optional fast path for GPUs exposing native OpenGL FP16 arithmetic.
         // Other GPUs continue using the portable FP32 shaders.
-        if (supportsFp16()) {
-            registerShader(event, "easu_fp16", shader -> easuFp16 = shader);
-            registerShader(event, "rcas_fp16", shader -> rcasFp16 = shader);
+        String fp16Suffix = fp16ShaderSuffix();
+        if (fp16Suffix != null) {
+            registerShader(event, "easu" + fp16Suffix, shader -> easuFp16 = shader);
+            registerShader(event, "rcas" + fp16Suffix, shader -> rcasFp16 = shader);
             if (easuFp16 != null && rcasFp16 != null) {
-                LOGGER.info("FP16 FSR1 shaders are available; they will be used when FSR1 is selected.");
+                LOGGER.info("FP16 FSR1 shaders are available for extension {}; they will be used when FSR1 is selected.",
+                    fp16Suffix.equals("_fp16_amd") ? "GL_AMD_gpu_shader_half_float" : "GL_NV_gpu_shader5");
             } else {
                 LOGGER.info("FP16 FSR1 shaders could not be loaded; the existing FP32 path remains active.");
             }
@@ -109,13 +111,20 @@ public final class Fsr1Renderer {
         }
     }
 
-    private static boolean supportsFp16() {
+    /**
+     * Select a shader source with an explicit extension directive. GLSL extension
+     * names are not portable preprocessor feature macros, so detecting them with
+     * #if defined(GL_...) inside one shared shader can incorrectly reject capable GPUs.
+     */
+    private static String fp16ShaderSuffix() {
         try {
             var caps = GL.getCapabilities();
-            return caps.GL_NV_gpu_shader5 || caps.GL_AMD_gpu_shader_half_float;
+            if (caps.GL_AMD_gpu_shader_half_float) return "_fp16_amd";
+            if (caps.GL_NV_gpu_shader5) return "_fp16";
+            return null;
         } catch (IllegalStateException noCurrentContext) {
             // Some launch paths can register shaders before a context is current.
-            return false;
+            return null;
         }
     }
 
@@ -132,8 +141,8 @@ public final class Fsr1Renderer {
             switch (name) {
                 case "easu" -> easu = null;
                 case "easu_native" -> easuNative = null;
-                case "easu_fp16" -> easuFp16 = null;
-                case "rcas_fp16" -> rcasFp16 = null;
+                case "easu_fp16", "easu_fp16_amd" -> easuFp16 = null;
+                case "rcas_fp16", "rcas_fp16_amd" -> rcasFp16 = null;
                 case "rcas" -> rcas = null;
                 case "bilinear" -> bilinear = null;
                 case "nearest" -> nearest = null;
