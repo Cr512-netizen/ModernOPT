@@ -10,6 +10,8 @@ public final class RenderScalePhase {
     private static boolean active;
     private static double scaleX = 1.0;
     private static double scaleY = 1.0;
+    private static int activeRenderWidth;
+    private static int activeRenderHeight;
 
     private RenderScalePhase() {}
 
@@ -20,6 +22,8 @@ public final class RenderScalePhase {
         }
         scaleX = renderWidth / (double) nativeWidth;
         scaleY = renderHeight / (double) nativeHeight;
+        activeRenderWidth = renderWidth;
+        activeRenderHeight = renderHeight;
         active = scaleX != 1.0 || scaleY != 1.0;
     }
 
@@ -27,6 +31,8 @@ public final class RenderScalePhase {
         active = false;
         scaleX = 1.0;
         scaleY = 1.0;
+        activeRenderWidth = 0;
+        activeRenderHeight = 0;
     }
 
     public static int scaleWidth(int width) {
@@ -39,6 +45,15 @@ public final class RenderScalePhase {
 
     public static double scaleGui(double guiScale) {
         return active ? guiScale * scaleX : guiScale;
+    }
+
+    /** Exact target dimensions for the current phase, even before Minecraft's main target is swapped. */
+    public static int activeRenderWidth() {
+        return active ? activeRenderWidth : 0;
+    }
+
+    public static int activeRenderHeight() {
+        return active ? activeRenderHeight : 0;
     }
 
     public static boolean isActive() {
