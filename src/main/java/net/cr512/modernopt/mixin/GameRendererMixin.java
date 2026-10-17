@@ -254,64 +254,17 @@ public abstract class GameRendererMixin {
 
         RenderDiagnostics.beginPostProcess();
         try {
-            ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$originalTarget);
-            this.modernopt$originalTarget.bindWrite(true);
-            int width = this.modernopt$originalTarget.width;
-            int height = this.modernopt$originalTarget.height;
-            RenderSystem.viewport(0, 0, width, height);
-
-            this.modernopt$oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
-            this.modernopt$oldVertexSorting = RenderSystem.getVertexSorting();
-            RenderSystem.setProjectionMatrix(
-                new Matrix4f().setOrtho(0.0F, width, height, 0.0F, -1000.0F, 1000.0F),
-                VertexSorting.ORTHOGRAPHIC_Z
+            net.cr512.modernopt.render.WorldPostProcessStage.execute(
+                this.minecraft,
+                this.modernopt$originalTarget,
+                this.modernopt$worldTarget,
+                this.modernopt$active,
+                this.modernopt$scalingActive,
+                this.modernopt$ssaaActive,
+                this.modernopt$msaaActive,
+                this.modernopt$shaderPackInUseThisFrame
             );
-
-            RenderSystem.disableDepthTest();
-            RenderSystem.depthMask(false);
-            RenderSystem.disableBlend();
-            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-
-            if (this.modernopt$active && this.modernopt$scalingActive) {
-                boolean upscaled;
-                if (this.modernopt$ssaaActive) {
-                    upscaled = Fsr1Renderer.downsampleSsaa(this.modernopt$worldTarget, this.modernopt$originalTarget);
-                } else if (ModernOptConfig.UPSCALER_MODE.get() == 0
-                    || ((ModernOptConfig.UPSCALER_MODE.get() == 2 || ModernOptConfig.UPSCALER_MODE.get() == 3)
-                        && this.modernopt$worldTarget.width == width
-                        && this.modernopt$worldTarget.height == height)) {
-                    // Bilinear and nearest-neighbor are identity operations at equal dimensions.
-                    // Use a fixed-function framebuffer blit instead of running a redundant shader pass.
-                    upscaled = FramebufferBlitter.blitFramebuffer(this.modernopt$worldTarget, this.modernopt$originalTarget);
-                } else {
-                    upscaled = Fsr1Renderer.render(this.modernopt$worldTarget, this.modernopt$originalTarget);
-                }
-                if (!upscaled) {
-                    // A failed optimized pass restores the image using the safe textured fallback.
-                    FramebufferBlitter.blitOpaque(this.modernopt$worldTarget, this.modernopt$originalTarget);
-                }
-            } else if (this.modernopt$active && this.modernopt$msaaActive) {
-                // Resolve MSAA directly into the native framebuffer without an intermediate texture draw.
-                if (!FramebufferBlitter.blitFramebuffer(this.modernopt$worldTarget, this.modernopt$originalTarget)) {
-                    FramebufferBlitter.blitOpaque(this.modernopt$worldTarget, this.modernopt$originalTarget);
-                }
-            }
-
-            if (!this.modernopt$shaderPackInUseThisFrame && ModernOptConfig.FXAA_ENABLED.get()) {
-                Fsr1Renderer.applyFxaa(this.modernopt$originalTarget);
-            }
         } finally {
-            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-            RenderSystem.depthMask(true);
-            RenderSystem.enableDepthTest();
-            RenderSystem.enableBlend();
-            if (this.modernopt$oldProjection != null) {
-                RenderSystem.setProjectionMatrix(this.modernopt$oldProjection, this.modernopt$oldVertexSorting);
-                this.modernopt$oldProjection = null;
-                this.modernopt$oldVertexSorting = null;
-            }
-            ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$originalTarget);
-            this.modernopt$originalTarget.bindWrite(true);
             modernopt$finishDiagnostics();
             this.modernopt$active = false;
             this.modernopt$scalingActive = false;
@@ -322,6 +275,7 @@ public abstract class GameRendererMixin {
             this.modernopt$worldTarget = null;
         }
     }
+
     @Unique
     private void modernopt$finishDiagnostics() {
         RenderTarget nativeTarget = this.minecraft.getMainRenderTarget();
