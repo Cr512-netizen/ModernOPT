@@ -69,7 +69,7 @@ public final class ModernOptConfig {
         UPSCALER_MODE = BUILDER.comment("Upscaler: 0 = none (direct blit), 1 = FSR1, 2 = Bilinear, 3 = Nearest Neighbor, 4 = SoftScale.").defineInRange("upscalerMode", 2, 0, 4);
         FSR1_FP16_ENABLED = BUILDER.comment("Use native FP16 EASU/RCAS when supported; disable to compare against FP32.").define("fsr1Fp16Enabled", true);
         FXAA_ENABLED = BUILDER.define("fxaaEnabled", false);
-        MSAA_SAMPLES = BUILDER.comment("0 = off, otherwise 2, 4, 8, or 16 samples.").defineInRange("msaaSamples", 0, 0, 16);
+        MSAA_SAMPLES = BUILDER.comment("0 = off, otherwise 2, 4, or 8 samples. 8x is the maximum to avoid the extreme cost of 16x.").defineInRange("msaaSamples", 0, 0, 8);
         SSAA_ENABLED = BUILDER.define("ssaaEnabled", false);
         DYNAMIC_RESOLUTION_ENABLED = BUILDER.define("dynamicResolutionEnabled", false);
         DYNAMIC_MIN_SCALE_PERCENT = BUILDER.defineInRange("dynamicMinScalePercent", 50, 25, 100);
