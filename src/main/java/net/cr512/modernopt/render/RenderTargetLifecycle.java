@@ -8,6 +8,7 @@ import net.cr512.modernopt.mixin.PostChainAccessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Field;
 import java.util.StringJoiner;
 
 /**
@@ -78,6 +79,20 @@ public final class RenderTargetLifecycle {
         try {
             RenderTarget entity = minecraft.levelRenderer.entityTarget();
             String entitySize = describe(entity);
+            StringJoiner levelTargets = new StringJoiner(",", "[", "]");
+            // Diagnostic-only reflection lets us verify all direct LevelRenderer
+            // targets without adding accessors or per-frame reflection to production.
+            for (Class<?> type = minecraft.levelRenderer.getClass(); type != null && type != Object.class; type = type.getSuperclass()) {
+                for (Field field : type.getDeclaredFields()) {
+                    if (!RenderTarget.class.isAssignableFrom(field.getType())) continue;
+                    try {
+                        field.setAccessible(true);
+                        levelTargets.add(field.getName() + "=" + describe((RenderTarget) field.get(minecraft.levelRenderer)));
+                    } catch (RuntimeException | IllegalAccessException ignored) {
+                        // Optional diagnostics must never break rendering.
+                    }
+                }
+            }
             PostChain entityEffect = ((LevelRendererAccessor) (Object) minecraft.levelRenderer).modernopt$getEntityEffect();
             StringJoiner targets = new StringJoiner(",", "[", "]");
             if (entityEffect != null) {
@@ -86,7 +101,8 @@ public final class RenderTargetLifecycle {
                     for (RenderTarget target : fullSizedTargets) targets.add(describe(target));
                 }
             }
-            return "entityTarget=" + entitySize + ", entityPostChain=" + (entityEffect == null ? "none" : targets);
+            return "entityTarget=" + entitySize + ", levelRendererTargets=" + levelTargets
+                + ", entityPostChain=" + (entityEffect == null ? "none" : targets);
         } catch (RuntimeException | LinkageError exception) {
             return "targetInspectionFailed=" + exception.getClass().getSimpleName();
         }
