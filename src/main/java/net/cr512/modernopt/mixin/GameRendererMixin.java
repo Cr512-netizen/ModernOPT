@@ -413,8 +413,17 @@ public abstract class GameRendererMixin {
         int renderWidth = worldTarget == null ? nativeWidth : worldTarget.width;
         int renderHeight = worldTarget == null ? nativeHeight : worldTarget.height;
         boolean targetRestored = nativeTarget != null && nativeTarget == this.modernopt$frameNativeTarget;
-        RenderDiagnostics.recordFrameState(targetRestored, ModernOptConfig.ENABLED.get() ? Fsr1Renderer.diagnosticStatus() : "disabled; vanilla path",
-            RenderTargetLifecycle.diagnosticSummary(this.minecraft));
+        boolean captureDetails = ModernOptConfig.LOGGING_ENABLED.get()
+            || ModernOptConfig.PROFILING_ENABLED.get()
+            || (ModernOptConfig.OVERLAY_ENABLED.get() && ModernOptConfig.OVERLAY_SHOW_RENDER_INFO.get())
+            || net.cr512.modernopt.client.BenchmarkRecorder.isRecording();
+        String upscalerPath = captureDetails
+            ? (ModernOptConfig.ENABLED.get() ? Fsr1Renderer.diagnosticStatus() : "disabled; vanilla path")
+            : "not sampled";
+        String auxiliaryTargets = captureDetails
+            ? RenderTargetLifecycle.diagnosticSummary(this.minecraft)
+            : "not sampled";
+        RenderDiagnostics.recordFrameState(targetRestored, upscalerPath, auxiliaryTargets);
         RenderDiagnostics.endFrame(nativeWidth, nativeHeight, renderWidth, renderHeight,
             ModernOptConfig.UPSCALER_MODE.get(), ModernOptConfig.ENABLED.get(),
             this.modernopt$shaderPackInUseThisFrame);
