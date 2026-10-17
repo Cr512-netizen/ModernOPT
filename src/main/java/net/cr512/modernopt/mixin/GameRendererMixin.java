@@ -116,7 +116,7 @@ public abstract class GameRendererMixin {
         this.modernopt$frameNativeTarget = nativeTarget;
         int nativeWidth = nativeTarget.width;
         int nativeHeight = nativeTarget.height;
-        if (!ModernOptConfig.ENABLED.get() || this.minecraft.level == null) {
+        if (!ModernOptConfig.ENABLED.get() || !RenderScaleController.RENDER_PIPELINE_ENABLED || this.minecraft.level == null) {
             modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
             return;
         }
