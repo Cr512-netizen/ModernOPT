@@ -232,6 +232,14 @@ public abstract class GameRendererMixin {
                 } else if (this.modernopt$scaledTarget.width != width || this.modernopt$scaledTarget.height != height) {
                     this.modernopt$scaledTarget.resize(width, height, Minecraft.ON_OSX);
                 }
+                // Match RenderScale's stencil preservation: some renderers/mods attach
+                // stencil-dependent effects to Minecraft's main target. A plain
+                // TextureTarget does not inherit that attachment automatically.
+                // Preserve it on the scaled target instead of silently changing the
+                // framebuffer format during the world pass.
+                if (original.isStencilEnabled() && !this.modernopt$scaledTarget.isStencilEnabled()) {
+                    this.modernopt$scaledTarget.enableStencil();
+                }
                 this.modernopt$worldTarget = this.modernopt$scaledTarget;
             } catch (RuntimeException | LinkageError allocationFailure) {
                 MODERNOPT_LOGGER.warn("Could not allocate the scaled world target; using the native framebuffer for this frame.", allocationFailure);
