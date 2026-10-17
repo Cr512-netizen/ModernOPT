@@ -1,6 +1,6 @@
 # ModernOPT render-pipeline rewrite plan
 
-Status: implementation work is on `fix/shadow-cache-render-architecture`; custom rendering remains disabled by default pending in-game validation. This document distinguishes code/CI completion from the remaining live Minecraft tests.
+Status: implementation work is on `fix/shadow-cache-render-architecture`; custom rendering is disabled by default by the master switch, but can be explicitly enabled for in-game validation. This document distinguishes code/CI completion from the remaining live Minecraft tests.
 
 ## Why the current path must be replaced
 
@@ -29,7 +29,7 @@ The Iris shadow throttling prototype also demonstrated an unsafe assumption: can
 ### Stage A — safety and observability
 
 Implementation status: **code changes present on the feature branch; live Iris/Complementary validation still required**.
-- Keep the experimental custom world-render path disabled until it passes a live shader-pack test.
+- Keep the experimental custom world-render path disabled by default until it passes a live shader-pack test. The master switch must still allow explicit opt-in testing; do not hard-code the pipeline off.
 - Cache Iris shadow refreshes as one unit: suppress shadow-target clears and shadow compute passes, skip only the shadow geometry/composite method, retain its previous MODELVIEW/PROJECTION matrices, and still run Iris' non-shadow PREPARE stage. Fail open on unknown target lifecycle or required full clear.
 - Make MSAA color resolve lazy and cached until the target is written again; cap the supported UI/config range at 8x and fall back to the highest successfully allocated level (8x → 4x → 2x).
 - Keep build/test artifacts on a separate feature branch; never merge to the default branch without review.
