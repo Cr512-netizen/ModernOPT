@@ -97,8 +97,8 @@ public final class Fsr1Renderer {
     }
 
     public static String diagnosticStatus() {
-        String capability = easuFp16 != null && rcasFp16 != null ? "FP16 shaders loaded"
-            : "FP16 unavailable";
+        String capability = !ModernOptConfig.FSR1_FP16_ENABLED.get() ? "FP16 disabled by config"
+            : (easuFp16 != null && rcasFp16 != null ? "FP16 shaders loaded" : "FP16 unavailable");
         if (fp16FsrFailed) capability = "FP16 runtime failure; FP32 fallback latched";
         return capability + "; selectedPath=" + diagnosticPath;
     }
@@ -174,7 +174,8 @@ public final class Fsr1Renderer {
         // If FSR1 shaders are unavailable, fall back to bilinear rather than leaving
         // the world unresolved. The no-upscaler mode above remains shader-free.
         ShaderInstance easuShader = easuNative != null && !nativeEasuFailed ? easuNative : easu;
-        boolean useFp16Fsr = mode == 1 && !fp16FsrFailed && easuFp16 != null && rcasFp16 != null;
+        boolean useFp16Fsr = mode == 1 && ModernOptConfig.FSR1_FP16_ENABLED.get()
+            && !fp16FsrFailed && easuFp16 != null && rcasFp16 != null;
         boolean useFsr1 = mode == 1 && (useFp16Fsr || (easuShader != null && rcas != null));
         int effectiveMode = mode == 1 && !useFsr1 ? 2 : mode;
         ShaderInstance simpleShader = switch (effectiveMode) {
