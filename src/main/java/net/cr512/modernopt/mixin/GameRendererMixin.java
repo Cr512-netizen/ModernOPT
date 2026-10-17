@@ -1,7 +1,7 @@
 package net.cr512.modernopt.mixin;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.blaze3d.pipeline.MainTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
@@ -39,7 +39,7 @@ public abstract class GameRendererMixin {
 
     @Unique private RenderTarget modernopt$originalTarget;
     @Unique private RenderTarget modernopt$frameNativeTarget;
-    @Unique private TextureTarget modernopt$scaledTarget;
+    @Unique private MainTarget modernopt$scaledTarget;
     @Unique private MultisampleRenderTarget modernopt$msaaTarget;
     @Unique private RenderTarget modernopt$worldTarget;
     @Unique private Matrix4f modernopt$oldProjection;
@@ -127,6 +127,17 @@ public abstract class GameRendererMixin {
         this.modernopt$shaderPackInUseThisFrame = modernopt$shaderPackInUse();
         boolean shaderPackInUse = this.modernopt$shaderPackInUseThisFrame;
 
+        // The current scaled-target integration is not safe with Iris shader packs:
+        // Iris owns a separate G-buffer/depth/stencil graph, and partial resizing can
+        // corrupt entity, shadow and post-process passes. Fail closed to the untouched
+        // vanilla/Iris path until the complete Iris target graph can be scaled coherently.
+        // This also ensures that neither the custom framebuffer nor any ModernOPT
+        // post-processing runs while an Iris shader pack is active.
+        if (shaderPackInUse) {
+            modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
+            return;
+        }
+
         boolean ssaaRequested = !shaderPackInUse && ModernOptConfig.SSAA_ENABLED.get();
         boolean fxaaRequested = !shaderPackInUse && !ssaaRequested && ModernOptConfig.FXAA_ENABLED.get();
         // AA modes are exclusive: SSAA takes priority, then FXAA, then MSAA.
@@ -149,11 +160,14 @@ public abstract class GameRendererMixin {
         // Targets with stencil attachments are left untouched for compatibility with mods.
         if (samples > 0 && original.isStencilEnabled()) samples = 0;
 
-        // SSAA doubles each dimension. Respect the actual GPU texture limit before allocating.
-        int maxTextureSize = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL11.GL_MAX_TEXTURE_SIZE);
-        if (ssaaRequested && (targetWidth > maxTextureSize / 2 || targetHeight > maxTextureSize / 2)) {
-            ssaaRequested = false;
-            scalingRequested = RenderScaleController.isEnabled();
+        // SSAA doubles each dimension. Query the driver limit only when SSAA is actually
+        // requested; a GL state query on every ordinary scaled-render frame is needless work.
+        if (ssaaRequested) {
+            int maxTextureSize = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL11.GL_MAX_TEXTURE_SIZE);
+            if (targetWidth > maxTextureSize / 2 || targetHeight > maxTextureSize / 2) {
+                ssaaRequested = false;
+                scalingRequested = RenderScaleController.isEnabled();
+            }
         }
         if (ssaaRequested) samples = 0;
         int width = ssaaRequested ? targetWidth * 2 : (scalingRequested ? RenderScaleController.scaledWidth(targetWidth) : targetWidth);
@@ -225,9 +239,17 @@ public abstract class GameRendererMixin {
         if (this.modernopt$worldTarget == null && this.modernopt$scalingActive) {
             try {
                 if (this.modernopt$scaledTarget == null) {
-                    this.modernopt$scaledTarget = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+                    this.modernopt$scaledTarget = new MainTarget(width, height);
                 } else if (this.modernopt$scaledTarget.width != width || this.modernopt$scaledTarget.height != height) {
                     this.modernopt$scaledTarget.resize(width, height, Minecraft.ON_OSX);
+                }
+                // Match RenderScale's stencil preservation: some renderers/mods attach
+                // stencil-dependent effects to Minecraft's main target. A plain
+                // TextureTarget does not inherit that attachment automatically.
+                // Preserve it on the scaled target instead of silently changing the
+                // framebuffer format during the world pass.
+                if (original.isStencilEnabled() && !this.modernopt$scaledTarget.isStencilEnabled()) {
+                    this.modernopt$scaledTarget.enableStencil();
                 }
                 this.modernopt$worldTarget = this.modernopt$scaledTarget;
             } catch (RuntimeException | LinkageError allocationFailure) {

@@ -5,12 +5,17 @@ import net.cr512.modernopt.render.RenderScaleController;
 import net.cr512.modernopt.render.RenderScalePhase;
 import net.cr512.modernopt.render.RenderDiagnostics;
 import net.minecraft.client.Minecraft;
+import net.neoforged.fml.ModList;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+import java.lang.reflect.Method;
 
 /**
  * Iris owns its gbuffer color targets independently of Minecraft's main target.
@@ -25,6 +30,38 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Pseudo
 @Mixin(targets = "net.irisshaders.iris.targets.RenderTargets", remap = false)
 public abstract class IrisRenderTargetsScaleMixin {
+    @Unique private static Method modernopt$irisShaderPackMethod;
+    @Unique private static Object modernopt$irisApiInstance;
+    @Unique private static boolean modernopt$irisApiResolved;
+
+    /**
+     * Shader-pack G-buffers are not yet scaled as one coherent render graph.
+     * If Iris is active, keep its targets at native dimensions; GameRendererMixin
+     * separately fails closed to vanilla/Iris rendering for that frame.
+     */
+    @Unique
+    private static boolean modernopt$isShaderPackInUse() {
+        if (!ModList.get().isLoaded("iris")) return false;
+        if (!modernopt$irisApiResolved) {
+            modernopt$irisApiResolved = true;
+            try {
+                Class<?> apiClass = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+                modernopt$irisApiInstance = apiClass.getMethod("getInstance").invoke(null);
+                modernopt$irisShaderPackMethod = apiClass.getMethod("isShaderPackInUse");
+            } catch (ReflectiveOperationException | LinkageError ignored) {
+                modernopt$irisApiInstance = null;
+                modernopt$irisShaderPackMethod = null;
+                // Fail closed: do not resize unknown shader-pack targets.
+                return true;
+            }
+        }
+        if (modernopt$irisApiInstance == null || modernopt$irisShaderPackMethod == null) return true;
+        try {
+            return Boolean.TRUE.equals(modernopt$irisShaderPackMethod.invoke(modernopt$irisApiInstance));
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            return true;
+        }
+    }
     @ModifyVariable(method = "<init>", at = @At("HEAD"), argsOnly = true, ordinal = 0, remap = false)
     private static int modernopt$scaleIrisTargetWidth(int width) {
         return modernopt$scaledDimension(width, true);
@@ -60,12 +97,13 @@ public abstract class IrisRenderTargetsScaleMixin {
     }
 
     @Inject(method = "resizeIfNeeded", at = @At("RETURN"), remap = false)
-    private void modernopt$diagnoseIrisTargetResize(CallbackInfo ci) {
+    private void modernopt$diagnoseIrisTargetResize(CallbackInfoReturnable<?> cir) {
         RenderDiagnostics.recordIrisTargets(this);
     }
 
     private static int modernopt$scaledDimension(int dimension, boolean horizontal) {
-        if (dimension <= 0 || !ModernOptConfig.ENABLED.get() || !RenderScaleController.isEnabled()) {
+        if (dimension <= 0 || modernopt$isShaderPackInUse()
+            || !ModernOptConfig.ENABLED.get() || !RenderScaleController.isEnabled()) {
             return dimension;
         }
 

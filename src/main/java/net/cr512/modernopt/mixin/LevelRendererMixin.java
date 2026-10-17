@@ -1,6 +1,5 @@
 package net.cr512.modernopt.mixin;
 
-import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.cr512.modernopt.render.RenderScalePhase;
 import net.cr512.modernopt.render.RenderTargetLifecycle;
 import net.minecraft.client.Minecraft;
@@ -29,7 +28,13 @@ public abstract class LevelRendererMixin {
     private void modernopt$syncTargetsIfScaling() {
         if (!RenderScalePhase.isActive()) return;
         Minecraft minecraft = Minecraft.getInstance();
-        RenderTarget activeTarget = minecraft.getMainRenderTarget();
-        RenderTargetLifecycle.syncWorldTargets(minecraft, activeTarget.width, activeTarget.height);
+        // During the initial transition the main target has not been swapped yet.
+        // Use the dimensions selected for this phase, not the currently bound target,
+        // otherwise a LevelRenderer.resize callback can immediately undo the scale.
+        int width = RenderScalePhase.activeRenderWidth();
+        int height = RenderScalePhase.activeRenderHeight();
+        if (width > 0 && height > 0) {
+            RenderTargetLifecycle.syncWorldTargets(minecraft, width, height);
+        }
     }
 }
