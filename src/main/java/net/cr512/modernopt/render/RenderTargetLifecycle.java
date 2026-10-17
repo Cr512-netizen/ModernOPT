@@ -26,19 +26,29 @@ public final class RenderTargetLifecycle {
         }
 
         try {
-            resizeIfNeeded(minecraft.levelRenderer.entityTarget(), width, height);
+            RenderTarget entityTarget = minecraft.levelRenderer.entityTarget();
+            PostChain entityEffect = ((LevelRendererAccessor) (Object) minecraft.levelRenderer).modernopt$getEntityEffect();
+            boolean resizeEntity = entityTarget != null && (entityTarget.width != width || entityTarget.height != height);
+            boolean resizeChain = entityEffect != null
+                && ((PostChainAccessor) (Object) entityEffect).modernopt$getFullSizedTargets() != null
+                && ((PostChainAccessor) (Object) entityEffect).modernopt$getFullSizedTargets().stream().anyMatch(target ->
+                    target != null && (target.width != width || target.height != height)
+                );
+
+            // Validate every target dimension before mutating any target. This avoids
+            // leaving half the world pipeline at scaled dimensions if validation fails.
+            if (resizeEntity || resizeChain) {
+                if (width > org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL11.GL_MAX_TEXTURE_SIZE)
+                    || height > org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL11.GL_MAX_TEXTURE_SIZE)) {
+                    throw new IllegalArgumentException("Requested auxiliary target exceeds GL_MAX_TEXTURE_SIZE: " + width + "x" + height);
+                }
+            }
+
+            if (resizeEntity) entityTarget.resize(width, height, Minecraft.ON_OSX);
 
             // Use PostChain.resize rather than resizing its targets individually:
             // vanilla recalculates the chain's orthographic matrix in this method.
-            PostChain entityEffect = ((LevelRendererAccessor) (Object) minecraft.levelRenderer).modernopt$getEntityEffect();
-            if (entityEffect != null && ((PostChainAccessor) (Object) entityEffect).modernopt$getFullSizedTargets() != null) {
-                boolean resizeChain = ((PostChainAccessor) (Object) entityEffect).modernopt$getFullSizedTargets().stream().anyMatch(target ->
-                    target != null && (target.width != width || target.height != height)
-                );
-                if (resizeChain) {
-                    entityEffect.resize(width, height);
-                }
-            }
+            if (resizeChain) entityEffect.resize(width, height);
             return true;
         } catch (RuntimeException | LinkageError exception) {
             LOGGER.warn("Could not synchronize world auxiliary targets to {}x{}; ModernOPT will bypass scaled rendering for this frame.", width, height, exception);
