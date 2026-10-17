@@ -119,7 +119,7 @@ public final class Fsr1Renderer {
     private static String fp16ShaderSuffix() {
         try {
             var caps = GL.getCapabilities();
-            if (caps.GL_AMD_gpu_shader_half_float) return "_fp16_amd";
+            if (caps.GL_AMD_gpu_shader_half_float && caps.GL_AMD_gpu_shader_int16) return "_fp16_amd";
             if (caps.GL_NV_gpu_shader5) return "_fp16";
             return null;
         } catch (IllegalStateException noCurrentContext) {
