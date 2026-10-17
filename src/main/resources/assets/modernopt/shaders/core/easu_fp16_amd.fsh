@@ -5,7 +5,6 @@
 #define A_GLSL 1
 #define A_HALF 1
 #define A_SKIP_EXT 1
-#define MODERNOPT_EXPLICIT_GATHER 1
 #define FSR_EASU_H 1
 #define FSR_COLOUR AH3
 #define FSR_GATHER AH4
