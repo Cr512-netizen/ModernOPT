@@ -1,5 +1,6 @@
 #version 420
 #extension GL_AMD_gpu_shader_half_float : require
+#extension GL_AMD_gpu_shader_int16 : require
 #define A_GPU 1
 #define A_GLSL 1
 #define A_HALF 1
