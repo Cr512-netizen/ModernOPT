@@ -197,7 +197,7 @@ public final class ModernOptConfigScreen extends Screen {
     }
 
     private void cycleMsaa() {
-        int[] values = {0, 2, 4, 8, 16};
+        int[] values = {0, 2, 4, 8};
         int next = 0;
         for (int i = 0; i < values.length; i++) if (values[i] == ModernOptConfig.MSAA_SAMPLES.get()) next = (i + 1) % values.length;
         ModernOptConfig.MSAA_SAMPLES.set(values[next]);
