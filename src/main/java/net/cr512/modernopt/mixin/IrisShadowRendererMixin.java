@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class IrisShadowRendererMixin {
     @Inject(method = "renderShadows", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
     private void modernopt$reuseCachedShadowMap(CallbackInfo ci) {
-        if (IrisShadowFrameSkipMixin.modernopt$shouldSkipShadowPass()) {
+        if (net.cr512.modernopt.render.IrisShadowFrameSkipState.skipShadowPass) {
             ci.cancel();
         }
     }
