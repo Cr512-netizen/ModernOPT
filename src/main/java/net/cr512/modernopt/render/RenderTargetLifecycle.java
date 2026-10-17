@@ -79,10 +79,4 @@ public final class RenderTargetLifecycle {
     private static String describe(RenderTarget target) {
         return target == null ? "null" : target.width + "x" + target.height;
     }
-
-    private static void resizeIfNeeded(RenderTarget target, int width, int height) {
-        if (target != null && (target.width != width || target.height != height)) {
-            target.resize(width, height, Minecraft.ON_OSX);
-        }
-    }
 }
