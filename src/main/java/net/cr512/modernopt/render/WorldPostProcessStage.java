@@ -47,28 +47,9 @@ public final class WorldPostProcessStage {
             RenderSystem.disableBlend();
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
 
-            if (active && scalingActive && worldTarget != null) {
-                boolean upscaled;
-                if (ssaaActive) {
-                    upscaled = Fsr1Renderer.downsampleSsaa(worldTarget, originalTarget);
-                } else if (ModernOptConfig.UPSCALER_MODE.get() == 0
-                    || ((ModernOptConfig.UPSCALER_MODE.get() == 2 || ModernOptConfig.UPSCALER_MODE.get() == 3)
-                        && worldTarget.width == width && worldTarget.height == height)) {
-                    // Bilinear/nearest are identity operations at equal dimensions.
-                    upscaled = FramebufferBlitter.blitFramebuffer(worldTarget, originalTarget);
-                } else {
-                    upscaled = Fsr1Renderer.render(worldTarget, originalTarget);
-                }
-                if (!upscaled) FramebufferBlitter.blitOpaque(worldTarget, originalTarget);
-            } else if (active && msaaActive && worldTarget != null) {
-                if (!FramebufferBlitter.blitFramebuffer(worldTarget, originalTarget)) {
-                    FramebufferBlitter.blitOpaque(worldTarget, originalTarget);
-                }
-            }
-
-            if (!shaderPackInUse && ModernOptConfig.FXAA_ENABLED.get()) {
-                Fsr1Renderer.applyFxaa(originalTarget);
-            }
+            WorldUpscalePass.execute(
+                worldTarget, originalTarget, active, scalingActive, ssaaActive, msaaActive, shaderPackInUse
+            );
         } finally {
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
             RenderSystem.depthMask(true);
