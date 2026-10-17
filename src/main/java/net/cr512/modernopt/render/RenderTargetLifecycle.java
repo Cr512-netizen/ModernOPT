@@ -17,6 +17,7 @@ import java.util.StringJoiner;
  */
 public final class RenderTargetLifecycle {
     private static final Logger LOGGER = LoggerFactory.getLogger("ModernOPT");
+    private static boolean resizingLevelRenderer;
 
     private RenderTargetLifecycle() {}
 
@@ -26,7 +27,25 @@ public final class RenderTargetLifecycle {
         }
 
         try {
-            resizeIfNeeded(minecraft.levelRenderer.entityTarget(), width, height);
+            RenderTarget entityTarget = minecraft.levelRenderer.entityTarget();
+            if (entityTarget != null && (entityTarget.width != width || entityTarget.height != height)) {
+                // RenderScale resizes LevelRenderer as a whole on 1.21.1. Resizing
+                // only entityTarget leaves other vanilla world targets (notably
+                // outline/transparency targets) at native resolution, wasting work
+                // and creating mixed-resolution passes. Do this only on a real size
+                // transition, never every frame.
+                if (!resizingLevelRenderer) {
+                    resizingLevelRenderer = true;
+                    try {
+                        minecraft.levelRenderer.resize(width, height);
+                    } finally {
+                        resizingLevelRenderer = false;
+                    }
+                }
+                // Defensive fallback for loader/mod variants whose resize method
+                // does not resize entityTarget as expected.
+                resizeIfNeeded(entityTarget, width, height);
+            }
 
             // Use PostChain.resize rather than resizing its targets individually:
             // vanilla recalculates the chain's orthographic matrix in this method.
