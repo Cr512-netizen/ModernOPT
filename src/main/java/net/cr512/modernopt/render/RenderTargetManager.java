@@ -66,7 +66,20 @@ public final class RenderTargetManager {
         if (scaledTarget == null) {
             scaledTarget = new TextureTarget(width, height, true, onOSX);
         } else if (scaledTarget.width != width || scaledTarget.height != height) {
-            scaledTarget.resize(width, height, onOSX);
+            try {
+                scaledTarget.resize(width, height, onOSX);
+            } catch (RuntimeException | LinkageError resizeFailure) {
+                // A failed resize may leave the target partially recreated. Do not
+                // reuse that object on a later frame; release it and retry cleanly.
+                try {
+                    scaledTarget.destroyBuffers();
+                } catch (RuntimeException | LinkageError cleanupFailure) {
+                    resizeFailure.addSuppressed(cleanupFailure);
+                } finally {
+                    scaledTarget = null;
+                }
+                throw resizeFailure;
+            }
         }
         return scaledTarget;
     }
