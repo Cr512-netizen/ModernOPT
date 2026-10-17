@@ -92,6 +92,8 @@ public abstract class GameRendererMixin {
     @Inject(method = "close", at = @At("HEAD"), require = 0)
     private void modernopt$releaseOwnedRenderTargets(CallbackInfo ci) {
         this.modernopt$targetManager.destroy();
+        Fsr1Renderer.releaseResources();
+        RenderDiagnostics.releaseGpuQueries();
     }
 
     @Inject(method = "renderLevel", at = @At("HEAD"))

@@ -63,6 +63,28 @@ public final class RenderDiagnostics {
 
     private RenderDiagnostics() {}
 
+    /** Release timestamp query objects before the OpenGL context is destroyed. */
+    public static void releaseGpuQueries() {
+        if (timestampQueries != null) {
+            for (int[] slot : timestampQueries) {
+                for (int query : slot) {
+                    if (query > 0) {
+                        try {
+                            GL15.glDeleteQueries(query);
+                        } catch (RuntimeException | LinkageError failure) {
+                            LOGGER.debug("Could not delete a render timing query during shutdown.", failure);
+                        }
+                    }
+                }
+            }
+        }
+        timestampQueries = null;
+        java.util.Arrays.fill(queryPending, false);
+        activeQuerySlot = -1;
+        nextQuerySlot = 0;
+        gpuQueriesUnavailableLogged = false;
+    }
+
     public static void beginFrame() {
         pollGpuQueries();
         if (!ModernOptConfig.PROFILING_ENABLED.get() && !BenchmarkRecorder.isRecording()) {

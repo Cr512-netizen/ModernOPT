@@ -103,6 +103,30 @@ public final class Fsr1Renderer {
         registerShader(event, "ssaa_downsample", shader -> ssaaDownsample = shader);
     }
 
+    /** Release ModernOPT-owned scratch GPU resources while the client GL context is alive. */
+    public static void releaseResources() {
+        if (intermediate != null) {
+            try {
+                intermediate.destroyBuffers();
+            } catch (RuntimeException | LinkageError failure) {
+                LOGGER.warn("Could not release the upscaler scratch target during shutdown.", failure);
+            } finally {
+                intermediate = null;
+            }
+        }
+        if (fullscreenTriangle != null) {
+            try {
+                fullscreenTriangle.close();
+            } catch (RuntimeException | LinkageError failure) {
+                LOGGER.warn("Could not release the cached fullscreen triangle during shutdown.", failure);
+            } finally {
+                fullscreenTriangle = null;
+            }
+        }
+        fullscreenTriangleUnavailable = false;
+        fullscreenTriangleFailureLogged = false;
+    }
+
     public static String diagnosticStatus() {
         String capability = !ModernOptConfig.FSR1_FP16_ENABLED.get() ? "FP16 disabled by config"
             : (easuFp16 != null && rcasFp16 != null ? "FP16 shaders loaded" : "FP16 unavailable");
