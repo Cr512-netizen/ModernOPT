@@ -80,7 +80,7 @@ public abstract class IrisShadowFrameSkipMixin {
         target = "Lnet/irisshaders/iris/uniforms/FrameUpdateNotifier;onNewFrame()V", shift = At.Shift.BEFORE),
         remap = false, require = 0)
     private void modernopt$endShadowSetupWindow(CallbackInfo ci) {
-        modernopt$insideShadowSetup = false;
+        net.cr512.modernopt.render.IrisShadowFrameSkipState.insideShadowSetup = false;
     }
 
     @Redirect(method = "beginLevelRendering", at = @At(value = "INVOKE",
@@ -98,8 +98,8 @@ public abstract class IrisShadowFrameSkipMixin {
             this.modernopt$lastShadowUpdateNanos = System.nanoTime();
         }
         this.modernopt$shadowUpdatePending = false;
-        modernopt$insideShadowSetup = false;
-        modernopt$skipShadowPass = false;
+        net.cr512.modernopt.render.IrisShadowFrameSkipState.insideShadowSetup = false;
+        net.cr512.modernopt.render.IrisShadowFrameSkipState.skipShadowPass = false;
     }
 
     @Unique
