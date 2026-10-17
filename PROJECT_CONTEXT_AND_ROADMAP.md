@@ -35,7 +35,7 @@ ModernOPT should complement—not replace—Sodium's terrain renderer or Iris' s
 - Settings and user-facing documentation should be available in English and Russian.
 - The maintainer decided to leave compute/mesh shaders aside; do not add them as a roadmap task merely because they were discussed.
 - Do not start Frame Generation until explicitly re-prioritized. Previous FG work was associated with severe perceived stutter/latency despite high displayed FPS; the maintainer wanted it deferred until the upscaling/rendering core is stable.
-- Do not reintroduce shadow-frame skipping: cancelling Iris' full shadow pass caused stale/disappearing/flickering shadows. The old config keys are reserved/inert for compatibility. Iris shadow-resolution scaling is separate, optional, and defaults off.
+- Shadow-frame skipping is experimental and must operate at the whole `IrisRenderingPipeline.renderShadows` call boundary, including Iris PREPARE, never by cancelling only `ShadowRenderer.renderShadows`. Preserve the last shadow map together with the matrices that produced it; fail open if Iris fields/settings cannot be inspected. It remains disabled by default. Iris shadow-resolution scaling is separate, optional, and defaults off.
 - FXAA should not disable the entire mod when a shader pack is active. Skip only the incompatible effect/pass where needed.
 - Never promise a performance gain before repeatable before/after measurements.
 
@@ -76,7 +76,7 @@ The project is alpha/experimental. Earlier 0.0.37 and draft-branch builds comple
 - CSV benchmark with frame intervals, FPS, heap usage, process/system CPU, native/world target dimensions, effective scale, shader-pack state, CPU/GPU world/post timing, selected upscaler path, auxiliary/Iris target sizes, and main-target restoration status.
 - Conservative troubleshooting hints; no automatic setting changes.
 - Master switch; currently defaults off because the rendering pipeline remains experimental.
-- Iris shadow-frame skipping is intentionally inactive. Full Iris render-scale integration is not currently claimed.
+- Iris shadow-frame pacing is an optional experimental whole-pipeline cache path and is disabled by default. Runtime compatibility and visual correctness still require in-game validation.
 
 Do not describe FSR2, TAA, frame generation, compute shaders, or mesh shaders as implemented features. They are not part of the current documented core.
 
@@ -194,7 +194,7 @@ Exit criteria: reproducible smoke-test checklist and clear per-combination suppo
 
 Goal: improve image quality without destabilizing the renderer.
 
-- First verify and tune existing FSR1 EASU + RCAS implementation and its native textureGather/explicit-fetch fallback.
+- First verify and tune existing FSR1 EASU + RCAS implementation and its native textureGather/explicit-fetch fallback. FP16 EASU should use native OpenGL `textureGather` rather than the RenderPearl/Vulkan-translation explicit-`texelFetch` workaround; compare FP16 and FP32 on the same GPU because FP16 is not inherently faster.
 - Compare FSR1 with bilinear, nearest, and SoftScale at identical internal resolutions.
 - Validate shader orientation, colour, edge stability, sharpening, and performance.
 - Make SSAA/MSAA/FXAA interactions explicit, including precedence and unsupported modes.
