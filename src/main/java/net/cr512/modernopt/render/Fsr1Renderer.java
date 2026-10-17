@@ -5,9 +5,11 @@ import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
+import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.VertexBuffer;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.mixin.RenderTargetAccessor;
@@ -38,6 +40,11 @@ public final class Fsr1Renderer {
     private static ShaderInstance fxaa;
     private static ShaderInstance ssaaDownsample;
     private static TextureTarget intermediate;
+    // Keep immutable fullscreen geometry on the GPU; rebuilding/uploading a quad for each FSR pass
+    // is avoidable CPU and driver work on every frame.
+    private static VertexBuffer fullscreenTriangle;
+    private static boolean fullscreenTriangleUnavailable;
+    private static boolean fullscreenTriangleFailureLogged;
     private static final Logger LOGGER = LoggerFactory.getLogger("ModernOPT");
     private static boolean renderFailureLogged;
     // Avoid retrying a shader path that has already thrown every frame; a mode change or resource reload permits retry.
@@ -408,22 +415,70 @@ public final class Fsr1Renderer {
         RenderSystem.depthMask(false);
         RenderSystem.disableBlend();
         RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
-        RenderSystem.setProjectionMatrix(new Matrix4f().setOrtho(0F, output.width, output.height, 0F, -1000F, 1000F), VertexSorting.ORTHOGRAPHIC_Z);
         shader.setSampler("InSampler", input.getColorTextureId());
         if (hasOutputSize) {
             var uniform = shader.getUniform("OutputSize");
             if (uniform == null) throw new IllegalStateException("FSR1 EASU OutputSize uniform is missing");
             uniform.set((float) width, (float) height);
         }
+
+        if (!fullscreenTriangleUnavailable) {
+            try {
+                if (fullscreenTriangle == null || fullscreenTriangle.isInvalid()) {
+                    fullscreenTriangle = createFullscreenTriangle();
+                }
+                // A normalized oversized triangle covers the viewport without a seam.
+                // This lets the same static VBO serve every output resolution.
+                RenderSystem.setProjectionMatrix(
+                    new Matrix4f().setOrtho(0F, 1F, 1F, 0F, -1000F, 1000F),
+                    VertexSorting.ORTHOGRAPHIC_Z
+                );
+                RenderSystem.setShader(() -> shader);
+                fullscreenTriangle.drawWithShader(RenderSystem.getModelViewMatrix(), RenderSystem.getProjectionMatrix(), shader);
+                return;
+            } catch (RuntimeException | LinkageError exception) {
+                fullscreenTriangleUnavailable = true;
+                if (fullscreenTriangle != null) {
+                    try { fullscreenTriangle.close(); } catch (RuntimeException ignored) { }
+                    fullscreenTriangle = null;
+                }
+                if (!fullscreenTriangleFailureLogged) {
+                    fullscreenTriangleFailureLogged = true;
+                    LOGGER.warn("Cached fullscreen triangle is unavailable; falling back to the immediate quad path.", exception);
+                }
+            }
+        }
+
+        // Compatibility fallback for drivers where the persistent VertexBuffer path fails.
+        RenderSystem.setProjectionMatrix(
+            new Matrix4f().setOrtho(0F, output.width, output.height, 0F, -1000F, 1000F),
+            VertexSorting.ORTHOGRAPHIC_Z
+        );
         RenderSystem.setShader(() -> shader);
         BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        // Framebuffer textures use OpenGL's bottom-left origin. The destination
-        // quad uses GUI-style top-left coordinates, so flip V when sampling.
         builder.addVertex(0F, 0F, 0F).setUv(0F, 1F);
         builder.addVertex(0F, output.height, 0F).setUv(0F, 0F);
         builder.addVertex(output.width, output.height, 0F).setUv(1F, 0F);
         builder.addVertex(output.width, 0F, 0F).setUv(1F, 1F);
         BufferUploader.drawWithShader(builder.build());
         shader.clear();
+    }
+
+    private static VertexBuffer createFullscreenTriangle() {
+        RenderSystem.assertOnRenderThread();
+        VertexBuffer buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+        try {
+            BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.POSITION_TEX);
+            builder.addVertex(0F, 0F, 0F).setUv(0F, 1F);
+            builder.addVertex(0F, 2F, 0F).setUv(0F, -1F);
+            builder.addVertex(2F, 0F, 0F).setUv(2F, 1F);
+            try (MeshData mesh = builder.build()) {
+                buffer.upload(mesh);
+            }
+            return buffer;
+        } catch (RuntimeException | LinkageError exception) {
+            buffer.close();
+            throw exception;
+        }
     }
 }
