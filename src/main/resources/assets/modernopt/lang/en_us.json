@@ -71,7 +71,7 @@
   "modernopt.option.irisShadowResolution": "Shadow-map resolution",
   "modernopt.option.irisShadowResolution.desc": "Set the fixed Iris shadow-map resolution in pixels (512–8192). Enable shadow-map scaling and reload the shader pack.",
   "modernopt.option.shadowFrameSkip": "Dynamic shadow frame skipping",
-  "modernopt.option.shadowFrameSkip.desc": "Experimental Vira-style refresh pacing. Skips the whole Iris shadow pipeline between updates so the shadow map and its matching camera matrices remain paired. Moving casters can have stale shadows; disabled by default.",
+  "modernopt.option.shadowFrameSkip.desc": "Temporarily bypassed for safety. Enabling this option does not skip shadow updates until ModernOPT can cache and restore both the shadow map and matching matrices without breaking Iris state.",
   "modernopt.option.shadowUpdateFps": "Shadow refresh rate",
   "modernopt.option.shadowUpdateFps.desc": "Target shadow refresh rate from 40 to 240 FPS. If the game runs below the target, shadows update every frame.",
   "modernopt.page.render": "Rendering",
