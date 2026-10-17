@@ -95,7 +95,6 @@ public abstract class GameRendererMixin {
             case 2 -> 2;
             case 4 -> 4;
             case 8 -> 8;
-            case 16 -> 16;
             default -> 0;
         };
     }
@@ -197,18 +196,7 @@ public abstract class GameRendererMixin {
                 if (this.modernopt$msaaTarget == null || this.modernopt$allocatedSamples != samples) {
                     if (this.modernopt$msaaTarget != null) this.modernopt$msaaTarget.destroyBuffers();
                     this.modernopt$msaaTarget = null;
-                    try {
-                        this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, samples, Minecraft.ON_OSX);
-                    } catch (RuntimeException | LinkageError requestedModeUnavailable) {
-                        if (samples != 16) throw requestedModeUnavailable;
-                        // 16x is optional hardware support; retry with the broadly supported 8x mode.
-                        samples = 8;
-                        requestedSamples = 8;
-                        ModernOptConfig.MSAA_SAMPLES.set(8);
-                        ModernOptConfig.SPEC.save();
-                        this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, samples, Minecraft.ON_OSX);
-                    }
-                    // Track the requested mode, not the fallback target, to avoid retrying 16x every frame.
+                    this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, samples, Minecraft.ON_OSX);
                     this.modernopt$allocatedSamples = requestedSamples;
                 } else if (this.modernopt$msaaTarget.width != width || this.modernopt$msaaTarget.height != height) {
                     this.modernopt$msaaTarget.resize(width, height, Minecraft.ON_OSX);
