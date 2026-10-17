@@ -1,7 +1,7 @@
 package net.cr512.modernopt.mixin;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.blaze3d.pipeline.MainTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
@@ -39,7 +39,7 @@ public abstract class GameRendererMixin {
 
     @Unique private RenderTarget modernopt$originalTarget;
     @Unique private RenderTarget modernopt$frameNativeTarget;
-    @Unique private TextureTarget modernopt$scaledTarget;
+    @Unique private MainTarget modernopt$scaledTarget;
     @Unique private MultisampleRenderTarget modernopt$msaaTarget;
     @Unique private RenderTarget modernopt$worldTarget;
     @Unique private Matrix4f modernopt$oldProjection;
@@ -228,7 +228,7 @@ public abstract class GameRendererMixin {
         if (this.modernopt$worldTarget == null && this.modernopt$scalingActive) {
             try {
                 if (this.modernopt$scaledTarget == null) {
-                    this.modernopt$scaledTarget = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+                    this.modernopt$scaledTarget = new MainTarget(width, height);
                 } else if (this.modernopt$scaledTarget.width != width || this.modernopt$scaledTarget.height != height) {
                     this.modernopt$scaledTarget.resize(width, height, Minecraft.ON_OSX);
                 }
