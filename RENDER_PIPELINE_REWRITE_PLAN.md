@@ -28,8 +28,8 @@ The Iris shadow throttling prototype also demonstrated an unsafe assumption: can
 
 ### Stage A — safety and observability
 - Keep the experimental custom world-render path disabled until it passes a live shader-pack test.
-- Do not cancel Iris shadow rendering; restore the every-frame path.
-- Make MSAA color resolve lazy and cached until the target is written again.
+- Cache Iris shadow refreshes as one unit: suppress shadow-target clears and shadow compute passes, skip only the shadow geometry/composite method, retain its previous MODELVIEW/PROJECTION matrices, and still run Iris' non-shadow PREPARE stage. Fail open on unknown target lifecycle or required full clear.
+- Make MSAA color resolve lazy and cached until the target is written again; cap the supported UI/config range at 8x and fall back to the highest successfully allocated level (8x → 4x → 2x).
 - Keep build/test artifacts on a separate feature branch; never merge to the default branch without review.
 
 ### Stage B — target and policy extraction
@@ -50,7 +50,7 @@ The Iris shadow throttling prototype also demonstrated an unsafe assumption: can
 ### Stage E — post-processing and AA
 - Add one post-process backend at a time (bilinear/nearest, then FSR1, then FXAA).
 - Implement MSAA with a clear ownership/resolve contract and no repeated resolves in one frame.
-- Benchmark 2x/4x/8x/16x separately on the same scene; retain 16x only as an explicitly expensive option if the measured quality/performance trade-off is acceptable.
+- Benchmark 2x/4x/8x on the same scene; 8x is the hard maximum.
 
 ## Acceptance criteria
 
@@ -58,5 +58,6 @@ The Iris shadow throttling prototype also demonstrated an unsafe assumption: can
 - No visible stutter or lower perceived frame pacing caused by the mod.
 - 100% scale with all optional passes off is behaviorally equivalent to vanilla.
 - Shader-pack mode never receives ModernOPT's second AA pass.
+- Skipped shadow frames preserve the previous shadow textures and their matching matrices; refresh is forced after target reloads/full clears.
 - Every allocation and resize failure falls back to vanilla; GL framebuffer, viewport, projection, depth/blend state, and current target are restored.
 - CI build success is necessary but not sufficient: a real in-game Complementary test is required before calling a render stage complete.
