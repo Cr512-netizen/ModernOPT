@@ -4,7 +4,7 @@ Maintainer/future-assistant handoff. Read this before changing rendering code or
 
 Last reviewed: 2026-10-16
 Repository: https://github.com/Cr512-netizen/ModernOPT
-Source version at review: 0.0.37
+Source version at review: 0.0.40 on draft branch `perf/fsr1-fp16` / PR #6; `main` remains at 0.0.37 until the draft PR is reviewed and merged.
 Default branch: main
 
 ## 1. Mission
@@ -35,13 +35,13 @@ ModernOPT should complement—not replace—Sodium's terrain renderer or Iris' s
 - Settings and user-facing documentation should be available in English and Russian.
 - The maintainer decided to leave compute/mesh shaders aside; do not add them as a roadmap task merely because they were discussed.
 - Do not start Frame Generation until explicitly re-prioritized. Previous FG work was associated with severe perceived stutter/latency despite high displayed FPS; the maintainer wanted it deferred until the upscaling/rendering core is stable.
-- Do not reintroduce shadow-frame skipping: cancelling Iris' full shadow pass caused stale/disappearing/flickering shadows. The old config keys are reserved/inert for compatibility. Iris shadow-resolution scaling is separate, optional, and defaults off.
+- Shadow-frame skipping is experimental and must operate at the whole `IrisRenderingPipeline.renderShadows` call boundary, including Iris PREPARE, never by cancelling only `ShadowRenderer.renderShadows`. Preserve the last shadow map together with the matrices that produced it; fail open if Iris fields/settings cannot be inspected. It remains disabled by default. Iris shadow-resolution scaling is separate, optional, and defaults off.
 - FXAA should not disable the entire mod when a shader pack is active. Skip only the incompatible effect/pass where needed.
 - Never promise a performance gain before repeatable before/after measurements.
 
-## 3. Current repository state (0.0.37)
+## 3. Current repository state (draft PR branch 0.0.40; main 0.0.37)
 
-The project is alpha/experimental. The 0.0.37 build/package CI job completed successfully at the last handoff, but this verifies compilation and packaging—not in-game behaviour. Full runtime validation across Iris, Sodium, shader packs, and other mods has not been established.
+The project is alpha/experimental. Earlier 0.0.37 and draft-branch builds completed successfully. The current 0.0.40 diagnostics build is being checked by CI; even a successful build verifies compilation and packaging, not in-game behaviour. Full runtime validation across Iris, Sodium, shader packs, and other mods has not been established.
 
 ### Existing code areas
 
@@ -55,7 +55,7 @@ The project is alpha/experimental. The 0.0.37 build/package CI job completed suc
 - render/RenderScaleController.java: bounded dynamic render-scale controller; verify its actual hook/integration and in-game behaviour before treating dynamic resolution as complete.
 - render/RenderScalePhase.java: records the temporary scale applied during world rendering.
 - render/RenderTargetLifecycle.java: synchronizes selected world auxiliary targets and post chains to world resolution.
-- render/RenderDiagnostics.java: render-target telemetry and CPU-side timing. These are CPU wall-clock times, not GPU execution timings.
+- render/RenderDiagnostics.java: CPU wall-clock timings plus asynchronous OpenGL timestamp queries for GPU world/post intervals. GPU results are read only after availability is reported; CPU-only mode remains if timestamps are unsupported. It also tracks main-target restoration and throttled Iris RenderTarget field inspection.
 - render/Fsr1Renderer.java: shader registration and post-processing for FSR1-related passes and simple reconstruction modes; reuses an intermediate target for sequential FXAA processing.
 - render/MultisampleRenderTarget.java: multisample target implementation.
 - mixin/GameRendererMixin.java: critical render interception and state restoration; highest-risk area for regressions.
@@ -73,10 +73,10 @@ The project is alpha/experimental. The 0.0.37 build/package CI job completed suc
 - Intended native-resolution HUD/GUI.
 - Optional particle draw-distance culling (draw only; particles continue ticking).
 - Configurable performance HUD and text log.
-- CSV benchmark with frame intervals, FPS, heap usage, process/system CPU, native/world target dimensions, effective scale, shader-pack state, and CPU-side world/post timing.
+- CSV benchmark with frame intervals, FPS, heap usage, process/system CPU, native/world target dimensions, effective scale, shader-pack state, CPU/GPU world/post timing, selected upscaler path, auxiliary/Iris target sizes, and main-target restoration status.
 - Conservative troubleshooting hints; no automatic setting changes.
 - Master switch; currently defaults off because the rendering pipeline remains experimental.
-- Iris shadow-frame skipping is intentionally inactive. Full Iris render-scale integration is not currently claimed.
+- Iris shadow-frame pacing is an optional experimental whole-pipeline cache path and is disabled by default. Runtime compatibility and visual correctness still require in-game validation.
 
 Do not describe FSR2, TAA, frame generation, compute shaders, or mesh shaders as implemented features. They are not part of the current documented core.
 
@@ -101,7 +101,7 @@ This is a design contract, not proof that every shader pack follows the path. Ch
 - Avoid per-frame allocations, repeated reflection, redundant framebuffer copies, repeated shader compilation, and unnecessary driver queries.
 - Reuse targets only when dimensions and formats are compatible; destroy them on resize/reload/shutdown and handle partial allocation failures.
 - Prefer explicit, reversible state transitions and try/finally restoration.
-- Do not use frequent glGetError polling or blocking GPU timer queries in the hot path.
+- Do not use frequent glGetError polling or blocking GPU timer queries in the hot path. Asynchronous timestamp queries are permitted only when results are polled for availability and read later.
 - Do not treat CPU submission time as GPU execution time.
 - Avoid fragile mixins/overwrites against Sodium or Iris internals where a narrower hook/fallback is possible.
 - Never cancel an entire Iris shader/shadow pass to optimize a single effect.
@@ -150,8 +150,8 @@ Goal: explain the previously observed modest gain (about 1.4–1.5x FPS at 50% s
 - Collect matched 100% vs 50% CSVs in the same warmed scene, view direction, weather, shader settings, FPS cap, and VSync state; repeat runs at least twice.
 - Inspect actual output and world-target dimensions and pixel ratio first—do not assume the requested scale is the effective scale.
 - Compare average FPS, p95/p99 frame time, spike count, process/system CPU, heap, world-pass CPU time, and post-process CPU time.
-- Classify likely CPU/game-thread, pixel-shading/GPU, shader-pack, frame-cap/VSync, allocation/transfer, or post-processing bottleneck. CSV data does not directly measure GPU execution time.
-- If data points to GPU-bound rendering, use a suitable external GPU profiler or controlled shader-pack/pass tests; do not infer GPU timing from CPU timings.
+- Classify likely CPU/game-thread, pixel-shading/GPU, shader-pack, frame-cap/VSync, allocation/transfer, or post-processing bottleneck. Async timestamp intervals are approximate GPU timings for queued world/post work; still validate against in-game behavior and external profiling.
+- If data points to GPU-bound rendering, use a suitable external GPU profiler or controlled shader-pack/pass tests; do not infer GPU timing from CPU timings alone.
 - Make one measured change at a time and retain a baseline for comparison.
 
 Exit criteria: a written bottleneck diagnosis with evidence, plus a repeatable benchmark showing the effect of any optimization.
@@ -194,7 +194,7 @@ Exit criteria: reproducible smoke-test checklist and clear per-combination suppo
 
 Goal: improve image quality without destabilizing the renderer.
 
-- First verify and tune existing FSR1 EASU + RCAS implementation and its native textureGather/explicit-fetch fallback.
+- First verify and tune existing FSR1 EASU + RCAS implementation and its native textureGather/explicit-fetch fallback. FP16 EASU should use native OpenGL `textureGather` rather than the RenderPearl/Vulkan-translation explicit-`texelFetch` workaround; compare FP16 and FP32 on the same GPU because FP16 is not inherently faster.
 - Compare FSR1 with bilinear, nearest, and SoftScale at identical internal resolutions.
 - Validate shader orientation, colour, edge stability, sharpening, and performance.
 - Make SSAA/MSAA/FXAA interactions explicit, including precedence and unsupported modes.
@@ -252,10 +252,10 @@ For any claimed FPS improvement:
 4. Capture the same interval at the changed setting (e.g. 50%).
 5. Repeat each condition at least twice; report mean and variability.
 6. Compare p95/p99 frame time, spikes, CPU load, actual target dimensions, and the effective scale—not only the FPS counter.
-7. Attach CSVs and relevant redacted “Render diagnostics (CPU only)” log lines.
+7. Attach CSVs and relevant redacted “Render diagnostics” log lines, including CPU/GPU timings, target dimensions and main-target restoration status.
 8. State clearly whether the result is a build test, a launch test, or an actual in-game runtime test.
 
-The current CSV does not measure GPU execution time, VRAM, or GPU temperature. CPU wall-clock time around a draw call is not GPU execution time.
+The current CSV does not measure VRAM or GPU temperature. CPU wall-clock time around a draw call is not GPU execution time; asynchronous timestamp queries measure queued GPU intervals when supported, and should be cross-checked during runtime testing.
 
 ## 7. Definition of done
 

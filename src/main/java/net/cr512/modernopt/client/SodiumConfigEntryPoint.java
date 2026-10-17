@@ -18,6 +18,7 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
     private static final ResourceLocation SCALE_ID = id("render_scale");
     private static final ResourceLocation PRESET_ID = id("upscaling_preset");
     private static final ResourceLocation UPSCALER_ID = id("upscaler");
+    private static final ResourceLocation FP16_FSR_ID = id("fsr1_fp16_enabled");
     private static final ResourceLocation FXAA_ID = id("fxaa");
     private static final ResourceLocation SSAA_ID = id("ssaa");
     private static final ResourceLocation MSAA_ID = id("msaa");
@@ -102,6 +103,13 @@ public final class SodiumConfigEntryPoint implements ConfigEntryPoint {
                             () -> UpscalerMode.values()[Math.max(0, Math.min(UpscalerMode.values().length - 1, ModernOptConfig.UPSCALER_MODE.get()))])
                         .setStorageHandler(storage)
                         .setDefaultValue(UpscalerMode.BILINEAR)
+                        .setEnabled(true))
+                    .addOption(builder.createBooleanOption(FP16_FSR_ID)
+                        .setName(Component.translatable("modernopt.option.fsr1Fp16"))
+                        .setTooltip(Component.translatable("modernopt.option.fsr1Fp16.desc"))
+                        .setBinding(ModernOptConfig.FSR1_FP16_ENABLED::set, ModernOptConfig.FSR1_FP16_ENABLED::get)
+                        .setStorageHandler(storage)
+                        .setDefaultValue(true)
                         .setEnabled(true))
                     .addOption(builder.createBooleanOption(DYNAMIC_ID)
                         .setName(Component.translatable("modernopt.option.dynamic"))
