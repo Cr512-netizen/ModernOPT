@@ -129,7 +129,11 @@ public final class RenderDiagnostics {
     public static void recordFrameState(boolean mainTargetRestored, String upscalerPath, String auxiliaryTargets) {
         lastMainTargetRestored = mainTargetRestored;
         lastUpscalerPath = upscalerPath == null ? "unknown" : upscalerPath;
-        lastAuxiliaryTargets = (auxiliaryTargets == null ? "unknown" : auxiliaryTargets) + "; irisTargets=" + lastIrisTargets;
+        if (auxiliaryTargets == null || "not sampled".equals(auxiliaryTargets)) {
+            lastAuxiliaryTargets = "not sampled";
+        } else {
+            lastAuxiliaryTargets = auxiliaryTargets + "; irisTargets=" + lastIrisTargets;
+        }
     }
 
     public static void endFrame(int nativeWidth, int nativeHeight, int renderWidth, int renderHeight,
