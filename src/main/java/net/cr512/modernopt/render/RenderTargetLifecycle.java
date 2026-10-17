@@ -32,9 +32,16 @@ public final class RenderTargetLifecycle {
             // vanilla recalculates the chain's orthographic matrix in this method.
             PostChain entityEffect = ((LevelRendererAccessor) (Object) minecraft.levelRenderer).modernopt$getEntityEffect();
             if (entityEffect != null && ((PostChainAccessor) (Object) entityEffect).modernopt$getFullSizedTargets() != null) {
-                boolean resizeChain = ((PostChainAccessor) (Object) entityEffect).modernopt$getFullSizedTargets().stream().anyMatch(target ->
-                    target != null && (target.width != width || target.height != height)
-                );
+                // This method may be reached from render hooks. Avoid creating a
+                // Stream/lambda chain during the hot path; inspect the existing list
+                // directly and stop at the first mismatched target.
+                boolean resizeChain = false;
+                for (RenderTarget target : ((PostChainAccessor) (Object) entityEffect).modernopt$getFullSizedTargets()) {
+                    if (target != null && (target.width != width || target.height != height)) {
+                        resizeChain = true;
+                        break;
+                    }
+                }
                 if (resizeChain) {
                     entityEffect.resize(width, height);
                 }
