@@ -4,7 +4,7 @@ Maintainer/future-assistant handoff. Read this before changing rendering code or
 
 Last reviewed: 2026-10-16
 Repository: https://github.com/Cr512-netizen/ModernOPT
-Source version at review: 0.0.39 on draft branch `perf/fsr1-fp16` / PR #6; `main` remains at 0.0.37 until the draft PR is reviewed and merged.
+Source version at review: 0.0.40 on draft branch `perf/fsr1-fp16` / PR #6; `main` remains at 0.0.37 until the draft PR is reviewed and merged.
 Default branch: main
 
 ## 1. Mission
@@ -39,9 +39,9 @@ ModernOPT should complement—not replace—Sodium's terrain renderer or Iris' s
 - FXAA should not disable the entire mod when a shader pack is active. Skip only the incompatible effect/pass where needed.
 - Never promise a performance gain before repeatable before/after measurements.
 
-## 3. Current repository state (draft PR branch 0.0.39; main 0.0.37)
+## 3. Current repository state (draft PR branch 0.0.40; main 0.0.37)
 
-The project is alpha/experimental. Earlier 0.0.37 and draft-branch builds completed successfully. The current 0.0.39 diagnostics build is being checked by CI; even a successful build verifies compilation and packaging, not in-game behaviour. Full runtime validation across Iris, Sodium, shader packs, and other mods has not been established.
+The project is alpha/experimental. Earlier 0.0.37 and draft-branch builds completed successfully. The current 0.0.40 diagnostics build is being checked by CI; even a successful build verifies compilation and packaging, not in-game behaviour. Full runtime validation across Iris, Sodium, shader packs, and other mods has not been established.
 
 ### Existing code areas
 
