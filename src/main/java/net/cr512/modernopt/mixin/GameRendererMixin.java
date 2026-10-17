@@ -1,7 +1,6 @@
 package net.cr512.modernopt.mixin;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
@@ -12,9 +11,9 @@ import com.mojang.blaze3d.vertex.VertexSorting;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.render.Fsr1Renderer;
 import net.cr512.modernopt.render.RenderDiagnostics;
-import net.cr512.modernopt.render.MultisampleRenderTarget;
 import net.cr512.modernopt.render.RenderScaleController;
 import net.cr512.modernopt.render.RenderPipelinePolicy;
+import net.cr512.modernopt.render.RenderTargetManager;
 import net.cr512.modernopt.render.RenderScalePhase;
 import net.cr512.modernopt.render.RenderTargetLifecycle;
 import net.minecraft.client.Minecraft;
@@ -40,8 +39,7 @@ public abstract class GameRendererMixin {
 
     @Unique private RenderTarget modernopt$originalTarget;
     @Unique private RenderTarget modernopt$frameNativeTarget;
-    @Unique private TextureTarget modernopt$scaledTarget;
-    @Unique private MultisampleRenderTarget modernopt$msaaTarget;
+    @Unique private final RenderTargetManager modernopt$targetManager = new RenderTargetManager();
     @Unique private RenderTarget modernopt$worldTarget;
     @Unique private Matrix4f modernopt$oldProjection;
     @Unique private VertexSorting modernopt$oldVertexSorting;
@@ -52,8 +50,6 @@ public abstract class GameRendererMixin {
     @Unique private boolean modernopt$ssaaActive;
     @Unique private boolean modernopt$fxaaOnly;
     @Unique private boolean modernopt$auxTargetsAdjusted;
-    @Unique private int modernopt$allocatedSamples;
-    @Unique private int modernopt$failedMsaaRequest;
 
     // Iris is optional, so avoid a hard dependency. Resolve its API once instead of
     // repeating class/method lookup on every rendered frame.
@@ -133,7 +129,7 @@ public abstract class GameRendererMixin {
             ModernOptConfig.SSAA_ENABLED.get(),
             ModernOptConfig.FXAA_ENABLED.get(),
             modernopt$requestedSamples(),
-            this.modernopt$failedMsaaRequest
+            this.modernopt$targetManager.isMsaaRequestFailed(modernopt$requestedSamples()) ? modernopt$requestedSamples() : 0
         );
         boolean ssaaRequested = selection.ssaa();
         boolean fxaaRequested = selection.fxaa();
@@ -193,45 +189,13 @@ public abstract class GameRendererMixin {
         if (samples > 0) {
             int requestedSamples = samples;
             try {
-                if (this.modernopt$msaaTarget == null || this.modernopt$allocatedSamples != samples) {
-                    if (this.modernopt$msaaTarget != null) this.modernopt$msaaTarget.destroyBuffers();
-                    this.modernopt$msaaTarget = null;
-                    int[] candidates = samples == 8 ? new int[]{8, 4, 2}
-                        : samples == 4 ? new int[]{4, 2} : new int[]{2};
-                    Throwable lastAllocationFailure = null;
-                    for (int candidate : candidates) {
-                        try {
-                            this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, candidate, Minecraft.ON_OSX);
-                            samples = candidate;
-                            break;
-                        } catch (RuntimeException | LinkageError allocationFailure) {
-                            lastAllocationFailure = allocationFailure;
-                            this.modernopt$msaaTarget = null;
-                        }
-                    }
-                    if (this.modernopt$msaaTarget == null) {
-                        if (lastAllocationFailure instanceof RuntimeException runtimeFailure) throw runtimeFailure;
-                        if (lastAllocationFailure instanceof LinkageError linkageFailure) throw linkageFailure;
-                        throw new IllegalStateException("No supported MSAA sample count could be allocated.");
-                    }
-                    if (samples != requestedSamples) {
-                        MODERNOPT_LOGGER.warn("MSAA {}x is unavailable; falling back to {}x.", requestedSamples, samples);
-                        ModernOptConfig.MSAA_SAMPLES.set(samples);
-                        ModernOptConfig.SPEC.save();
-                    }
-                    this.modernopt$allocatedSamples = samples;
-                } else if (this.modernopt$msaaTarget.width != width || this.modernopt$msaaTarget.height != height) {
-                    this.modernopt$msaaTarget.resize(width, height, Minecraft.ON_OSX);
-                }
-                this.modernopt$failedMsaaRequest = 0;
-                this.modernopt$worldTarget = this.modernopt$msaaTarget;
+                this.modernopt$worldTarget = this.modernopt$targetManager.acquireMsaaTarget(
+                    width, height, samples, Minecraft.ON_OSX
+                );
                 this.modernopt$msaaActive = true;
             } catch (RuntimeException | LinkageError msaaUnavailable) {
                 // Unsupported sample counts/framebuffer formats must not break world rendering.
-                if (this.modernopt$msaaTarget != null) this.modernopt$msaaTarget.destroyBuffers();
-                this.modernopt$msaaTarget = null;
-                this.modernopt$allocatedSamples = 0;
-                this.modernopt$failedMsaaRequest = requestedSamples;
+                this.modernopt$targetManager.markMsaaFailure(requestedSamples);
                 this.modernopt$msaaActive = false;
                 this.modernopt$worldTarget = null;
             }
@@ -239,12 +203,7 @@ public abstract class GameRendererMixin {
 
         if (this.modernopt$worldTarget == null && this.modernopt$scalingActive) {
             try {
-                if (this.modernopt$scaledTarget == null) {
-                    this.modernopt$scaledTarget = new TextureTarget(width, height, true, Minecraft.ON_OSX);
-                } else if (this.modernopt$scaledTarget.width != width || this.modernopt$scaledTarget.height != height) {
-                    this.modernopt$scaledTarget.resize(width, height, Minecraft.ON_OSX);
-                }
-                this.modernopt$worldTarget = this.modernopt$scaledTarget;
+                this.modernopt$worldTarget = this.modernopt$targetManager.acquireScaledTarget(width, height, Minecraft.ON_OSX);
             } catch (RuntimeException | LinkageError allocationFailure) {
                 MODERNOPT_LOGGER.warn("Could not allocate the scaled world target; using the native framebuffer for this frame.", allocationFailure);
                 RenderScalePhase.end();
