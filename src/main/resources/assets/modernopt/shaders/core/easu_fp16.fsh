@@ -1,11 +1,5 @@
 #version 420
-#if defined(GL_AMD_gpu_shader_half_float)
-#extension GL_AMD_gpu_shader_half_float : require
-#elif defined(GL_NV_gpu_shader5)
 #extension GL_NV_gpu_shader5 : require
-#else
-#error ModernOPT FP16 requires GL_AMD_gpu_shader_half_float or GL_NV_gpu_shader5
-#endif
 #define A_GPU 1
 #define A_GLSL 1
 #define A_HALF 1
