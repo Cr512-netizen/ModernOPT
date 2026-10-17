@@ -292,8 +292,8 @@ public abstract class GameRendererMixin {
                 }
             } else if (this.modernopt$active && this.modernopt$msaaActive) {
                 // Resolve MSAA directly into the native framebuffer without an intermediate texture draw.
-                if (!modernopt$blitFramebuffer(this.modernopt$worldTarget, this.modernopt$originalTarget)) {
-                    modernopt$blitOpaque(this.modernopt$worldTarget, this.modernopt$originalTarget);
+                if (!FramebufferBlitter.blitFramebuffer(this.modernopt$worldTarget, this.modernopt$originalTarget)) {
+                    FramebufferBlitter.blitOpaque(this.modernopt$worldTarget, this.modernopt$originalTarget);
                 }
             }
 
