@@ -33,9 +33,10 @@ The Iris shadow throttling prototype also demonstrated an unsafe assumption: can
 - Keep build/test artifacts on a separate feature branch; never merge to the default branch without review.
 
 ### Stage B — target and policy extraction
-- Extract target allocation/reuse/destruction from `GameRendererMixin`.
-- Move feature precedence and shader-pack safety checks into a policy class with deterministic unit-testable decisions.
-- Keep the old mixin as a thin adapter; do not switch rendering behavior in the same commit as the extraction.
+- Extract target allocation/reuse/destruction into `RenderTargetManager`; the manager owns only ModernOPT targets and releases them when `GameRenderer` closes.
+- Extract fixed-function and textured fallback copies into `FramebufferBlitter`.
+- Move feature precedence into `RenderPipelinePolicy`; keep shader-pack checks explicit at the adapter boundary.
+- Continue reducing `GameRendererMixin` to lifecycle orchestration; do not switch rendering behavior in the same commit as each extraction.
 
 ### Stage C — safe first backend
 - Reintroduce only spatial render scaling without shaders, with exact size/viewport restoration and native-resolution HUD.
