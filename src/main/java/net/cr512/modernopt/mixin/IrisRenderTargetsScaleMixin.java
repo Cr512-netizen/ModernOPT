@@ -11,6 +11,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Iris owns its gbuffer color targets independently of Minecraft's main target.
@@ -60,7 +61,7 @@ public abstract class IrisRenderTargetsScaleMixin {
     }
 
     @Inject(method = "resizeIfNeeded", at = @At("RETURN"), remap = false)
-    private void modernopt$diagnoseIrisTargetResize(CallbackInfo ci) {
+    private void modernopt$diagnoseIrisTargetResize(CallbackInfoReturnable<?> cir) {
         RenderDiagnostics.recordIrisTargets(this);
     }
 
