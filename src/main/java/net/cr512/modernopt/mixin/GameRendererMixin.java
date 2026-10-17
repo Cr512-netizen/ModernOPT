@@ -95,6 +95,11 @@ public abstract class GameRendererMixin {
         };
     }
 
+    @Inject(method = "close", at = @At("HEAD"), require = 0)
+    private void modernopt$releaseOwnedRenderTargets(CallbackInfo ci) {
+        this.modernopt$targetManager.destroy();
+    }
+
     @Inject(method = "renderLevel", at = @At("HEAD"))
     private void modernopt$beginWorldPass(CallbackInfo ci) {
         RenderDiagnostics.beginFrame();
