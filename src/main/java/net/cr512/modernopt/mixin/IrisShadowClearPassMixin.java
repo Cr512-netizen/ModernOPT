@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class IrisShadowClearPassMixin {
     @Inject(method = "execute", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
     private void modernopt$keepCachedShadowTextures(org.joml.Vector4f clearColor, CallbackInfo ci) {
-        if (IrisShadowFrameSkipMixin.modernopt$shouldSkipShadowSetupWork()) {
+        if ((net.cr512.modernopt.render.IrisShadowFrameSkipState.skipShadowPass && net.cr512.modernopt.render.IrisShadowFrameSkipState.insideShadowSetup)) {
             ci.cancel();
         }
     }
