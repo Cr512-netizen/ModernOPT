@@ -196,8 +196,30 @@ public abstract class GameRendererMixin {
                 if (this.modernopt$msaaTarget == null || this.modernopt$allocatedSamples != samples) {
                     if (this.modernopt$msaaTarget != null) this.modernopt$msaaTarget.destroyBuffers();
                     this.modernopt$msaaTarget = null;
-                    this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, samples, Minecraft.ON_OSX);
-                    this.modernopt$allocatedSamples = requestedSamples;
+                    int[] candidates = samples == 8 ? new int[]{8, 4, 2}
+                        : samples == 4 ? new int[]{4, 2} : new int[]{2};
+                    Throwable lastAllocationFailure = null;
+                    for (int candidate : candidates) {
+                        try {
+                            this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, candidate, Minecraft.ON_OSX);
+                            samples = candidate;
+                            break;
+                        } catch (RuntimeException | LinkageError allocationFailure) {
+                            lastAllocationFailure = allocationFailure;
+                            this.modernopt$msaaTarget = null;
+                        }
+                    }
+                    if (this.modernopt$msaaTarget == null) {
+                        if (lastAllocationFailure instanceof RuntimeException runtimeFailure) throw runtimeFailure;
+                        if (lastAllocationFailure instanceof LinkageError linkageFailure) throw linkageFailure;
+                        throw new IllegalStateException("No supported MSAA sample count could be allocated.");
+                    }
+                    if (samples != requestedSamples) {
+                        MODERNOPT_LOGGER.warn("MSAA {}x is unavailable; falling back to {}x.", requestedSamples, samples);
+                        ModernOptConfig.MSAA_SAMPLES.set(samples);
+                        ModernOptConfig.SPEC.save();
+                    }
+                    this.modernopt$allocatedSamples = samples;
                 } else if (this.modernopt$msaaTarget.width != width || this.modernopt$msaaTarget.height != height) {
                     this.modernopt$msaaTarget.resize(width, height, Minecraft.ON_OSX);
                 }
