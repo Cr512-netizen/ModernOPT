@@ -9,39 +9,171 @@ import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+
 /**
- * Safety guard for Iris shadow rendering.
+ * Iris shadow refresh pacing. When a refresh is skipped, suppress only the
+ * shadow target clear/compute work in beginLevelRendering and cancel only the
+ * ShadowRenderer draw. Iris' pipeline method still runs its non-shadow PREPARE
+ * renderer, while ShadowRenderer.MODELVIEW/PROJECTION and the previous shadow
+ * maps remain paired.
  *
- * The previous implementation cancelled IrisRenderingPipeline.renderShadows()
- * to throttle shadow updates. That method also owns state transitions around
- * shadow rendering and PREPARE; retaining only the shadow texture is not enough
- * unless its matching matrices and all target lifecycle state are retained too.
- *
- * Until ModernOPT has a verified snapshot/restore adapter for the supported Iris
- * version, never cancel the Iris shadow pipeline. This intentionally prioritizes
- * correct shadows over the experimental refresh-rate optimization.
+ * This is intentionally fail-open: if the Iris version's expected fields or
+ * target lifecycle cannot be verified, shadows render every frame.
  */
 @Pseudo
 @Mixin(targets = "net.irisshaders.iris.pipeline.IrisRenderingPipeline", remap = false)
 public abstract class IrisShadowFrameSkipMixin {
     @Unique private static final Logger MODERNOPT_SHADOW_LOGGER = LoggerFactory.getLogger("ModernOPT");
-    @Unique private static boolean modernopt$warningLogged;
+    @Unique private static volatile boolean modernopt$irisReflectionResolved;
+    @Unique private static Field modernopt$shadowRendererField;
+    @Unique private static Field modernopt$shadowDistanceField;
+    @Unique private static Method modernopt$getOverriddenShadowDistance;
+    @Unique private static Field modernopt$shadowTargetsField;
+    @Unique private static Method modernopt$isFullClearRequired;
 
-    @Inject(method = "renderShadows", at = @At("HEAD"), remap = false, require = 0)
-    private void modernopt$keepIrisShadowPipelineIntact(CallbackInfo ci) {
-        if (!modernopt$warningLogged
-            && ModList.get().isLoaded("iris")
-            && ModernOptConfig.ENABLED.get()
-            && ModernOptConfig.SHADOW_FRAME_SKIP_ENABLED.get()) {
-            modernopt$warningLogged = true;
-            MODERNOPT_SHADOW_LOGGER.warn(
-                "Iris shadow-frame skipping is temporarily bypassed: safe shadow-map and matrix caching is not implemented yet. "
-                    + "Iris will refresh shadows every frame to prevent missing shadows."
-            );
+    @Unique private static volatile boolean modernopt$skipShadowPass;
+    @Unique private static volatile boolean modernopt$insideShadowSetup;
+    @Unique private boolean modernopt$shadowUpdatePending;
+    @Unique private long modernopt$lastShadowUpdateNanos;
+    @Unique private boolean modernopt$warnedAboutCompatibility;
+
+    @Inject(method = "beginLevelRendering", at = @At("HEAD"), remap = false, require = 0)
+    private void modernopt$selectShadowRefresh(CallbackInfo ci) {
+        modernopt$skipShadowPass = false;
+        modernopt$insideShadowSetup = false;
+        this.modernopt$shadowUpdatePending = false;
+
+        if (!ModernOptConfig.ENABLED.get() || !ModernOptConfig.SHADOW_FRAME_SKIP_ENABLED.get()
+            || !ModList.get().isLoaded("iris")) {
+            this.modernopt$lastShadowUpdateNanos = 0L;
+            return;
         }
-        // Deliberately do not cancel renderShadows(). Iris must run both its
-        // shadow render and the follow-up state/target preparation every frame.
+
+        if (!modernopt$hasActiveShadowRenderer(this)) {
+            this.modernopt$lastShadowUpdateNanos = 0L;
+            return;
+        }
+
+        // A target resize/reload requires a full clear; never hold stale contents across it.
+        if (modernopt$fullShadowClearRequired(this)) {
+            this.modernopt$lastShadowUpdateNanos = 0L;
+            return;
+        }
+
+        int targetFps = Math.max(40, Math.min(240, ModernOptConfig.SHADOW_UPDATE_FPS.get()));
+        long minimumIntervalNanos = 1_000_000_000L / targetFps;
+        long now = System.nanoTime();
+
+        if (this.modernopt$lastShadowUpdateNanos != 0L
+            && now - this.modernopt$lastShadowUpdateNanos < minimumIntervalNanos) {
+            modernopt$skipShadowPass = true;
+            modernopt$insideShadowSetup = true;
+        } else {
+            this.modernopt$shadowUpdatePending = true;
+        }
+    }
+
+    @Inject(method = "beginLevelRendering", at = @At(value = "INVOKE",
+        target = "Lnet/irisshaders/iris/uniforms/FrameUpdateNotifier;onNewFrame()V", shift = At.Shift.BEFORE),
+        remap = false, require = 0)
+    private void modernopt$endShadowSetupWindow(CallbackInfo ci) {
+        modernopt$insideShadowSetup = false;
+    }
+
+    @Redirect(method = "beginLevelRendering", at = @At(value = "INVOKE",
+        target = "Lcom/mojang/blaze3d/systems/RenderSystem;clear(IZ)V"), remap = false, require = 0)
+    private void modernopt$preserveCachedShadowDepth(int mask, boolean onOSX) {
+        if (!modernopt$skipShadowPass) {
+            com.mojang.blaze3d.systems.RenderSystem.clear(mask, onOSX);
+        }
+        // The only clear(mask, onOSX) in this section clears Iris' shadow depth target.
+    }
+
+    @Inject(method = "renderShadows", at = @At("RETURN"), remap = false, require = 0)
+    private void modernopt$finishShadowRefresh(CallbackInfo ci) {
+        if (this.modernopt$shadowUpdatePending) {
+            this.modernopt$lastShadowUpdateNanos = System.nanoTime();
+        }
+        this.modernopt$shadowUpdatePending = false;
+        modernopt$insideShadowSetup = false;
+        modernopt$skipShadowPass = false;
+    }
+
+    @Unique
+    public static boolean modernopt$shouldSkipShadowPass() {
+        return modernopt$skipShadowPass;
+    }
+
+    @Unique
+    public static boolean modernopt$shouldSkipShadowSetupWork() {
+        return modernopt$skipShadowPass && modernopt$insideShadowSetup;
+    }
+
+    @Unique
+    private static boolean modernopt$hasActiveShadowRenderer(Object pipeline) {
+        if (!modernopt$resolveIrisReflection()) return false;
+        try {
+            if (modernopt$shadowRendererField.get(pipeline) == null) return false;
+            int configuredDistance = modernopt$shadowDistanceField.getInt(null);
+            Object effectiveDistance = modernopt$getOverriddenShadowDistance.invoke(null, configuredDistance);
+            return effectiveDistance instanceof Integer distance && distance > 0;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return false;
+        }
+    }
+
+    @Unique
+    private static boolean modernopt$fullShadowClearRequired(Object pipeline) {
+        if (!modernopt$resolveIrisReflection()) return true;
+        try {
+            Object targets = modernopt$shadowTargetsField.get(pipeline);
+            if (targets == null) return true;
+            return Boolean.TRUE.equals(modernopt$isFullClearRequired.invoke(targets));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return true;
+        }
+    }
+
+    @Unique
+    private static synchronized boolean modernopt$resolveIrisReflection() {
+        if (modernopt$irisReflectionResolved) {
+            return modernopt$shadowRendererField != null && modernopt$shadowDistanceField != null
+                && modernopt$getOverriddenShadowDistance != null && modernopt$shadowTargetsField != null
+                && modernopt$isFullClearRequired != null;
+        }
+
+        modernopt$irisReflectionResolved = true;
+        try {
+            ClassLoader loader = IrisShadowFrameSkipMixin.class.getClassLoader();
+            Class<?> pipelineClass = Class.forName("net.irisshaders.iris.pipeline.IrisRenderingPipeline", false, loader);
+            Class<?> settingsClass = Class.forName("net.irisshaders.iris.gui.option.IrisVideoSettings", false, loader);
+            Class<?> targetsClass = Class.forName("net.irisshaders.iris.shadows.ShadowRenderTargets", false, loader);
+
+            modernopt$shadowRendererField = pipelineClass.getDeclaredField("shadowRenderer");
+            modernopt$shadowRendererField.setAccessible(true);
+            modernopt$shadowTargetsField = pipelineClass.getDeclaredField("shadowRenderTargets");
+            modernopt$shadowTargetsField.setAccessible(true);
+            modernopt$shadowDistanceField = settingsClass.getDeclaredField("shadowDistance");
+            modernopt$shadowDistanceField.setAccessible(true);
+            modernopt$getOverriddenShadowDistance = settingsClass.getDeclaredMethod("getOverriddenShadowDistance", int.class);
+            modernopt$getOverriddenShadowDistance.setAccessible(true);
+            modernopt$isFullClearRequired = targetsClass.getDeclaredMethod("isFullClearRequired");
+            modernopt$isFullClearRequired.setAccessible(true);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            modernopt$shadowRendererField = null;
+            modernopt$shadowTargetsField = null;
+            modernopt$shadowDistanceField = null;
+            modernopt$getOverriddenShadowDistance = null;
+            modernopt$isFullClearRequired = null;
+        }
+
+        return modernopt$shadowRendererField != null && modernopt$shadowDistanceField != null
+            && modernopt$getOverriddenShadowDistance != null && modernopt$shadowTargetsField != null
+            && modernopt$isFullClearRequired != null;
     }
 }
