@@ -133,7 +133,7 @@ public abstract class IrisShadowFrameSkipMixin {
 
         modernopt$irisReflectionResolved = true;
         try {
-            ClassLoader loader = IrisShadowFrameSkipMixin.class.getClassLoader();
+            ClassLoader loader = Thread.currentThread().getContextClassLoader();
             Class<?> pipelineClass = Class.forName("net.irisshaders.iris.pipeline.IrisRenderingPipeline", false, loader);
             Class<?> settingsClass = Class.forName("net.irisshaders.iris.gui.option.IrisVideoSettings", false, loader);
             Class<?> targetsClass = Class.forName("net.irisshaders.iris.shadows.ShadowRenderTargets", false, loader);
