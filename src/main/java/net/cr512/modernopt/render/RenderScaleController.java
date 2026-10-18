@@ -34,6 +34,15 @@ public final class RenderScaleController {
     }
 
     public static void update(int measuredFps) {
+        update(measuredFps, false);
+    }
+
+    /**
+     * Dynamic scaling is paused while an Iris shader pack is active. RenderScale
+     * documents stutter with dynamic scaling plus shaders; keep the last stable
+     * scale instead of continuously resizing shader-owned render targets.
+     */
+    public static void update(int measuredFps, boolean shaderPackInUse) {
         boolean dynamic = ModernOptConfig.ENABLED.get() && ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED.get();
         if (!dynamic) {
             wasDynamic = false;
@@ -49,6 +58,14 @@ public final class RenderScaleController {
         int max = Math.max(ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.get(), ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.get());
         effectivePercent = clamp(effectivePercent, min, max);
         if (target != lastTargetFps) { lastTargetFps = target; lastAdjustmentNanos = 0L; }
+
+        // Reset hysteresis while shaders are active, so a backlog of old samples
+        // cannot trigger an immediate resize when the shader pack is turned off.
+        if (shaderPackInUse) {
+            belowTargetSamples = 0;
+            aboveTargetSamples = 0;
+            return;
+        }
         if (measuredFps <= 0) return;
         double ratio = measuredFps / (double) target;
         if (ratio < 1.0 - DEAD_BAND) { belowTargetSamples++; aboveTargetSamples = 0; }
