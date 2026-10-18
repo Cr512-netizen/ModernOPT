@@ -45,6 +45,12 @@ public abstract class GameRendererMixin {
     @Unique private boolean modernopt$fxaaOnly;
     @Unique private boolean modernopt$fxaaRequested;
     @Unique private boolean modernopt$auxTargetsAdjusted;
+    @Unique private boolean modernopt$hasCameraSample;
+    @Unique private double modernopt$lastCameraX;
+    @Unique private double modernopt$lastCameraY;
+    @Unique private double modernopt$lastCameraZ;
+    @Unique private float modernopt$lastCameraYaw;
+    @Unique private float modernopt$lastCameraPitch;
 
     // Iris is optional, so avoid a hard dependency. Resolve its API once instead of
     // repeating class/method lookup on every rendered frame.
@@ -114,7 +120,8 @@ public abstract class GameRendererMixin {
         int nativeWidth = nativeTarget.width;
         int nativeHeight = nativeTarget.height;
         if (!ModernOptConfig.ENABLED.get() || this.minecraft.level == null) {
-            RenderScaleController.update(false, false);
+            this.modernopt$hasCameraSample = false;
+            RenderScaleController.update(false, false, false);
             modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
             return;
         }
@@ -124,7 +131,8 @@ public abstract class GameRendererMixin {
         // the existing rollback below returns to native rendering for that frame.
         this.modernopt$shaderPackInUseThisFrame = modernopt$shaderPackInUse();
         boolean shaderPackInUse = this.modernopt$shaderPackInUseThisFrame;
-        RenderScaleController.update(shaderPackInUse);
+        boolean cameraMoving = modernopt$cameraMoving();
+        RenderScaleController.update(shaderPackInUse, true, cameraMoving);
 
         RenderPipelinePolicy.Selection selection = RenderPipelinePolicy.select(
             shaderPackInUse,
@@ -234,6 +242,47 @@ public abstract class GameRendererMixin {
         this.modernopt$worldTarget.bindWrite(true);
         ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$worldTarget);
         this.modernopt$active = true;
+    }
+
+    @Unique
+    private boolean modernopt$cameraMoving() {
+        if (this.minecraft.player == null) {
+            this.modernopt$hasCameraSample = false;
+            return false;
+        }
+        var camera = this.minecraft.gameRenderer.getMainCamera();
+        var position = camera.getPosition();
+        double x = position.x, y = position.y, z = position.z;
+        float yaw = camera.getYRot(), pitch = camera.getXRot();
+        if (!this.modernopt$hasCameraSample) {
+            this.modernopt$lastCameraX = x;
+            this.modernopt$lastCameraY = y;
+            this.modernopt$lastCameraZ = z;
+            this.modernopt$lastCameraYaw = yaw;
+            this.modernopt$lastCameraPitch = pitch;
+            this.modernopt$hasCameraSample = true;
+            return false;
+        }
+        double dx = x - this.modernopt$lastCameraX;
+        double dy = y - this.modernopt$lastCameraY;
+        double dz = z - this.modernopt$lastCameraZ;
+        boolean moving = dx * dx + dy * dy + dz * dz > 1.0e-6
+            || modernopt$angleDelta(yaw, this.modernopt$lastCameraYaw) > 0.05
+            || modernopt$angleDelta(pitch, this.modernopt$lastCameraPitch) > 0.05;
+        this.modernopt$lastCameraX = x;
+        this.modernopt$lastCameraY = y;
+        this.modernopt$lastCameraZ = z;
+        this.modernopt$lastCameraYaw = yaw;
+        this.modernopt$lastCameraPitch = pitch;
+        return moving;
+    }
+
+    @Unique
+    private static double modernopt$angleDelta(float current, float previous) {
+        double delta = (current - previous) % 360.0;
+        if (delta > 180.0) delta -= 360.0;
+        if (delta < -180.0) delta += 360.0;
+        return Math.abs(delta);
     }
 
     /**

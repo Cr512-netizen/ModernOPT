@@ -36,3 +36,16 @@ var generateModMetadata = tasks.register('generateModMetadata', ProcessResources
 sourceSets.main.resources.srcDir generateModMetadata
 neoForge.ideSyncTask generateModMetadata
 tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+
+
+tasks.register('verifyAdaptiveScale', JavaExec) {
+    group = 'verification'
+    description = 'Runs deterministic regression checks for dynamic render scaling.'
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'net.cr512.modernopt.render.AdaptiveScaleControllerTest'
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyAdaptiveScale')
+}
