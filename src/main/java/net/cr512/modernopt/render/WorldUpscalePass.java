@@ -1,8 +1,6 @@
 package net.cr512.modernopt.render;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import net.cr512.modernopt.config.ModernOptConfig;
-
 /** Selects and executes the final world-image pass without changing framebuffer ownership. */
 public final class WorldUpscalePass {
     private WorldUpscalePass() {}
@@ -14,6 +12,7 @@ public final class WorldUpscalePass {
         boolean scalingActive,
         boolean ssaaActive,
         boolean msaaActive,
+        boolean fxaaRequested,
         boolean shaderPackInUse
     ) {
         if (originalTarget == null) return;
@@ -42,7 +41,7 @@ public final class WorldUpscalePass {
         // Iris owns shader-pack AA; never add a second FXAA pass to shader output.
         // Respect the policy's mutually-exclusive AA modes. Reading the config here
         // alone would accidentally run FXAA after SSAA even when policy rejected it.
-        if (!shaderPackInUse && !ssaaActive && !msaaActive && ModernOptConfig.FXAA_ENABLED.get()) {
+        if (fxaaRequested && !shaderPackInUse && !ssaaActive && !msaaActive) {
             Fsr1Renderer.applyFxaa(originalTarget);
         }
     }

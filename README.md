@@ -33,7 +33,7 @@
 - **Render hot-path cleanup:** Iris API reflection is cached after first discovery rather than repeating class and method lookup every frame.
 - **Spatial upscalers:** FSR 1 (EASU + RCAS) prefers the native GPU `textureGather` fast path, with the explicit-fetch shader retained as a compatibility fallback; bilinear, nearest-neighbour, and SoftScale reconstruction modes are also available.
 - **SSAA:** optional 2× width and 2× height world rendering followed by downsampling. This processes four times as many world pixels and can be expensive. SSAA takes priority over render scale and MSAA.
-- **MSAA:** optional world-pass multisampling with Off, 2×, 4×, 8×, and 16× choices; if 16× is unavailable, ModernOPT retries at 8×.
+- **MSAA:** optional world-pass multisampling with Off, 2×, 4×, and 8× choices. ModernOPT caps the request at 8× and retries lower supported levels (8× → 4× → 2×) if allocation fails.
 - **FXAA:** optional post-process edge smoothing.
 - **Native-resolution interface:** the intended render pipeline keeps HUD and GUI rendering at the window resolution.
 - **Client-side settings:** use the native Sodium options page or the standalone configuration screen from the Mods list (Sodium is not required). Presets change both world scale and upscaler.
@@ -215,7 +215,7 @@ Sodium не является обязательной зависимостью, 
 
 ## Совместимость и ограничения
 
-- **Iris / шейдер-паки:** полноценная интеграция масштабирования рендера пока не заявляется. При активном шейдерном конвейере некоторые проходы могут безопасно пропускаться. Не рассчитывайте на работу масштабирования, FXAA или MSAA с Iris без отдельного подтверждения.
+- **Iris / шейдер-паки:** полноценная интеграция масштабирования рендера пока не заявляется. ModernOPT не должен повторно сглаживать уже обработанный шейдерпаком кадр. Масштабирование мировых буферов и оптимизации теней остаются экспериментальными и требуют проверки на конкретных версиях Iris и шейдерпака.
 - **Sodium:** интеграция и внешний вид могут отличаться между версиями. Совместимость не гарантируется, если конкретная версия не указана в проверенном релизе.
 - **Другие моды рендеринга:** конфликты возможны с модами, меняющими основной рендерер, буферы, framebuffer или постобработку.
 - **Производительность и качество:** апскейлинг иногда помогает при ограничении производительностью GPU, но не гарантирует рост FPS или снижение времени кадра. SSAA особенно требователен к ресурсам. Результат зависит от видеокарты, драйвера, разрешения и набора модов.

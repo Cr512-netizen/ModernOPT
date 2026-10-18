@@ -1,74 +1,61 @@
-# ModernOPT render-pipeline rewrite plan
+# ModernOPT render-pipeline completion plan
 
-Status: implementation work is on `fix/shadow-cache-render-architecture`; custom rendering is disabled by default by the master switch, but can be explicitly enabled for in-game validation. This document distinguishes code/CI completion from the remaining live Minecraft tests.
+Working branch: `fix/shadow-cache-render-architecture`. Master render switch: disabled by default. Frame Generation is explicitly out of scope. Do not merge to `main` until review and in-game acceptance are complete.
 
-## Why the current path must be replaced
+## Objective
 
-The current world-render path is concentrated in `GameRendererMixin`. It temporarily replaces Minecraft's main render target, changes auxiliary target dimensions, performs an AA/upscale pass, and restores state in a RETURN injection. That is too much lifecycle responsibility in a single mixin and is fragile around Iris, Sodium, shader-pack framebuffers, resize events, and third-party render targets.
+Complete all source-level work in one pass: audit target ownership and failure paths, make render-pass selection authoritative, reconcile documentation with actual configuration, build the final branch head, and provide one test artifact. CI cannot prove visual correctness or real performance; those remain in-game acceptance checks.
 
-The Iris shadow throttling prototype also demonstrated an unsafe assumption: cancelling `IrisRenderingPipeline.renderShadows()` is not sufficient to preserve a valid cached shadow frame. The map, its matrices, and Iris' target/PREPARE lifecycle must remain a coherent unit.
+## Required implementation invariants
 
-## Reference implementations studied
+1. **Kill switch and fallback**
+   - The master switch defaults to off.
+   - Failed shader/upscale passes fall back to a direct opaque copy where possible.
+   - The active feature selection is carried through the whole post-process stage; no pass re-derives policy from raw configuration.
+   - Allocation/resize failure must not leave an invalid target cached for reuse.
+2. **Targets and GL state**
+   - ModernOPT owns only its private targets.
+   - World targets are checked for valid dimensions and GL limits.
+   - Restore projection, vertex sorting, depth/blend enablement, depth-write mask, main target and viewport after composition.
+   - HUD/GUI remain at native window resolution.
+3. **Render scale**
+   - Preserve output dimensions while scaling only world targets.
+   - 100%, 90%, 75%, and 50% need live checks, as do resize, fullscreen and resource reload.
+   - If auxiliary targets cannot be synchronized, restore native dimensions and bypass the scaled path for that frame.
+4. **Upscaling and AA**
+   - FSR1 EASU + RCAS uses FP16 only as an optional path and retains FP32 fallback.
+   - Bilinear, nearest-neighbour and SoftScale remain distinct modes.
+   - FXAA, SSAA and MSAA obey one explicit policy decision. MSAA is capped at 8x with fallback 8x → 4x → 2x.
+   - Shader-pack output must not receive a second ModernOPT AA pass.
+5. **Iris/shadows**
+   - Iris remains optional. Unknown target/matrix conditions must fail open to per-frame shadow rendering.
+   - Shadow refresh throttling stays disabled by default until the map and matching matrices are validated as one unit.
+   - Live tests must include player/hand/entities, outlines, shadow casters, world changes, resource reloads and Complementary.
+6. **Diagnostics/performance**
+   - Label CPU timings as CPU submission/wall time; use asynchronous GPU queries only when supported and read results only when available.
+   - Compare frame-time percentiles and stutters, not only the FPS counter.
+   - Do not claim a performance gain without repeated same-scene captures.
+7. **Packaging/docs**
+   - English and Russian docs agree with actual config/UI values.
+   - Artifact SHA must correspond to the exact successful CI head SHA.
+   - Keep the PR open and `main` unchanged until acceptance.
 
-- **Vira (MIT, Minecraft 1.21.1 NeoForge)**: useful design reference for spatial FSR1 upscaling and shadow-refresh pacing. Its documented shadow optimization retains the map together with the matrices that generated it. ModernOPT must independently implement and validate that contract; it must not copy code wholesale.
-- **Sodium + Iris**: remain the owners of terrain submission, shader-pack passes, and shader-managed shadow targets. ModernOPT should integrate at narrow, explicit boundaries rather than replace their internal targets without a renderer-specific adapter.
-- **Minecraft RenderTarget/PostChain lifecycle**: use their allocation/resize contracts and restore all GL state on every exit path.
+## Current status
 
-## Target architecture
+- Architecture extraction exists: `RenderTargetManager`, `FramebufferBlitter`, `RenderPipelinePolicy`, `WorldPostProcessStage`, and `WorldUpscalePass`.
+- FSR1 and simple spatial shader paths exist, but build success does not prove that each GPU path executes correctly.
+- The experimental render path is disabled by default and may be explicitly enabled for testing.
+- Source-level pass selection is being tightened so FXAA execution follows the policy decision instead of independently reading the raw setting.
+- Live Minecraft tests are not performed by CI and must be supplied by the maintainer.
 
-1. **Render feature policy** — one pure decision stage selects exactly one mode for a frame: vanilla, render scale + spatial upscale, or one AA mode. Shader packs own their AA path; ModernOPT must not run a second AA pass over their output.
-2. **Target manager** — owns only ModernOPT-created targets, tracks dimensions/format/sample count, reuses allocations, and tears them down on resize/resource reload. It must never claim ownership of Iris targets.
-3. **World-pass adapter** — a small version-specific adapter for Minecraft/Sodium/Iris. It must validate target identity, dimensions, and framebuffer completeness before activating a feature; otherwise it falls back to vanilla for that frame.
-4. **Post-process graph** — explicit input/output passes with a single declared resolve point. HUD, GUI, text, hand overlays, and menus remain at native resolution.
-5. **AA backends** — FXAA, MSAA, and SSAA are mutually exclusive, separately measurable backends. MSAA's sample count is real hardware work, not a free quality toggle. 8x is the hard maximum and may still be substantially slower than 2x/4x; performance work must measure GPU time, not only FPS.
-6. **Iris shadow adapter** — separate from the world-resolution path. Shadow throttling may only skip a refresh after the adapter can preserve and restore both shadow-map contents and all matching shadow matrices/state. If that contract is not available, render shadows every frame.
-7. **Diagnostics and fallback** — record mode, dimensions, target identity, GPU timing where supported, resolve count, and fallback reason. No per-frame allocation, synchronous GPU readback, or unbounded GL error polling.
+## Acceptance checklist
 
-## Staged implementation
-
-### Stage A — safety and observability
-
-Implementation status: **code changes present on the feature branch; live Iris/Complementary validation still required**.
-- Keep the experimental custom world-render path disabled by default until it passes a live shader-pack test. The master switch must still allow explicit opt-in testing; do not hard-code the pipeline off.
-- Cache Iris shadow refreshes as one unit: suppress shadow-target clears and shadow compute passes, skip only the shadow geometry/composite method, retain its previous MODELVIEW/PROJECTION matrices, and still run Iris' non-shadow PREPARE stage. Fail open on unknown target lifecycle or required full clear.
-- Make MSAA color resolve lazy and cached until the target is written again; cap the supported UI/config range at 8x and fall back to the highest successfully allocated level (8x → 4x → 2x).
-- Keep build/test artifacts on a separate feature branch; never merge to the default branch without review.
-
-### Stage B — target and policy extraction
-
-Implementation status: **implemented on the feature branch; CI build passes**. `RenderTargetManager`, `FramebufferBlitter`, `RenderPipelinePolicy`, `WorldPostProcessStage`, and `WorldUpscalePass` now separate ownership, policy, and final composition. The custom pipeline remains guarded off until live tests.
-- Extract target allocation/reuse/destruction into `RenderTargetManager`; the manager owns only ModernOPT targets and releases them when `GameRenderer` closes.
-- Extract fixed-function and textured fallback copies into `FramebufferBlitter`.
-- Move feature precedence into `RenderPipelinePolicy`; keep shader-pack checks explicit at the adapter boundary.
-- Continue reducing `GameRendererMixin` to lifecycle orchestration; do not switch rendering behavior in the same commit as each extraction.
-
-### Stage C — safe first backend
-
-Implementation status: **fallback and lifecycle guards are implemented; visual acceptance is pending**. Do not mark spatial scaling as complete until window/fullscreen and HUD/hand/player checks pass in-game.
-- Reintroduce only spatial render scaling without shaders, with exact size/viewport restoration and native-resolution HUD.
-- Add resize/fullscreen/resource-reload checks and fallback-to-vanilla behavior.
-- Test 100%, reduced scale, window resize, fullscreen toggles, hand/player visibility, entity outlines, and modded render targets.
-
-### Stage D — shader-pack adapter
-
-Implementation status: **fail-closed shader detection and diagnostics exist; full compatibility is not yet established**. Shadow caching remains fail-open if Iris invariants cannot be verified.
-- Add an Iris-specific integration only after verifying the exact supported Iris version and target lifecycle.
-- Test Complementary, shadow casters, block entities, hand/player, world transitions, resource reloads, and resize.
-- If any target/matrix invariant fails, disable the integration for that frame rather than corrupting the image.
-
-### Stage E — post-processing and AA
-
-Implementation status: **FSR1, bilinear, nearest, SoftScale, FXAA, SSAA, and MSAA code paths exist; behavior/performance still require in-game validation**. Fixed policy precedence so FXAA is not applied after SSAA/MSAA when that mode was rejected.
-- Add one post-process backend at a time (bilinear/nearest, then FSR1, then FXAA).
-- Implement MSAA with a clear ownership/resolve contract and no repeated resolves in one frame.
-- Benchmark 2x/4x/8x on the same scene; 8x is the hard maximum.
-
-## Acceptance criteria
-
-- No missing shadows, player, hand, outlines, block entities, or green/triangle artifacts.
-- No visible stutter or lower perceived frame pacing caused by the mod.
-- 100% scale with all optional passes off is behaviorally equivalent to vanilla.
-- Shader-pack mode never receives ModernOPT's second AA pass.
-- Skipped shadow frames preserve the previous shadow textures and their matching matrices; refresh is forced after target reloads/full clears.
-- Every allocation and resize failure falls back to vanilla; GL framebuffer, viewport, projection, depth/blend state, and current target are restored.
-- CI build success is necessary but not sufficient: a real in-game Complementary test is required before calling a render stage complete.
+- [ ] CI succeeds for the final branch-head SHA and the artifact is downloadable.
+- [ ] Master switch off leaves the world render path untouched.
+- [ ] At 100% with optional passes off, output matches native rendering.
+- [ ] 90%, 75%, and 50% fill the screen correctly; HUD, text, inventory, hand, player, entities and outlines remain correct.
+- [ ] Resize, fullscreen, resource reload and world load/unload do not leave stale targets.
+- [ ] Complementary/Iris is tested with shadows on; unsupported conditions bypass the relevant optimization safely.
+- [ ] FXAA, SSAA, MSAA and FSR1 precedence matches the selected policy; shader-pack AA is never doubled.
+- [ ] Same-scene CSV captures compare frame pacing and enabled-vs-disabled timing.
+- [ ] English/Russian docs, config labels and release notes agree with implemented features.
