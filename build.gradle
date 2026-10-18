@@ -46,6 +46,11 @@ tasks.register('verifyAdaptiveScale', JavaExec) {
     mainClass = 'net.cr512.modernopt.render.AdaptiveScaleControllerTest'
 }
 
+tasks.named('test') {
+    // Regression checks are a deterministic JavaExec task, not JUnit tests.
+    failOnNoDiscoveredTests = false
+}
+
 tasks.named('check') {
     dependsOn tasks.named('verifyAdaptiveScale')
 }
