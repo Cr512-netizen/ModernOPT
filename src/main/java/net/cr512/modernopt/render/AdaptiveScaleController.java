@@ -44,8 +44,14 @@ public final class AdaptiveScaleController {
         double alpha = 1.0 - Math.exp(-frameNanos / EMA_TIME_CONSTANT_NANOS);
         averageFrameNanos = averageFrameNanos == 0.0
             ? frameNanos : averageFrameNanos + alpha * (frameNanos - averageFrameNanos);
+        if (!cameraMoving) {
+            // Do not accumulate a resize deadline while the camera is still.
+            // Otherwise the first moving frame can trigger an immediate scale jump.
+            elapsedNanos = 0L;
+            return current;
+        }
         elapsedNanos = Math.min(UPDATE_INTERVAL_NANOS, elapsedNanos + frameNanos);
-        if (!cameraMoving || elapsedNanos < UPDATE_INTERVAL_NANOS) return current;
+        if (elapsedNanos < UPDATE_INTERVAL_NANOS) return current;
 
         double ratio = averageFrameNanos * targetFps / 1_000_000_000.0;
         int next = current;
