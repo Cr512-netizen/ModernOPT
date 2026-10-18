@@ -43,11 +43,15 @@ public final class AdaptiveScaleControllerTest {
             now += 1_000_000_000L / 30;
         }
         check(scale == 100, "stationary camera must hold scale");
+        int beforeMovement = scale;
+        scale = c.update(now, scale, 60, 50, 100, false, true);
+        check(scale == beforeMovement, "movement resume must not trigger an immediate scale jump");
+        now += 1_000_000_000L / 30;
         for (int i = 0; i < 20; i++) {
             scale = c.update(now, scale, 60, 50, 100, false, true);
             now += 1_000_000_000L / 30;
         }
-        check(scale < 100, "scale should adapt when movement resumes");
+        check(scale < 100, "scale should adapt after a fresh moving-camera interval");
     }
 
     private static void isolatedStallsAreIgnored() {
