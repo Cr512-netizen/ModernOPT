@@ -97,7 +97,7 @@ To investigate a small gain at 50%, capture repeated 30–60 second runs at 100%
 
 ## Compatibility and limitations
 
-- **Iris / shader packs:** full render-scale integration is not currently claimed. Shader-pack AA is not post-processed a second time by ModernOPT. Dynamic resolution stops adjusting while a shader pack is active, because continuous target resizing can cause stutter; the last effective scale is held until shaders are disabled. World-target scaling and shadow optimizations remain experimental and require live validation with the exact Iris and shader-pack versions.
+- **Iris / shader packs:** full render-scale integration is not currently claimed. Shader-pack AA is not post-processed a second time by ModernOPT. Dynamic resolution uses frame cadence rather than the coarse integer FPS counter, and stops adjusting while a shader pack is active because continuous target resizing can cause stutter; the last effective scale is held until shaders are disabled. World-target scaling and shadow optimizations remain experimental and require live validation with the exact Iris and shader-pack versions.
 - **Sodium:** integration and appearance may vary between Sodium versions. Compatibility is not guaranteed unless a specific version is listed in a tested release.
 - **Other rendering mods:** mods that replace or redirect the world render target, post-processing, framebuffers, or game renderer may conflict.
 - **Performance and visual quality:** upscaling can improve GPU-bound performance in some scenarios, but it does not guarantee higher FPS or lower frame times. SSAA is particularly demanding. Results vary by GPU, driver, resolution, resource packs, shader packs, and mod list.
