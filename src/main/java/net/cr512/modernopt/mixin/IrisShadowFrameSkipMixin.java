@@ -27,9 +27,6 @@ public abstract class IrisShadowFrameSkipMixin {
 
     @Inject(method = "beginLevelRendering", at = @At("HEAD"), remap = false, require = 0)
     private void modernopt$disableUnsafeShadowCache(CallbackInfo ci) {
-        net.cr512.modernopt.render.IrisShadowFrameSkipState.skipShadowPass = false;
-        net.cr512.modernopt.render.IrisShadowFrameSkipState.insideShadowSetup = false;
-
         if (ModernOptConfig.ENABLED.get() && ModernOptConfig.SHADOW_FRAME_SKIP_ENABLED.get()
             && ModList.get().isLoaded("iris") && !modernopt$warnedShadowCacheDisabled) {
             modernopt$warnedShadowCacheDisabled = true;
