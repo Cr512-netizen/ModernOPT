@@ -14,6 +14,7 @@ public final class RenderScaleController {
     private static final double DEAD_BAND = 0.10;
     private static int effectivePercent = -1;
     private static long lastAdjustmentNanos;
+    private static long lastFrameSampleNanos;
     private static int lastTargetFps = -1;
     private static boolean wasDynamic;
 
@@ -33,47 +34,64 @@ public final class RenderScaleController {
         return clamp(effectivePercent, min, max);
     }
 
-    public static void update(int measuredFps) {
-        update(measuredFps, false);
-    }
-
     /**
-     * Dynamic scaling is paused while an Iris shader pack is active. RenderScale
-     * documents stutter with dynamic scaling plus shaders; keep the last stable
-     * scale instead of continuously resizing shader-owned render targets.
+     * Adjusts the world scale from frame cadence rather than Minecraft's coarse,
+     * integer FPS counter. Dynamic resizing is paused while an Iris shader pack is
+     * active because continuous target resizing can cause shader-path stutter.
      */
-    public static void update(int measuredFps, boolean shaderPackInUse) {
+    public static void update(boolean shaderPackInUse) {
         boolean dynamic = ModernOptConfig.ENABLED.get() && ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED.get();
         if (!dynamic) {
             wasDynamic = false;
             effectivePercent = -1;
             lastAdjustmentNanos = 0L;
+            lastFrameSampleNanos = 0L;
             belowTargetSamples = 0;
             aboveTargetSamples = 0;
             return;
         }
+
         ensureInitialized();
         int target = ModernOptConfig.DYNAMIC_TARGET_FPS.get();
         int min = Math.min(ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.get(), ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.get());
         int max = Math.max(ModernOptConfig.DYNAMIC_MIN_SCALE_PERCENT.get(), ModernOptConfig.DYNAMIC_MAX_SCALE_PERCENT.get());
         effectivePercent = clamp(effectivePercent, min, max);
-        if (target != lastTargetFps) { lastTargetFps = target; lastAdjustmentNanos = 0L; }
+        if (target != lastTargetFps) {
+            lastTargetFps = target;
+            lastAdjustmentNanos = 0L;
+            belowTargetSamples = 0;
+            aboveTargetSamples = 0;
+        }
 
-        // Reset hysteresis while shaders are active, so a backlog of old samples
-        // cannot trigger an immediate resize when the shader pack is turned off.
+        long now = System.nanoTime();
         if (shaderPackInUse) {
+            // Keep the last scale and avoid treating the shader-toggle gap as a slow frame.
+            lastFrameSampleNanos = now;
             belowTargetSamples = 0;
             aboveTargetSamples = 0;
             return;
         }
-        if (measuredFps <= 0) return;
-        double ratio = measuredFps / (double) target;
-        if (ratio < 1.0 - DEAD_BAND) { belowTargetSamples++; aboveTargetSamples = 0; }
-        else if (ratio > 1.0 + DEAD_BAND) { aboveTargetSamples++; belowTargetSamples = 0; }
-        else { belowTargetSamples = 0; aboveTargetSamples = 0; return; }
-        if (belowTargetSamples < REQUIRED_SAMPLES && aboveTargetSamples < REQUIRED_SAMPLES) return;
 
-        long now = System.nanoTime();
+        long previousSample = lastFrameSampleNanos;
+        lastFrameSampleNanos = now;
+        if (previousSample == 0L || now <= previousSample) return;
+        long frameNanos = now - previousSample;
+        double targetFrameNanos = 1_000_000_000.0 / target;
+        double performanceRatio = targetFrameNanos / frameNanos;
+
+        if (performanceRatio < 1.0 - DEAD_BAND) {
+            belowTargetSamples++;
+            aboveTargetSamples = 0;
+        } else if (performanceRatio > 1.0 + DEAD_BAND) {
+            aboveTargetSamples++;
+            belowTargetSamples = 0;
+        } else {
+            belowTargetSamples = 0;
+            aboveTargetSamples = 0;
+            return;
+        }
+
+        if (belowTargetSamples < REQUIRED_SAMPLES && aboveTargetSamples < REQUIRED_SAMPLES) return;
         if (lastAdjustmentNanos != 0L && now - lastAdjustmentNanos < ADJUST_INTERVAL_NANOS) return;
         if (belowTargetSamples >= REQUIRED_SAMPLES) effectivePercent = Math.max(min, effectivePercent - SCALE_STEP);
         else if (aboveTargetSamples >= REQUIRED_SAMPLES) effectivePercent = Math.min(max, effectivePercent + SCALE_STEP);
