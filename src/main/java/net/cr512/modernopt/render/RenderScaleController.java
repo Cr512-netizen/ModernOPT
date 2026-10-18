@@ -40,6 +40,10 @@ public final class RenderScaleController {
      * active because continuous target resizing can cause shader-path stutter.
      */
     public static void update(boolean shaderPackInUse) {
+        update(shaderPackInUse, true);
+    }
+
+    public static void update(boolean shaderPackInUse, boolean worldActive) {
         boolean dynamic = ModernOptConfig.ENABLED.get() && ModernOptConfig.DYNAMIC_RESOLUTION_ENABLED.get();
         if (!dynamic) {
             wasDynamic = false;
@@ -64,8 +68,8 @@ public final class RenderScaleController {
         }
 
         long now = System.nanoTime();
-        if (shaderPackInUse) {
-            // Keep the last scale and avoid treating the shader-toggle gap as a slow frame.
+        if (shaderPackInUse || !worldActive) {
+            // Keep the last scale and avoid treating menu time or a shader-toggle gap as a slow frame.
             lastFrameSampleNanos = now;
             belowTargetSamples = 0;
             aboveTargetSamples = 0;
