@@ -42,48 +42,19 @@ public abstract class IrisShadowFrameSkipMixin {
 
     @Inject(method = "beginLevelRendering", at = @At("HEAD"), remap = false, require = 0)
     private void modernopt$selectShadowRefresh(CallbackInfo ci) {
+        // Always reset the shared flags first. The current implementation deliberately
+        // fails closed: cancelling ShadowRenderer.renderShadows also bypasses Iris'
+        // composite pass and GL-state cleanup, so shadow refresh skipping is not safe
+        // until a narrower hook can be verified for the supported Iris version.
         net.cr512.modernopt.render.IrisShadowFrameSkipState.skipShadowPass = false;
         net.cr512.modernopt.render.IrisShadowFrameSkipState.insideShadowSetup = false;
         this.modernopt$shadowUpdatePending = false;
+        this.modernopt$lastShadowUpdateNanos = 0L;
 
-        if (!ModernOptConfig.ENABLED.get() || !ModernOptConfig.SHADOW_FRAME_SKIP_ENABLED.get()
-            || !ModList.get().isLoaded("iris")) {
-            this.modernopt$lastShadowUpdateNanos = 0L;
-            return;
-        }
-
-        // Safety stop: cancelling ShadowRenderer.renderShadows skips not only the
-        // expensive map draw but also Iris' composite and GL-state cleanup at the
-        // end of that method. Without a verified method-level cache hook we must
-        // keep rendering fresh shadows rather than risk broken/missing shader output.
-        // The public setting is retained so configs remain forward-compatible.
-        if (!modernopt$warnedShadowCacheDisabled) {
+        if (ModernOptConfig.ENABLED.get() && ModernOptConfig.SHADOW_FRAME_SKIP_ENABLED.get()
+            && ModList.get().isLoaded("iris") && !modernopt$warnedShadowCacheDisabled) {
             modernopt$warnedShadowCacheDisabled = true;
             MODERNOPT_LOGGER.warn("Iris shadow-frame skipping was requested, but is temporarily fail-closed: this Iris integration cannot safely skip the shadow draw without also skipping its composite/cleanup. Fresh shadows will be rendered every frame.");
-        }
-        return;
-
-        if (!modernopt$hasActiveShadowRenderer(this)) {
-            this.modernopt$lastShadowUpdateNanos = 0L;
-            return;
-        }
-
-        // A target resize/reload requires a full clear; never hold stale contents across it.
-        if (modernopt$fullShadowClearRequired(this)) {
-            this.modernopt$lastShadowUpdateNanos = 0L;
-            return;
-        }
-
-        int targetFps = Math.max(40, Math.min(240, ModernOptConfig.SHADOW_UPDATE_FPS.get()));
-        long minimumIntervalNanos = 1_000_000_000L / targetFps;
-        long now = System.nanoTime();
-
-        if (this.modernopt$lastShadowUpdateNanos != 0L
-            && now - this.modernopt$lastShadowUpdateNanos < minimumIntervalNanos) {
-            net.cr512.modernopt.render.IrisShadowFrameSkipState.skipShadowPass = true;
-            net.cr512.modernopt.render.IrisShadowFrameSkipState.insideShadowSetup = true;
-        } else {
-            this.modernopt$shadowUpdatePending = true;
         }
     }
 
