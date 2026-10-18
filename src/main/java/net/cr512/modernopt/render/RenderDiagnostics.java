@@ -44,6 +44,7 @@ public final class RenderDiagnostics {
     private static int activeQuerySlot = -1;
     private static int nextQuerySlot;
     private static boolean gpuQueriesUnavailableLogged;
+    private static boolean gpuQueriesDisabled;
 
     private static volatile double lastFrameCpuMs;
     private static volatile double lastPostCpuMs;
@@ -83,6 +84,7 @@ public final class RenderDiagnostics {
         activeQuerySlot = -1;
         nextQuerySlot = 0;
         gpuQueriesUnavailableLogged = false;
+        gpuQueriesDisabled = false;
     }
 
     public static void beginFrame() {
@@ -253,8 +255,10 @@ public final class RenderDiagnostics {
     }
 
     private static boolean gpuTimingSupported() {
+        if (gpuQueriesDisabled) return false;
         try {
             if (!GL.getCapabilities().OpenGL33) {
+                gpuQueriesDisabled = true;
                 if (!gpuQueriesUnavailableLogged) {
                     gpuQueriesUnavailableLogged = true;
                     LOGGER.info("Asynchronous GPU timestamp queries are unavailable; CPU-only diagnostics remain active.");
@@ -269,6 +273,7 @@ public final class RenderDiagnostics {
             }
             return true;
         } catch (RuntimeException | LinkageError unavailable) {
+            gpuQueriesDisabled = true;
             if (!gpuQueriesUnavailableLogged) {
                 gpuQueriesUnavailableLogged = true;
                 LOGGER.info("Could not initialize asynchronous GPU timestamps; CPU-only diagnostics remain active.", unavailable);
@@ -309,6 +314,7 @@ public final class RenderDiagnostics {
 
     /** GPU profiling is optional: a driver/API failure must never break rendering. */
     private static void disableGpuQueries(Throwable failure) {
+        gpuQueriesDisabled = true;
         if (timestampQueries == null) {
             activeQuerySlot = -1;
             return;
