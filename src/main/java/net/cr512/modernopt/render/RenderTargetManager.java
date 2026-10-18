@@ -90,19 +90,31 @@ public final class RenderTargetManager {
     }
 
     public void destroy() {
+        // Detach references before invoking GL cleanup. A driver/context error must
+        // not leave a partially destroyed target eligible for reuse on a later frame.
         destroyMsaaTarget();
-        if (scaledTarget != null) {
-            scaledTarget.destroyBuffers();
-            scaledTarget = null;
+        TextureTarget target = scaledTarget;
+        scaledTarget = null;
+        if (target != null) {
+            try {
+                target.destroyBuffers();
+            } catch (RuntimeException | LinkageError cleanupFailure) {
+                LOGGER.warn("Could not fully release ModernOPT's scaled world target.", cleanupFailure);
+            }
         }
         failedMsaaRequest = 0;
     }
 
     private void destroyMsaaTarget() {
-        if (msaaTarget != null) {
-            msaaTarget.destroyBuffers();
-            msaaTarget = null;
-        }
+        MultisampleRenderTarget target = msaaTarget;
+        msaaTarget = null;
         allocatedSamples = 0;
+        if (target != null) {
+            try {
+                target.destroyBuffers();
+            } catch (RuntimeException | LinkageError cleanupFailure) {
+                LOGGER.warn("Could not fully release ModernOPT's multisample world target.", cleanupFailure);
+            }
+        }
     }
 }
