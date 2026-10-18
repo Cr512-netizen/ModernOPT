@@ -29,6 +29,7 @@ public final class WorldPostProcessStage {
         boolean scalingActive,
         boolean ssaaActive,
         boolean msaaActive,
+        boolean fxaaRequested,
         boolean shaderPackInUse
     ) {
         if (minecraft == null || originalTarget == null) return;
@@ -56,7 +57,7 @@ public final class WorldPostProcessStage {
             RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
 
             WorldUpscalePass.execute(
-                worldTarget, originalTarget, active, scalingActive, ssaaActive, msaaActive, shaderPackInUse
+                worldTarget, originalTarget, active, scalingActive, ssaaActive, msaaActive, fxaaRequested, shaderPackInUse
             );
         } catch (RuntimeException | LinkageError passFailure) {
             LOGGER.warn("World post-process failed; attempting a safe framebuffer copy for this frame.", passFailure);

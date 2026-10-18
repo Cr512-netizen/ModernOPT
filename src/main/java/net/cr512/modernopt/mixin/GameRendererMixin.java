@@ -43,6 +43,7 @@ public abstract class GameRendererMixin {
     @Unique private boolean modernopt$msaaActive;
     @Unique private boolean modernopt$ssaaActive;
     @Unique private boolean modernopt$fxaaOnly;
+    @Unique private boolean modernopt$fxaaRequested;
     @Unique private boolean modernopt$auxTargetsAdjusted;
 
     // Iris is optional, so avoid a hard dependency. Resolve its API once instead of
@@ -106,6 +107,7 @@ public abstract class GameRendererMixin {
         this.modernopt$msaaActive = false;
         this.modernopt$ssaaActive = false;
         this.modernopt$fxaaOnly = false;
+        this.modernopt$fxaaRequested = false;
         this.modernopt$worldTarget = null;
         RenderScaleController.update(this.minecraft.getFps());
 
@@ -134,6 +136,7 @@ public abstract class GameRendererMixin {
         );
         boolean ssaaRequested = selection.ssaa();
         boolean fxaaRequested = selection.fxaa();
+        this.modernopt$fxaaRequested = fxaaRequested;
         boolean scalingRequested = selection.scaling();
         int samples = selection.msaaSamples();
         if (!scalingRequested && !ssaaRequested && !fxaaRequested && samples == 0) {
@@ -264,6 +267,7 @@ public abstract class GameRendererMixin {
                 this.modernopt$scalingActive,
                 this.modernopt$ssaaActive,
                 this.modernopt$msaaActive,
+                this.modernopt$fxaaRequested,
                 this.modernopt$shaderPackInUseThisFrame
             );
         } finally {
@@ -273,6 +277,7 @@ public abstract class GameRendererMixin {
             this.modernopt$msaaActive = false;
             this.modernopt$ssaaActive = false;
             this.modernopt$fxaaOnly = false;
+            this.modernopt$fxaaRequested = false;
             this.modernopt$originalTarget = null;
             this.modernopt$worldTarget = null;
         }

@@ -2,9 +2,9 @@
 
 Maintainer/future-assistant handoff. Read this before changing rendering code or choosing the next task.
 
-Last reviewed: 2026-10-16
+Last reviewed: 2026-10-18
 Repository: https://github.com/Cr512-netizen/ModernOPT
-Source version at review: 0.0.40 on draft branch `perf/fsr1-fp16` / PR #6; `main` remains at 0.0.37 until the draft PR is reviewed and merged.
+Current renderer work: draft PR #10 on `fix/shadow-cache-render-architecture`; `main` remains unchanged.
 Default branch: main
 
 ## 1. Mission
