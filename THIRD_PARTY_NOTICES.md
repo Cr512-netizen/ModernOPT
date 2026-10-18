@@ -45,6 +45,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
+## Vira — design reference (no source code copied)
+
+- Project: https://www.curseforge.com/minecraft/mc-mods/vira
+- Author: mzg
+- Published licence: MIT
+- Reference use: the public feature description informed the separation of reduced-resolution world rendering from native-resolution HUD/UI, periodic Iris shadow refresh as an opt-in experiment, and frame-time/1% low diagnostics.
+- No Vira source files or code fragments have been copied into ModernOPT in this change. This is design attribution, not a claim that ModernOPT contains Vira-derived code. If source code is adopted in a later change, its exact upstream copyright and MIT notice will be added before redistribution.
+
 ## Other dependencies and trademarks
 
 Minecraft and NeoForge are build/runtime dependencies and are not included as proprietary assets by this notice. Their names and marks remain the property of their respective owners. See their official terms and licence information for details.
