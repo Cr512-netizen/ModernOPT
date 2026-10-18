@@ -69,9 +69,9 @@ public final class ModernOptConfig {
         UPSCALER_MODE = BUILDER.comment("Upscaler: 0 = none (direct blit), 1 = FSR1, 2 = Bilinear, 3 = Nearest Neighbor, 4 = SoftScale.").defineInRange("upscalerMode", 2, 0, 4);
         FSR1_FP16_ENABLED = BUILDER.comment("Use native FP16 EASU/RCAS when supported; disable to compare against FP32.").define("fsr1Fp16Enabled", true);
         FXAA_ENABLED = BUILDER.define("fxaaEnabled", false);
-        MSAA_SAMPLES = BUILDER.comment("0 = off, otherwise 2, 4, 8, or 16 samples.").defineInRange("msaaSamples", 0, 0, 16);
+        MSAA_SAMPLES = BUILDER.comment("0 = off, otherwise 2, 4, or 8 samples. 8x is the maximum to avoid the extreme cost of 16x.").defineInRange("msaaSamples", 0, 0, 8);
         SSAA_ENABLED = BUILDER.define("ssaaEnabled", false);
-        DYNAMIC_RESOLUTION_ENABLED = BUILDER.define("dynamicResolutionEnabled", false);
+        DYNAMIC_RESOLUTION_ENABLED = BUILDER.comment("Adjust world scale from frame cadence; dynamic adjustments pause while an Iris shader pack is active.").define("dynamicResolutionEnabled", false);
         DYNAMIC_MIN_SCALE_PERCENT = BUILDER.defineInRange("dynamicMinScalePercent", 50, 25, 100);
         DYNAMIC_MAX_SCALE_PERCENT = BUILDER.defineInRange("dynamicMaxScalePercent", 100, 25, 100);
         DYNAMIC_TARGET_FPS = BUILDER.defineInRange("dynamicTargetFps", 120, 30, 540);
@@ -79,8 +79,8 @@ public final class ModernOptConfig {
         BUILDER.push("iris");
         IRIS_SHADOW_SCALE_ENABLED = BUILDER.comment("Scale Iris shader-pack shadow maps. Disabled by default for maximum shader-pack compatibility.").define("shadowScaleEnabled", false);
         IRIS_SHADOW_RESOLUTION = BUILDER.comment("Fixed Iris shadow-map resolution in pixels when shadow scaling is enabled.").defineInRange("shadowResolution", 1024, 512, 8192);
-        SHADOW_FRAME_SKIP_ENABLED = BUILDER.comment("Cache Iris shadow maps and their matching matrices between refreshes; experimental and disabled by default.").define("shadowFrameSkipEnabled", false);
-        SHADOW_UPDATE_FPS = BUILDER.comment("Maximum Iris shadow refresh rate when shadow-frame skipping is enabled.").defineInRange("shadowUpdateFps", 60, 40, 240);
+        SHADOW_FRAME_SKIP_ENABLED = BUILDER.comment("Reserved experimental option. Iris shadow skipping is fail-closed until the renderer can skip only shadow draws while preserving composite and cleanup. Enabling it logs a warning and keeps fresh shadows.").define("shadowFrameSkipEnabled", false);
+        SHADOW_UPDATE_FPS = BUILDER.comment("Reserved for a future safe Iris shadow-cache implementation; currently has no effect.").defineInRange("shadowUpdateFps", 60, 40, 240);
         BUILDER.pop();
         SPEC = BUILDER.build();
     }

@@ -2,9 +2,9 @@
 
 Maintainer/future-assistant handoff. Read this before changing rendering code or choosing the next task.
 
-Last reviewed: 2026-10-16
+Last reviewed: 2026-10-18
 Repository: https://github.com/Cr512-netizen/ModernOPT
-Source version at review: 0.0.40 on draft branch `perf/fsr1-fp16` / PR #6; `main` remains at 0.0.37 until the draft PR is reviewed and merged.
+Current renderer work: draft PR #10 on `fix/shadow-cache-render-architecture`; `main` remains unchanged.
 Default branch: main
 
 ## 1. Mission
@@ -39,9 +39,9 @@ ModernOPT should complement—not replace—Sodium's terrain renderer or Iris' s
 - FXAA should not disable the entire mod when a shader pack is active. Skip only the incompatible effect/pass where needed.
 - Never promise a performance gain before repeatable before/after measurements.
 
-## 3. Current repository state (draft PR branch 0.0.40; main 0.0.37)
+## 3. Current repository state (renderer rewrite draft PR #10)
 
-The project is alpha/experimental. Earlier 0.0.37 and draft-branch builds completed successfully. The current 0.0.40 diagnostics build is being checked by CI; even a successful build verifies compilation and packaging, not in-game behaviour. Full runtime validation across Iris, Sodium, shader packs, and other mods has not been established.
+The project is alpha/experimental. Earlier 0.0.37 and draft-branch builds completed successfully. Renderer work is isolated on `fix/shadow-cache-render-architecture`; `main` remains unchanged. A successful CI run verifies compilation and packaging, not in-game behaviour. Any new source commit requires its own successful CI run before its artifact is considered current. Full runtime validation across Iris, Sodium, shader packs, and other mods has not been established.
 
 ### Existing code areas
 
@@ -68,7 +68,7 @@ The project is alpha/experimental. Earlier 0.0.37 and draft-branch builds comple
 - Internal world render scale from 25% to 100%.
 - Spatial reconstruction modes: FSR1 (EASU + RCAS), bilinear, nearest-neighbour, SoftScale.
 - SSAA: 2x width and height followed by downsampling; expensive by design and takes priority over render scale/MSAA in the current code.
-- MSAA: Off, 2x, 4x, 8x, 16x, with a retry at 8x if 16x allocation fails.
+- MSAA: Off, 2x, 4x, 8x; allocation fallback is 8x → 4x → 2x.
 - FXAA post-processing.
 - Intended native-resolution HUD/GUI.
 - Optional particle draw-distance culling (draw only; particles continue ticking).

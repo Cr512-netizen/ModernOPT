@@ -33,7 +33,7 @@
 - **Render hot-path cleanup:** Iris API reflection is cached after first discovery rather than repeating class and method lookup every frame.
 - **Spatial upscalers:** FSR 1 (EASU + RCAS) prefers the native GPU `textureGather` fast path, with the explicit-fetch shader retained as a compatibility fallback; bilinear, nearest-neighbour, and SoftScale reconstruction modes are also available.
 - **SSAA:** optional 2× width and 2× height world rendering followed by downsampling. This processes four times as many world pixels and can be expensive. SSAA takes priority over render scale and MSAA.
-- **MSAA:** optional world-pass multisampling with Off, 2×, 4×, 8×, and 16× choices; if 16× is unavailable, ModernOPT retries at 8×.
+- **MSAA:** optional world-pass multisampling with Off, 2×, 4×, and 8× choices. ModernOPT caps the request at 8× and retries lower supported levels (8× → 4× → 2×) if allocation fails.
 - **FXAA:** optional post-process edge smoothing.
 - **Native-resolution interface:** the intended render pipeline keeps HUD and GUI rendering at the window resolution.
 - **Client-side settings:** use the native Sodium options page or the standalone configuration screen from the Mods list (Sodium is not required). Presets change both world scale and upscaler.
@@ -97,7 +97,7 @@ To investigate a small gain at 50%, capture repeated 30–60 second runs at 100%
 
 ## Compatibility and limitations
 
-- **Iris / shader packs:** full render-scale integration is not currently claimed. The mod is designed to fail closed or bypass selected passes when a shader-pack pipeline is active. Do not assume that world scaling, FXAA, or MSAA will work with Iris.
+- **Iris / shader packs:** full render-scale integration is not currently claimed. Shader-pack AA is not post-processed a second time by ModernOPT. Dynamic resolution uses an exponential moving average, ignores isolated stalls, pauses while shader packs or menus are active, and only changes scale during camera movement to reduce visible scale pumping. A guarded Iris 1.21.1 color-space resize path avoids recompiling the same conversion shader for dimension-only changes; it fails open to Iris' normal rebuild on unknown APIs. A deterministic Gradle regression task covers scale bounds, stall handling, pause/resume, and recovery. World-target scaling remains experimental and needs live validation with the exact Iris and shader-pack versions.
 - **Sodium:** integration and appearance may vary between Sodium versions. Compatibility is not guaranteed unless a specific version is listed in a tested release.
 - **Other rendering mods:** mods that replace or redirect the world render target, post-processing, framebuffers, or game renderer may conflict.
 - **Performance and visual quality:** upscaling can improve GPU-bound performance in some scenarios, but it does not guarantee higher FPS or lower frame times. SSAA is particularly demanding. Results vary by GPU, driver, resolution, resource packs, shader packs, and mod list.
@@ -159,7 +159,7 @@ The software is provided “as is”, without warranties or guarantees, to the m
 - **Масштаб рендера:** от 25% до 100% разрешения окна.
 - **Пространственные апскейлеры:** FSR 1 (EASU + RCAS), билинейный, по ближайшему соседу и SoftScale.
 - **SSAA:** рендер мира в разрешении 2× по ширине и высоте с последующим уменьшением. Обрабатывается в четыре раза больше пикселей; это может быть очень затратно. SSAA имеет приоритет над масштабом рендера и MSAA.
-- **MSAA:** мультисэмплинг прохода мира с режимами выкл., 2×, 4×, 8× и 16×; если 16× недоступен, мод повторяет попытку в режиме 8×.
+- **MSAA:** мультисэмплинг прохода мира с режимами выкл., 2×, 4× и 8×. Максимум ограничен 8×; при ошибке выделения буфера выполняется откат 8× → 4× → 2×.
 - **FXAA:** дополнительное сглаживание контуров.
 - **Интерфейс в исходном разрешении:** предполагается, что HUD и GUI рисуются в разрешении окна.
 - **Клиентские настройки:** доступна отдельная страница настроек в меню модов NeoForge, даже без Sodium. Пресеты меняют одновременно масштаб мира и апскейлер.
@@ -215,7 +215,7 @@ Sodium не является обязательной зависимостью, 
 
 ## Совместимость и ограничения
 
-- **Iris / шейдер-паки:** полноценная интеграция масштабирования рендера пока не заявляется. При активном шейдерном конвейере некоторые проходы могут безопасно пропускаться. Не рассчитывайте на работу масштабирования, FXAA или MSAA с Iris без отдельного подтверждения.
+- **Iris / шейдер-паки:** полноценная интеграция масштабирования рендера пока не заявляется. ModernOPT не должен повторно сглаживать уже обработанный шейдерпаком кадр. Масштабирование мировых буферов и оптимизации теней остаются экспериментальными и требуют проверки на конкретных версиях Iris и шейдерпака.
 - **Sodium:** интеграция и внешний вид могут отличаться между версиями. Совместимость не гарантируется, если конкретная версия не указана в проверенном релизе.
 - **Другие моды рендеринга:** конфликты возможны с модами, меняющими основной рендерер, буферы, framebuffer или постобработку.
 - **Производительность и качество:** апскейлинг иногда помогает при ограничении производительностью GPU, но не гарантирует рост FPS или снижение времени кадра. SSAA особенно требователен к ресурсам. Результат зависит от видеокарты, драйвера, разрешения и набора модов.

@@ -44,6 +44,7 @@ public final class RenderDiagnostics {
     private static int activeQuerySlot = -1;
     private static int nextQuerySlot;
     private static boolean gpuQueriesUnavailableLogged;
+    private static boolean gpuQueriesDisabled;
 
     private static volatile double lastFrameCpuMs;
     private static volatile double lastPostCpuMs;
@@ -63,8 +64,35 @@ public final class RenderDiagnostics {
 
     private RenderDiagnostics() {}
 
+    /** Release timestamp query objects before the OpenGL context is destroyed. */
+    public static void releaseGpuQueries() {
+        if (timestampQueries != null) {
+            for (int[] slot : timestampQueries) {
+                for (int query : slot) {
+                    if (query > 0) {
+                        try {
+                            GL15.glDeleteQueries(query);
+                        } catch (RuntimeException | LinkageError failure) {
+                            LOGGER.debug("Could not delete a render timing query during shutdown.", failure);
+                        }
+                    }
+                }
+            }
+        }
+        timestampQueries = null;
+        java.util.Arrays.fill(queryPending, false);
+        activeQuerySlot = -1;
+        nextQuerySlot = 0;
+        gpuQueriesUnavailableLogged = false;
+        gpuQueriesDisabled = false;
+    }
+
     public static void beginFrame() {
-        pollGpuQueries();
+        try {
+            pollGpuQueries();
+        } catch (RuntimeException | LinkageError failure) {
+            disableGpuQueries(failure);
+        }
         if (!ModernOptConfig.PROFILING_ENABLED.get() && !BenchmarkRecorder.isRecording()) {
             frameStartedAt = 0L;
             postStartedAt = 0L;
@@ -79,7 +107,11 @@ public final class RenderDiagnostics {
     public static void beginPostProcess() {
         if (frameStartedAt != 0L) postStartedAt = System.nanoTime();
         if (activeQuerySlot >= 0) {
-            GL33.glQueryCounter(timestampQueries[activeQuerySlot][1], GL33.GL_TIMESTAMP);
+            try {
+                GL33.glQueryCounter(timestampQueries[activeQuerySlot][1], GL33.GL_TIMESTAMP);
+            } catch (RuntimeException | LinkageError failure) {
+                disableGpuQueries(failure);
+            }
         }
     }
 
@@ -147,14 +179,18 @@ public final class RenderDiagnostics {
 
         long now = System.nanoTime();
         if (activeQuerySlot >= 0) {
-            // Frames without a ModernOPT post-process still need all three query
-            // timestamps issued; otherwise that ring slot could remain pending forever.
-            if (postStartedAt == 0L) {
-                GL33.glQueryCounter(timestampQueries[activeQuerySlot][1], GL33.GL_TIMESTAMP);
+            try {
+                // Frames without a ModernOPT post-process still need all three query
+                // timestamps issued; otherwise that ring slot could remain pending forever.
+                if (postStartedAt == 0L) {
+                    GL33.glQueryCounter(timestampQueries[activeQuerySlot][1], GL33.GL_TIMESTAMP);
+                }
+                GL33.glQueryCounter(timestampQueries[activeQuerySlot][2], GL33.GL_TIMESTAMP);
+                queryPending[activeQuerySlot] = true;
+                activeQuerySlot = -1;
+            } catch (RuntimeException | LinkageError failure) {
+                disableGpuQueries(failure);
             }
-            GL33.glQueryCounter(timestampQueries[activeQuerySlot][2], GL33.GL_TIMESTAMP);
-            queryPending[activeQuerySlot] = true;
-            activeQuerySlot = -1;
         }
         if (frameStartedAt == 0L) return;
 
@@ -207,15 +243,22 @@ public final class RenderDiagnostics {
             int slot = (nextQuerySlot + attempt) % QUERY_SLOTS;
             if (queryPending[slot]) continue;
             nextQuerySlot = (slot + 1) % QUERY_SLOTS;
-            GL33.glQueryCounter(timestampQueries[slot][0], GL33.GL_TIMESTAMP);
-            return slot;
+            try {
+                GL33.glQueryCounter(timestampQueries[slot][0], GL33.GL_TIMESTAMP);
+                return slot;
+            } catch (RuntimeException | LinkageError failure) {
+                disableGpuQueries(failure);
+                return -1;
+            }
         }
         return -1;
     }
 
     private static boolean gpuTimingSupported() {
+        if (gpuQueriesDisabled) return false;
         try {
             if (!GL.getCapabilities().OpenGL33) {
+                gpuQueriesDisabled = true;
                 if (!gpuQueriesUnavailableLogged) {
                     gpuQueriesUnavailableLogged = true;
                     LOGGER.info("Asynchronous GPU timestamp queries are unavailable; CPU-only diagnostics remain active.");
@@ -229,7 +272,8 @@ public final class RenderDiagnostics {
                 }
             }
             return true;
-        } catch (IllegalStateException | LinkageError unavailable) {
+        } catch (RuntimeException | LinkageError unavailable) {
+            gpuQueriesDisabled = true;
             if (!gpuQueriesUnavailableLogged) {
                 gpuQueriesUnavailableLogged = true;
                 LOGGER.info("Could not initialize asynchronous GPU timestamps; CPU-only diagnostics remain active.", unavailable);
@@ -265,6 +309,32 @@ public final class RenderDiagnostics {
                 gpuSamples++;
             }
             queryPending[slot] = false;
+        }
+    }
+
+    /** GPU profiling is optional: a driver/API failure must never break rendering. */
+    private static void disableGpuQueries(Throwable failure) {
+        gpuQueriesDisabled = true;
+        if (timestampQueries == null) {
+            activeQuerySlot = -1;
+            return;
+        }
+        for (int[] slot : timestampQueries) {
+            for (int query : slot) {
+                if (query <= 0) continue;
+                try {
+                    GL15.glDeleteQueries(query);
+                } catch (RuntimeException | LinkageError ignored) {
+                    // The context may already be unavailable; discard local ownership anyway.
+                }
+            }
+        }
+        timestampQueries = null;
+        java.util.Arrays.fill(queryPending, false);
+        activeQuerySlot = -1;
+        if (!gpuQueriesUnavailableLogged) {
+            gpuQueriesUnavailableLogged = true;
+            LOGGER.info("GPU timestamp profiling failed; continuing with CPU-only diagnostics.", failure);
         }
     }
 

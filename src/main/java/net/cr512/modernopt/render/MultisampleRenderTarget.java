@@ -18,11 +18,13 @@ public final class MultisampleRenderTarget extends RenderTarget {
     private int multisampleColorBuffer = -1;
     private int multisampleDepthBuffer = -1;
     private TextureTarget resolvedTarget;
+    // A resolve is valid only until this multisample target is written again.
+    private boolean resolved;
 
     public MultisampleRenderTarget(int width, int height, int samples, boolean onOSX) {
         super(true);
-        if (samples != 2 && samples != 4 && samples != 8 && samples != 16) {
-            throw new IllegalArgumentException("MSAA samples must be 2, 4, 8, or 16");
+        if (samples != 2 && samples != 4 && samples != 8) {
+            throw new IllegalArgumentException("MSAA samples must be 2, 4, or 8");
         }
         this.samples = samples;
         this.onOSX = onOSX;
@@ -64,6 +66,7 @@ public final class MultisampleRenderTarget extends RenderTarget {
                 throw new IllegalStateException("MSAA framebuffer is incomplete: 0x" + Integer.toHexString(status));
             }
 
+            resolved = false;
             ((RenderTargetAccessor)(Object)this).modernopt$setFrameBufferId(multisampleFramebuffer);
             // The inherited IDs are only used by vanilla bookkeeping. Actual texture sampling
             // is routed through the resolved target by getColorTextureId/getDepthTextureId.
@@ -89,6 +92,7 @@ public final class MultisampleRenderTarget extends RenderTarget {
         multisampleColorBuffer = -1;
         multisampleDepthBuffer = -1;
         multisampleFramebuffer = -1;
+        resolved = false;
         if (resolvedTarget != null) {
             resolvedTarget.destroyBuffers();
             resolvedTarget = null;
@@ -100,6 +104,8 @@ public final class MultisampleRenderTarget extends RenderTarget {
 
     @Override
     public void bindWrite(boolean setViewport) {
+        // Rendering or clearing this target invalidates the previous resolve.
+        resolved = false;
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, multisampleFramebuffer);
         if (setViewport) RenderSystem.viewport(0, 0, width, height);
     }
@@ -122,7 +128,7 @@ public final class MultisampleRenderTarget extends RenderTarget {
     }
 
     private void resolve() {
-        if (resolvedTarget == null || multisampleFramebuffer < 0) return;
+        if (resolved || resolvedTarget == null || multisampleFramebuffer < 0) return;
         int previousRead = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
         int previousDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         try {
@@ -134,6 +140,7 @@ public final class MultisampleRenderTarget extends RenderTarget {
             // the post-process input undefined (commonly observed as a white world).
             GL30.glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
                 GL11.GL_COLOR_BUFFER_BIT, GL11.GL_NEAREST);
+            resolved = true;
         } finally {
             GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousRead);
             GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDraw);

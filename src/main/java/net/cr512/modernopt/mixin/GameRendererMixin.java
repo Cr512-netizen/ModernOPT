@@ -1,26 +1,20 @@
 package net.cr512.modernopt.mixin;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.BufferUploader;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.render.Fsr1Renderer;
 import net.cr512.modernopt.render.RenderDiagnostics;
-import net.cr512.modernopt.render.MultisampleRenderTarget;
 import net.cr512.modernopt.render.RenderScaleController;
+import net.cr512.modernopt.render.RenderPipelinePolicy;
+import net.cr512.modernopt.render.RenderTargetManager;
+import net.cr512.modernopt.render.FramebufferBlitter;
 import net.cr512.modernopt.render.RenderScalePhase;
 import net.cr512.modernopt.render.RenderTargetLifecycle;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL30;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -39,8 +33,7 @@ public abstract class GameRendererMixin {
 
     @Unique private RenderTarget modernopt$originalTarget;
     @Unique private RenderTarget modernopt$frameNativeTarget;
-    @Unique private TextureTarget modernopt$scaledTarget;
-    @Unique private MultisampleRenderTarget modernopt$msaaTarget;
+    @Unique private final RenderTargetManager modernopt$targetManager = new RenderTargetManager();
     @Unique private RenderTarget modernopt$worldTarget;
     @Unique private Matrix4f modernopt$oldProjection;
     @Unique private VertexSorting modernopt$oldVertexSorting;
@@ -50,9 +43,14 @@ public abstract class GameRendererMixin {
     @Unique private boolean modernopt$msaaActive;
     @Unique private boolean modernopt$ssaaActive;
     @Unique private boolean modernopt$fxaaOnly;
+    @Unique private boolean modernopt$fxaaRequested;
     @Unique private boolean modernopt$auxTargetsAdjusted;
-    @Unique private int modernopt$allocatedSamples;
-    @Unique private int modernopt$failedMsaaRequest;
+    @Unique private boolean modernopt$hasCameraSample;
+    @Unique private double modernopt$lastCameraX;
+    @Unique private double modernopt$lastCameraY;
+    @Unique private double modernopt$lastCameraZ;
+    @Unique private float modernopt$lastCameraYaw;
+    @Unique private float modernopt$lastCameraPitch;
 
     // Iris is optional, so avoid a hard dependency. Resolve its API once instead of
     // repeating class/method lookup on every rendered frame.
@@ -94,9 +92,15 @@ public abstract class GameRendererMixin {
             case 2 -> 2;
             case 4 -> 4;
             case 8 -> 8;
-            case 16 -> 16;
             default -> 0;
         };
+    }
+
+    @Inject(method = "close", at = @At("HEAD"), require = 0)
+    private void modernopt$releaseOwnedRenderTargets(CallbackInfo ci) {
+        this.modernopt$targetManager.destroy();
+        Fsr1Renderer.releaseResources();
+        RenderDiagnostics.releaseGpuQueries();
     }
 
     @Inject(method = "renderLevel", at = @At("HEAD"))
@@ -109,14 +113,15 @@ public abstract class GameRendererMixin {
         this.modernopt$msaaActive = false;
         this.modernopt$ssaaActive = false;
         this.modernopt$fxaaOnly = false;
+        this.modernopt$fxaaRequested = false;
         this.modernopt$worldTarget = null;
-        RenderScaleController.update(this.minecraft.getFps());
-
         RenderTarget nativeTarget = this.minecraft.getMainRenderTarget();
         this.modernopt$frameNativeTarget = nativeTarget;
         int nativeWidth = nativeTarget.width;
         int nativeHeight = nativeTarget.height;
         if (!ModernOptConfig.ENABLED.get() || this.minecraft.level == null) {
+            this.modernopt$hasCameraSample = false;
+            RenderScaleController.update(false, false, false);
             modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
             return;
         }
@@ -126,15 +131,22 @@ public abstract class GameRendererMixin {
         // the existing rollback below returns to native rendering for that frame.
         this.modernopt$shaderPackInUseThisFrame = modernopt$shaderPackInUse();
         boolean shaderPackInUse = this.modernopt$shaderPackInUseThisFrame;
+        boolean cameraMoving = modernopt$cameraMoving();
+        RenderScaleController.update(shaderPackInUse, true, cameraMoving);
 
-        boolean ssaaRequested = !shaderPackInUse && ModernOptConfig.SSAA_ENABLED.get();
-        boolean fxaaRequested = !shaderPackInUse && !ssaaRequested && ModernOptConfig.FXAA_ENABLED.get();
-        // AA modes are exclusive: SSAA takes priority, then FXAA, then MSAA.
-        // Shader packs disable only ModernOPT's AA modes, not its upscaler.
-        int samples = (shaderPackInUse || ssaaRequested || fxaaRequested) ? 0 : modernopt$requestedSamples();
-        boolean scalingRequestedInitially = !ssaaRequested && RenderScaleController.isEnabled();
-        boolean scalingRequested = scalingRequestedInitially;
-        if (samples == this.modernopt$failedMsaaRequest) samples = 0;
+        RenderPipelinePolicy.Selection selection = RenderPipelinePolicy.select(
+            shaderPackInUse,
+            RenderScaleController.isEnabled(),
+            ModernOptConfig.SSAA_ENABLED.get(),
+            ModernOptConfig.FXAA_ENABLED.get(),
+            modernopt$requestedSamples(),
+            this.modernopt$targetManager.isMsaaRequestFailed(modernopt$requestedSamples()) ? modernopt$requestedSamples() : 0
+        );
+        boolean ssaaRequested = selection.ssaa();
+        boolean fxaaRequested = selection.fxaa();
+        this.modernopt$fxaaRequested = fxaaRequested;
+        boolean scalingRequested = selection.scaling();
+        int samples = selection.msaaSamples();
         if (!scalingRequested && !ssaaRequested && !fxaaRequested && samples == 0) {
             modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
             return;
@@ -189,34 +201,13 @@ public abstract class GameRendererMixin {
         if (samples > 0) {
             int requestedSamples = samples;
             try {
-                if (this.modernopt$msaaTarget == null || this.modernopt$allocatedSamples != samples) {
-                    if (this.modernopt$msaaTarget != null) this.modernopt$msaaTarget.destroyBuffers();
-                    this.modernopt$msaaTarget = null;
-                    try {
-                        this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, samples, Minecraft.ON_OSX);
-                    } catch (RuntimeException | LinkageError requestedModeUnavailable) {
-                        if (samples != 16) throw requestedModeUnavailable;
-                        // 16x is optional hardware support; retry with the broadly supported 8x mode.
-                        samples = 8;
-                        requestedSamples = 8;
-                        ModernOptConfig.MSAA_SAMPLES.set(8);
-                        ModernOptConfig.SPEC.save();
-                        this.modernopt$msaaTarget = new MultisampleRenderTarget(width, height, samples, Minecraft.ON_OSX);
-                    }
-                    // Track the requested mode, not the fallback target, to avoid retrying 16x every frame.
-                    this.modernopt$allocatedSamples = requestedSamples;
-                } else if (this.modernopt$msaaTarget.width != width || this.modernopt$msaaTarget.height != height) {
-                    this.modernopt$msaaTarget.resize(width, height, Minecraft.ON_OSX);
-                }
-                this.modernopt$failedMsaaRequest = 0;
-                this.modernopt$worldTarget = this.modernopt$msaaTarget;
+                this.modernopt$worldTarget = this.modernopt$targetManager.acquireMsaaTarget(
+                    width, height, samples, Minecraft.ON_OSX
+                );
                 this.modernopt$msaaActive = true;
             } catch (RuntimeException | LinkageError msaaUnavailable) {
                 // Unsupported sample counts/framebuffer formats must not break world rendering.
-                if (this.modernopt$msaaTarget != null) this.modernopt$msaaTarget.destroyBuffers();
-                this.modernopt$msaaTarget = null;
-                this.modernopt$allocatedSamples = 0;
-                this.modernopt$failedMsaaRequest = requestedSamples;
+                this.modernopt$targetManager.markMsaaFailure(requestedSamples);
                 this.modernopt$msaaActive = false;
                 this.modernopt$worldTarget = null;
             }
@@ -224,12 +215,7 @@ public abstract class GameRendererMixin {
 
         if (this.modernopt$worldTarget == null && this.modernopt$scalingActive) {
             try {
-                if (this.modernopt$scaledTarget == null) {
-                    this.modernopt$scaledTarget = new TextureTarget(width, height, true, Minecraft.ON_OSX);
-                } else if (this.modernopt$scaledTarget.width != width || this.modernopt$scaledTarget.height != height) {
-                    this.modernopt$scaledTarget.resize(width, height, Minecraft.ON_OSX);
-                }
-                this.modernopt$worldTarget = this.modernopt$scaledTarget;
+                this.modernopt$worldTarget = this.modernopt$targetManager.acquireScaledTarget(width, height, Minecraft.ON_OSX);
             } catch (RuntimeException | LinkageError allocationFailure) {
                 MODERNOPT_LOGGER.warn("Could not allocate the scaled world target; using the native framebuffer for this frame.", allocationFailure);
                 RenderScalePhase.end();
@@ -258,66 +244,52 @@ public abstract class GameRendererMixin {
         this.modernopt$active = true;
     }
 
+    @Unique
+    private boolean modernopt$cameraMoving() {
+        if (this.minecraft.player == null) {
+            this.modernopt$hasCameraSample = false;
+            return false;
+        }
+        var camera = this.minecraft.gameRenderer.getMainCamera();
+        var position = camera.getPosition();
+        double x = position.x, y = position.y, z = position.z;
+        float yaw = camera.getYRot(), pitch = camera.getXRot();
+        if (!this.modernopt$hasCameraSample) {
+            this.modernopt$lastCameraX = x;
+            this.modernopt$lastCameraY = y;
+            this.modernopt$lastCameraZ = z;
+            this.modernopt$lastCameraYaw = yaw;
+            this.modernopt$lastCameraPitch = pitch;
+            this.modernopt$hasCameraSample = true;
+            return false;
+        }
+        double dx = x - this.modernopt$lastCameraX;
+        double dy = y - this.modernopt$lastCameraY;
+        double dz = z - this.modernopt$lastCameraZ;
+        boolean moving = dx * dx + dy * dy + dz * dz > 1.0e-6
+            || modernopt$angleDelta(yaw, this.modernopt$lastCameraYaw) > 0.05
+            || modernopt$angleDelta(pitch, this.modernopt$lastCameraPitch) > 0.05;
+        this.modernopt$lastCameraX = x;
+        this.modernopt$lastCameraY = y;
+        this.modernopt$lastCameraZ = z;
+        this.modernopt$lastCameraYaw = yaw;
+        this.modernopt$lastCameraPitch = pitch;
+        return moving;
+    }
+
+    @Unique
+    private static double modernopt$angleDelta(float current, float previous) {
+        double delta = (current - previous) % 360.0;
+        if (delta > 180.0) delta -= 360.0;
+        if (delta < -180.0) delta += 360.0;
+        return Math.abs(delta);
+    }
+
     /**
      * Shader-free framebuffer copy/scale. This is the lowest-overhead path for
      * the "None" upscaler and also resolves MSAA directly into the native target,
      * avoiding an intermediate texture resolve followed by a textured draw.
      */
-    @Unique
-    private boolean modernopt$blitFramebuffer(RenderTarget input, RenderTarget output) {
-        if (input == null || output == null || input.width <= 0 || input.height <= 0
-            || output.width <= 0 || output.height <= 0) return false;
-
-        int previousRead = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
-        int previousDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
-        try {
-            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER,
-                ((RenderTargetAccessor) (Object) input).modernopt$getFrameBufferId());
-            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER,
-                ((RenderTargetAccessor) (Object) output).modernopt$getFrameBufferId());
-            GL30.glBlitFramebuffer(
-                0, 0, input.width, input.height,
-                0, 0, output.width, output.height,
-                GL11.GL_COLOR_BUFFER_BIT, GL11.GL_NEAREST
-            );
-            // Do not call glGetError here: it can force driver-side synchronization,
-            // and it also consumes any pre-existing GL error from another mod.
-            // Both framebuffer targets are ModernOPT/Minecraft-owned compatible targets.
-            return true;
-        } catch (RuntimeException | LinkageError exception) {
-            MODERNOPT_LOGGER.warn("Direct framebuffer copy failed; falling back to the textured blit.", exception);
-            return false;
-        } finally {
-            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousRead);
-            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousDraw);
-            output.bindWrite(true);
-            RenderSystem.viewport(0, 0, output.width, output.height);
-        }
-    }
-
-    @Unique
-    private void modernopt$blitOpaque(RenderTarget input, RenderTarget output) {
-        int width = output.width;
-        int height = output.height;
-        output.bindWrite(true);
-        RenderSystem.viewport(0, 0, width, height);
-        RenderSystem.disableBlend();
-        RenderSystem.disableDepthTest();
-        RenderSystem.depthMask(false);
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        RenderSystem.setShaderTexture(0, input.getColorTextureId());
-        BufferBuilder builder = Tesselator.getInstance().begin(
-            VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX
-        );
-        // Framebuffer textures are bottom-left-origin; the destination quad is top-left-origin.
-        builder.addVertex(0.0F, 0.0F, 0.0F).setUv(0.0F, 1.0F);
-        builder.addVertex(0.0F, height, 0.0F).setUv(0.0F, 0.0F);
-        builder.addVertex(width, height, 0.0F).setUv(1.0F, 0.0F);
-        builder.addVertex(width, 0.0F, 0.0F).setUv(1.0F, 1.0F);
-        BufferUploader.drawWithShader(builder.build());
-    }
-
     @Unique
     private void modernopt$restoreAuxiliaryTargets(int width, int height) {
         if (!this.modernopt$auxTargetsAdjusted) return;
@@ -336,74 +308,30 @@ public abstract class GameRendererMixin {
 
         RenderDiagnostics.beginPostProcess();
         try {
-            ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$originalTarget);
-            this.modernopt$originalTarget.bindWrite(true);
-            int width = this.modernopt$originalTarget.width;
-            int height = this.modernopt$originalTarget.height;
-            RenderSystem.viewport(0, 0, width, height);
-
-            this.modernopt$oldProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
-            this.modernopt$oldVertexSorting = RenderSystem.getVertexSorting();
-            RenderSystem.setProjectionMatrix(
-                new Matrix4f().setOrtho(0.0F, width, height, 0.0F, -1000.0F, 1000.0F),
-                VertexSorting.ORTHOGRAPHIC_Z
+            net.cr512.modernopt.render.WorldPostProcessStage.execute(
+                this.minecraft,
+                this.modernopt$originalTarget,
+                this.modernopt$worldTarget,
+                this.modernopt$active,
+                this.modernopt$scalingActive,
+                this.modernopt$ssaaActive,
+                this.modernopt$msaaActive,
+                this.modernopt$fxaaRequested,
+                this.modernopt$shaderPackInUseThisFrame
             );
-
-            RenderSystem.disableDepthTest();
-            RenderSystem.depthMask(false);
-            RenderSystem.disableBlend();
-            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-
-            if (this.modernopt$active && this.modernopt$scalingActive) {
-                boolean upscaled;
-                if (this.modernopt$ssaaActive) {
-                    upscaled = Fsr1Renderer.downsampleSsaa(this.modernopt$worldTarget, this.modernopt$originalTarget);
-                } else if (ModernOptConfig.UPSCALER_MODE.get() == 0
-                    || ((ModernOptConfig.UPSCALER_MODE.get() == 2 || ModernOptConfig.UPSCALER_MODE.get() == 3)
-                        && this.modernopt$worldTarget.width == width
-                        && this.modernopt$worldTarget.height == height)) {
-                    // Bilinear and nearest-neighbor are identity operations at equal dimensions.
-                    // Use a fixed-function framebuffer blit instead of running a redundant shader pass.
-                    upscaled = modernopt$blitFramebuffer(this.modernopt$worldTarget, this.modernopt$originalTarget);
-                } else {
-                    upscaled = Fsr1Renderer.render(this.modernopt$worldTarget, this.modernopt$originalTarget);
-                }
-                if (!upscaled) {
-                    // A failed optimized pass restores the image using the safe textured fallback.
-                    modernopt$blitOpaque(this.modernopt$worldTarget, this.modernopt$originalTarget);
-                }
-            } else if (this.modernopt$active && this.modernopt$msaaActive) {
-                // Resolve MSAA directly into the native framebuffer without an intermediate texture draw.
-                if (!modernopt$blitFramebuffer(this.modernopt$worldTarget, this.modernopt$originalTarget)) {
-                    modernopt$blitOpaque(this.modernopt$worldTarget, this.modernopt$originalTarget);
-                }
-            }
-
-            if (!this.modernopt$shaderPackInUseThisFrame && ModernOptConfig.FXAA_ENABLED.get()) {
-                Fsr1Renderer.applyFxaa(this.modernopt$originalTarget);
-            }
         } finally {
-            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-            RenderSystem.depthMask(true);
-            RenderSystem.enableDepthTest();
-            RenderSystem.enableBlend();
-            if (this.modernopt$oldProjection != null) {
-                RenderSystem.setProjectionMatrix(this.modernopt$oldProjection, this.modernopt$oldVertexSorting);
-                this.modernopt$oldProjection = null;
-                this.modernopt$oldVertexSorting = null;
-            }
-            ((MinecraftRenderTargetMixin)(Object)this.minecraft).modernopt$setMainRenderTarget(this.modernopt$originalTarget);
-            this.modernopt$originalTarget.bindWrite(true);
             modernopt$finishDiagnostics();
             this.modernopt$active = false;
             this.modernopt$scalingActive = false;
             this.modernopt$msaaActive = false;
             this.modernopt$ssaaActive = false;
             this.modernopt$fxaaOnly = false;
+            this.modernopt$fxaaRequested = false;
             this.modernopt$originalTarget = null;
             this.modernopt$worldTarget = null;
         }
     }
+
     @Unique
     private void modernopt$finishDiagnostics() {
         RenderTarget nativeTarget = this.minecraft.getMainRenderTarget();
