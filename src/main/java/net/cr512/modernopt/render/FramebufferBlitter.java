@@ -31,10 +31,26 @@ public final class FramebufferBlitter {
         int previousRead = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
         int previousDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         try {
+            // OpenGL requires equal source/destination dimensions when resolving a
+            // multisample framebuffer. A scaled MSAA source must use the textured
+            // resolve/upscale path instead; glBlitFramebuffer reports this as a GL
+            // error rather than a Java exception.
+            if (input instanceof MultisampleRenderTarget
+                && (input.width != output.width || input.height != output.height)) {
+                return false;
+            }
+
             GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER,
                 ((RenderTargetAccessor)(Object)input).modernopt$getFrameBufferId());
             GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER,
                 ((RenderTargetAccessor)(Object)output).modernopt$getFrameBufferId());
+            int readStatus = GL30.glCheckFramebufferStatus(GL30.GL_READ_FRAMEBUFFER);
+            int drawStatus = GL30.glCheckFramebufferStatus(GL30.GL_DRAW_FRAMEBUFFER);
+            if (readStatus != GL30.GL_FRAMEBUFFER_COMPLETE || drawStatus != GL30.GL_FRAMEBUFFER_COMPLETE) {
+                LOGGER.warn("Framebuffer copy skipped because a target is incomplete (read=0x{}, draw=0x{}).",
+                    Integer.toHexString(readStatus), Integer.toHexString(drawStatus));
+                return false;
+            }
             GL30.glBlitFramebuffer(
                 0, 0, input.width, input.height,
                 0, 0, output.width, output.height,
