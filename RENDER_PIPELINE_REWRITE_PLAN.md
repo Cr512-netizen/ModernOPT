@@ -1,6 +1,6 @@
 # ModernOPT render-pipeline completion plan
 
-Working branch: `fix/shadow-cache-render-architecture`. Master render switch: disabled by default. Frame Generation is explicitly out of scope. Do not merge to `main` until review and in-game acceptance are complete.
+Working branch: `fix/shadow-cache-render-architecture` (draft PR #10). Master render switch: disabled by default. Frame Generation is explicitly out of scope. Do not merge to `main` until review and in-game acceptance are complete. Use the latest successful CI run for the current branch head; an older artifact does not include subsequent commits.
 
 ## Objective
 
@@ -45,12 +45,13 @@ Complete all source-level work in one pass: audit target ownership and failure p
 - Architecture extraction exists: `RenderTargetManager`, `FramebufferBlitter`, `RenderPipelinePolicy`, `WorldPostProcessStage`, and `WorldUpscalePass`.
 - FSR1 and simple spatial shader paths exist, but build success does not prove that each GPU path executes correctly.
 - The experimental render path is disabled by default and may be explicitly enabled for testing.
-- Source-level pass selection is being tightened so FXAA execution follows the policy decision instead of independently reading the raw setting.
+- FXAA execution now follows the policy decision passed through `GameRendererMixin` → `WorldPostProcessStage` → `WorldUpscalePass`, instead of independently re-reading the raw setting. This avoids activating FXAA after another AA mode was selected but failed to allocate.
+- Render-target teardown now detaches cached references before cleanup and catches/logs GL cleanup failures so one failed release does not prevent attempting to release the other owned target.
 - Live Minecraft tests are not performed by CI and must be supplied by the maintainer.
 
 ## Acceptance checklist
 
-- [ ] CI succeeds for the final branch-head SHA and the artifact is downloadable.
+- [ ] CI succeeds for the final branch-head SHA and the artifact is downloadable; check that the artifact run's head SHA exactly matches the branch head.
 - [ ] Master switch off leaves the world render path untouched.
 - [ ] At 100% with optional passes off, output matches native rendering.
 - [ ] 90%, 75%, and 50% fill the screen correctly; HUD, text, inventory, hand, player, entities and outlines remain correct.
