@@ -71,7 +71,7 @@ public final class ModernOptConfig {
         FXAA_ENABLED = BUILDER.define("fxaaEnabled", false);
         MSAA_SAMPLES = BUILDER.comment("0 = off, otherwise 2, 4, or 8 samples. 8x is the maximum to avoid the extreme cost of 16x.").defineInRange("msaaSamples", 0, 0, 8);
         SSAA_ENABLED = BUILDER.define("ssaaEnabled", false);
-        DYNAMIC_RESOLUTION_ENABLED = BUILDER.define("dynamicResolutionEnabled", false);
+        DYNAMIC_RESOLUTION_ENABLED = BUILDER.comment("Adjust world scale from frame cadence; dynamic adjustments pause while an Iris shader pack is active.").define("dynamicResolutionEnabled", false);
         DYNAMIC_MIN_SCALE_PERCENT = BUILDER.defineInRange("dynamicMinScalePercent", 50, 25, 100);
         DYNAMIC_MAX_SCALE_PERCENT = BUILDER.defineInRange("dynamicMaxScalePercent", 100, 25, 100);
         DYNAMIC_TARGET_FPS = BUILDER.defineInRange("dynamicTargetFps", 120, 30, 540);
