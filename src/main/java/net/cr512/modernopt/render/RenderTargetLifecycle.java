@@ -25,18 +25,38 @@ public final class RenderTargetLifecycle {
             return false;
         }
 
+        RenderTarget entityTarget = null;
+        PostChain entityEffect = null;
+        int oldEntityWidth = -1;
+        int oldEntityHeight = -1;
+        int oldChainWidth = -1;
+        int oldChainHeight = -1;
+        boolean entityResizeAttempted = false;
+        boolean chainResizeAttempted = false;
         try {
-            RenderTarget entityTarget = minecraft.levelRenderer.entityTarget();
-            PostChain entityEffect = ((LevelRendererAccessor) (Object) minecraft.levelRenderer).modernopt$getEntityEffect();
-            boolean resizeEntity = entityTarget != null && (entityTarget.width != width || entityTarget.height != height);
-            boolean resizeChain = entityEffect != null
-                && ((PostChainAccessor) (Object) entityEffect).modernopt$getFullSizedTargets() != null
-                && ((PostChainAccessor) (Object) entityEffect).modernopt$getFullSizedTargets().stream().anyMatch(target ->
-                    target != null && (target.width != width || target.height != height)
-                );
+            entityTarget = minecraft.levelRenderer.entityTarget();
+            entityEffect = ((LevelRendererAccessor) (Object) minecraft.levelRenderer).modernopt$getEntityEffect();
+            oldEntityWidth = entityTarget == null ? -1 : entityTarget.width;
+            oldEntityHeight = entityTarget == null ? -1 : entityTarget.height;
 
-            // Validate every target dimension before mutating any target. This avoids
-            // leaving half the world pipeline at scaled dimensions if validation fails.
+            var fullSizedTargets = entityEffect == null ? null
+                : ((PostChainAccessor) (Object) entityEffect).modernopt$getFullSizedTargets();
+            if (fullSizedTargets != null) {
+                for (RenderTarget target : fullSizedTargets) {
+                    if (target != null) {
+                        oldChainWidth = target.width;
+                        oldChainHeight = target.height;
+                        break;
+                    }
+                }
+            }
+
+            boolean resizeEntity = entityTarget != null && (oldEntityWidth != width || oldEntityHeight != height);
+            boolean resizeChain = fullSizedTargets != null && fullSizedTargets.stream().anyMatch(target ->
+                target != null && (target.width != width || target.height != height)
+            );
+
+            // Validate every requested dimension before mutating any target.
             if (resizeEntity || resizeChain) {
                 int maxTextureSize = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL11.GL_MAX_TEXTURE_SIZE);
                 if (width > maxTextureSize || height > maxTextureSize) {
@@ -44,14 +64,37 @@ public final class RenderTargetLifecycle {
                 }
             }
 
-            if (resizeEntity) entityTarget.resize(width, height, Minecraft.ON_OSX);
+            if (resizeEntity) {
+                entityResizeAttempted = true;
+                entityTarget.resize(width, height, Minecraft.ON_OSX);
+            }
 
             // Use PostChain.resize rather than resizing its targets individually:
             // vanilla recalculates the chain's orthographic matrix in this method.
-            if (resizeChain) entityEffect.resize(width, height);
+            if (resizeChain) {
+                chainResizeAttempted = true;
+                entityEffect.resize(width, height);
+            }
             return true;
         } catch (RuntimeException | LinkageError exception) {
-            LOGGER.warn("Could not synchronize world auxiliary targets to {}x{}; ModernOPT will bypass scaled rendering for this frame.", width, height, exception);
+            // Resizing a target can fail after it has already destroyed its old
+            // attachments. Best-effort rollback prevents the next vanilla frame
+            // from inheriting a mixed set of native/scaled auxiliary dimensions.
+            if (chainResizeAttempted && entityEffect != null && oldChainWidth > 0 && oldChainHeight > 0) {
+                try {
+                    entityEffect.resize(oldChainWidth, oldChainHeight);
+                } catch (RuntimeException | LinkageError rollbackFailure) {
+                    exception.addSuppressed(rollbackFailure);
+                }
+            }
+            if (entityResizeAttempted && entityTarget != null && oldEntityWidth > 0 && oldEntityHeight > 0) {
+                try {
+                    entityTarget.resize(oldEntityWidth, oldEntityHeight, Minecraft.ON_OSX);
+                } catch (RuntimeException | LinkageError rollbackFailure) {
+                    exception.addSuppressed(rollbackFailure);
+                }
+            }
+            LOGGER.warn("Could not synchronize world auxiliary targets to {}x{}; ModernOPT will bypass scaled rendering for this frame. Rollback was attempted.", width, height, exception);
             return false;
         }
     }
