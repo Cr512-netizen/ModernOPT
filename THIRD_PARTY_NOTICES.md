@@ -45,6 +45,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
+- The public dynamic-scale controller and tests were reviewed for smoothing, stall rejection, bounded updates, and avoiding visible scale pumping while the camera is stationary; ModernOPT's controller is an independent implementation, not copied Java code.
+
 ## Vira — design reference (no source code copied)
 
 - Project: https://www.curseforge.com/minecraft/mc-mods/vira
