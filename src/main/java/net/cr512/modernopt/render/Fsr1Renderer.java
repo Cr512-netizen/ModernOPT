@@ -236,13 +236,7 @@ public final class Fsr1Renderer {
         try {
             // Allocation and resize are inside the guarded block: unsupported framebuffer
             // formats must fall back to the caller's safe blit instead of crashing the pass.
-            if (useFsr1) {
-                if (intermediate == null) {
-                    intermediate = new TextureTarget(width, height, false, Minecraft.ON_OSX);
-                } else if (intermediate.width != width || intermediate.height != height) {
-                    intermediate.resize(width, height, Minecraft.ON_OSX);
-                }
-            }
+            if (useFsr1) ensureIntermediate(width, height);
             if (useFsr1) {
                 if (useFp16Fsr) {
                     try {
@@ -327,11 +321,7 @@ public final class Fsr1Renderer {
             // FSR1 and FXAA run sequentially, never concurrently. Reuse the same
             // full-resolution scratch target instead of allocating a second color buffer.
             // The scratch target is always distinct from output, so this avoids feedback.
-            if (intermediate == null) {
-                intermediate = new TextureTarget(width, height, false, Minecraft.ON_OSX);
-            } else if (intermediate.width != width || intermediate.height != height) {
-                intermediate.resize(width, height, Minecraft.ON_OSX);
-            }
+            ensureIntermediate(width, height);
             drawPass(output, intermediate, fxaa, width, height, false);
             // The FXAA output already has the same dimensions as the destination.
             // Copy it with a framebuffer blit rather than launching a redundant full-screen shader pass.
@@ -403,6 +393,32 @@ public final class Fsr1Renderer {
         }
     }
 
+    /**
+     * Recreate the scratch target after a failed resize instead of retaining a
+     * potentially half-destroyed framebuffer for every subsequent frame.
+     */
+    private static void ensureIntermediate(int width, int height) {
+        if (intermediate == null) {
+            intermediate = new TextureTarget(width, height, false, Minecraft.ON_OSX);
+            return;
+        }
+        if (intermediate.width == width && intermediate.height == height) return;
+
+        TextureTarget previous = intermediate;
+        try {
+            previous.resize(width, height, Minecraft.ON_OSX);
+        } catch (RuntimeException | LinkageError resizeFailure) {
+            try {
+                previous.destroyBuffers();
+            } catch (RuntimeException | LinkageError cleanupFailure) {
+                resizeFailure.addSuppressed(cleanupFailure);
+            } finally {
+                intermediate = null;
+            }
+            throw resizeFailure;
+        }
+    }
+
     /** Copies equal-sized color buffers without allocating a shader pass. */
     private static boolean blitColor(RenderTarget input, RenderTarget output) {
         if (input == null || output == null || input.width <= 0 || input.height <= 0
@@ -415,6 +431,11 @@ public final class Fsr1Renderer {
                 ((RenderTargetAccessor) (Object) input).modernopt$getFrameBufferId());
             GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER,
                 ((RenderTargetAccessor) (Object) output).modernopt$getFrameBufferId());
+            int readStatus = GL30.glCheckFramebufferStatus(GL30.GL_READ_FRAMEBUFFER);
+            int drawStatus = GL30.glCheckFramebufferStatus(GL30.GL_DRAW_FRAMEBUFFER);
+            if (readStatus != GL30.GL_FRAMEBUFFER_COMPLETE || drawStatus != GL30.GL_FRAMEBUFFER_COMPLETE) {
+                return false;
+            }
             GL30.glBlitFramebuffer(
                 0, 0, input.width, input.height,
                 0, 0, output.width, output.height,
