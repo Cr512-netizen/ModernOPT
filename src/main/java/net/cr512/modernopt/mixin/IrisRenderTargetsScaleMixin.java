@@ -25,12 +25,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Pseudo
 @Mixin(targets = "net.irisshaders.iris.targets.RenderTargets", remap = false)
 public abstract class IrisRenderTargetsScaleMixin {
-    @ModifyVariable(method = "<init>", at = @At("HEAD"), argsOnly = true, ordinal = 0, remap = false)
+    @ModifyVariable(method = "<init>", at = @At("HEAD"), argsOnly = true, ordinal = 0, remap = false, require = 0)
     private static int modernopt$scaleIrisTargetWidth(int width) {
         return modernopt$scaledDimension(width, true);
     }
 
-    @ModifyVariable(method = "<init>", at = @At("HEAD"), argsOnly = true, ordinal = 1, remap = false)
+    @ModifyVariable(method = "<init>", at = @At("HEAD"), argsOnly = true, ordinal = 1, remap = false, require = 0)
     private static int modernopt$scaleIrisTargetHeight(int height) {
         return modernopt$scaledDimension(height, false);
     }
@@ -43,23 +43,23 @@ public abstract class IrisRenderTargetsScaleMixin {
      * so the cached Iris dimensions and all pack-owned color/depth targets stay
      * aligned with ModernOPT's active world resolution.
      */
-    @ModifyVariable(method = "resizeIfNeeded", at = @At("HEAD"), argsOnly = true, ordinal = 2, remap = false)
+    @ModifyVariable(method = "resizeIfNeeded", at = @At("HEAD"), argsOnly = true, ordinal = 2, remap = false, require = 0)
     private int modernopt$scaleIrisResizeWidth(int width) {
         return modernopt$scaledDimension(width, true);
     }
 
-    @ModifyVariable(method = "resizeIfNeeded", at = @At("HEAD"), argsOnly = true, ordinal = 3, remap = false)
+    @ModifyVariable(method = "resizeIfNeeded", at = @At("HEAD"), argsOnly = true, ordinal = 3, remap = false, require = 0)
     private int modernopt$scaleIrisResizeHeight(int height) {
         return modernopt$scaledDimension(height, false);
     }
 
 
-    @Inject(method = "<init>", at = @At("RETURN"), remap = false)
+    @Inject(method = "<init>", at = @At("RETURN"), remap = false, require = 0)
     private void modernopt$diagnoseIrisTargets(CallbackInfo ci) {
         RenderDiagnostics.recordIrisTargets(this);
     }
 
-    @Inject(method = "resizeIfNeeded", at = @At("RETURN"), remap = false)
+    @Inject(method = "resizeIfNeeded", at = @At("RETURN"), remap = false, require = 0)
     private void modernopt$diagnoseIrisTargetResize(CallbackInfo ci) {
         RenderDiagnostics.recordIrisTargets(this);
     }
