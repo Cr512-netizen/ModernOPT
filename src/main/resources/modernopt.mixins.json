@@ -17,7 +17,8 @@
     "GuiPerformanceOverlayMixin",
     "ParticleAccessor",
     "ParticleRenderDistanceMixin",
-    "IrisRenderTargetsScaleMixin"
+    "IrisRenderTargetsScaleMixin",
+    "IrisColorSpaceResizeMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }
