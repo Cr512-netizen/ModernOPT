@@ -9,6 +9,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -26,6 +28,8 @@ import java.lang.reflect.Method;
 @Pseudo
 @Mixin(targets = "net.irisshaders.iris.pipeline.IrisRenderingPipeline", remap = false)
 public abstract class IrisShadowFrameSkipMixin {
+    @Unique private static final Logger MODERNOPT_LOGGER = LoggerFactory.getLogger("ModernOPT");
+    @Unique private static boolean modernopt$warnedShadowCacheDisabled;
     @Unique private static volatile boolean modernopt$irisReflectionResolved;
     @Unique private static Field modernopt$shadowRendererField;
     @Unique private static Field modernopt$shadowDistanceField;
@@ -47,6 +51,17 @@ public abstract class IrisShadowFrameSkipMixin {
             this.modernopt$lastShadowUpdateNanos = 0L;
             return;
         }
+
+        // Safety stop: cancelling ShadowRenderer.renderShadows skips not only the
+        // expensive map draw but also Iris' composite and GL-state cleanup at the
+        // end of that method. Without a verified method-level cache hook we must
+        // keep rendering fresh shadows rather than risk broken/missing shader output.
+        // The public setting is retained so configs remain forward-compatible.
+        if (!modernopt$warnedShadowCacheDisabled) {
+            modernopt$warnedShadowCacheDisabled = true;
+            MODERNOPT_LOGGER.warn("Iris shadow-frame skipping was requested, but is temporarily fail-closed: this Iris integration cannot safely skip the shadow draw without also skipping its composite/cleanup. Fresh shadows will be rendered every frame.");
+        }
+        return;
 
         if (!modernopt$hasActiveShadowRenderer(this)) {
             this.modernopt$lastShadowUpdateNanos = 0L;
