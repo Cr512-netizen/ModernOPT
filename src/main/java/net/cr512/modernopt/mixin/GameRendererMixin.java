@@ -114,7 +114,7 @@ public abstract class GameRendererMixin {
         int nativeWidth = nativeTarget.width;
         int nativeHeight = nativeTarget.height;
         if (!ModernOptConfig.ENABLED.get() || this.minecraft.level == null) {
-            RenderScaleController.update(this.minecraft.getFps(), false);
+            RenderScaleController.update(false);
             modernopt$restoreAuxiliaryTargets(nativeWidth, nativeHeight);
             return;
         }
@@ -124,7 +124,7 @@ public abstract class GameRendererMixin {
         // the existing rollback below returns to native rendering for that frame.
         this.modernopt$shaderPackInUseThisFrame = modernopt$shaderPackInUse();
         boolean shaderPackInUse = this.modernopt$shaderPackInUseThisFrame;
-        RenderScaleController.update(this.minecraft.getFps(), shaderPackInUse);
+        RenderScaleController.update(shaderPackInUse);
 
         RenderPipelinePolicy.Selection selection = RenderPipelinePolicy.select(
             shaderPackInUse,
