@@ -1,6 +1,7 @@
 package net.cr512.modernopt.render;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
+import net.cr512.modernopt.config.ModernOptConfig;
 /** Selects and executes the final world-image pass without changing framebuffer ownership. */
 public final class WorldUpscalePass {
     private WorldUpscalePass() {}

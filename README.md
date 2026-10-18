@@ -97,7 +97,7 @@ To investigate a small gain at 50%, capture repeated 30–60 second runs at 100%
 
 ## Compatibility and limitations
 
-- **Iris / shader packs:** full render-scale integration is not currently claimed. The mod is designed to fail closed or bypass selected passes when a shader-pack pipeline is active. Do not assume that world scaling, FXAA, or MSAA will work with Iris.
+- **Iris / shader packs:** full render-scale integration is not currently claimed. Shader-pack AA is not post-processed a second time by ModernOPT. World-target scaling and shadow optimizations remain experimental and require live validation with the exact Iris and shader-pack versions.
 - **Sodium:** integration and appearance may vary between Sodium versions. Compatibility is not guaranteed unless a specific version is listed in a tested release.
 - **Other rendering mods:** mods that replace or redirect the world render target, post-processing, framebuffers, or game renderer may conflict.
 - **Performance and visual quality:** upscaling can improve GPU-bound performance in some scenarios, but it does not guarantee higher FPS or lower frame times. SSAA is particularly demanding. Results vary by GPU, driver, resolution, resource packs, shader packs, and mod list.
@@ -159,7 +159,7 @@ The software is provided “as is”, without warranties or guarantees, to the m
 - **Масштаб рендера:** от 25% до 100% разрешения окна.
 - **Пространственные апскейлеры:** FSR 1 (EASU + RCAS), билинейный, по ближайшему соседу и SoftScale.
 - **SSAA:** рендер мира в разрешении 2× по ширине и высоте с последующим уменьшением. Обрабатывается в четыре раза больше пикселей; это может быть очень затратно. SSAA имеет приоритет над масштабом рендера и MSAA.
-- **MSAA:** мультисэмплинг прохода мира с режимами выкл., 2×, 4×, 8× и 16×; если 16× недоступен, мод повторяет попытку в режиме 8×.
+- **MSAA:** мультисэмплинг прохода мира с режимами выкл., 2×, 4× и 8×. Максимум ограничен 8×; при ошибке выделения буфера выполняется откат 8× → 4× → 2×.
 - **FXAA:** дополнительное сглаживание контуров.
 - **Интерфейс в исходном разрешении:** предполагается, что HUD и GUI рисуются в разрешении окна.
 - **Клиентские настройки:** доступна отдельная страница настроек в меню модов NeoForge, даже без Sodium. Пресеты меняют одновременно масштаб мира и апскейлер.
