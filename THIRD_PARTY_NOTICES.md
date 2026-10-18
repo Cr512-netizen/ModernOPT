@@ -47,6 +47,8 @@ THE SOFTWARE.
 
 - The public dynamic-scale controller and tests were reviewed for smoothing, stall rejection, bounded updates, and avoiding visible scale pumping while the camera is stationary; ModernOPT's controller is an independent implementation, not copied Java code.
 
+- The Iris 1.21.1 color-space resize fast path is adapted from RenderScale's MIT-licensed compatibility mixin: when only the output dimensions change, it resizes the existing conversion texture rather than recompiling an unchanged color-space shader. The original RenderScale MIT notice above applies.
+
 ## Vira — design reference (no source code copied)
 
 - Project: https://www.curseforge.com/minecraft/mc-mods/vira
