@@ -1,0 +1,13 @@
+{
+  "modernopt.config.title": "ModernOPT",
+  "modernopt.option.enabled": "Масштаб рендера",
+  "modernopt.option.renderScale": "Внутреннее разрешение",
+  "modernopt.option.upscaler": "Апскейлер",
+  "modernopt.option.softness": "Мягкость SoftScale",
+  "modernopt.option.fsr1Sharpness": "Резкость FSR 1",
+  "modernopt.option.msaa": "MSAA",
+  "modernopt.option.ssaa": "SSAA (суперсэмплинг 2x)",
+  "modernopt.option.fxaa": "FXAA",
+  "modernopt.option.overlay": "Оверлей состояния",
+  "key.modernopt.config": "Открыть настройки ModernOPT"
+}

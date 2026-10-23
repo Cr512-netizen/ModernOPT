@@ -1,0 +1,13 @@
+{
+  "modernopt.config.title": "ModernOPT",
+  "modernopt.option.enabled": "Render scaling",
+  "modernopt.option.renderScale": "Internal resolution",
+  "modernopt.option.upscaler": "Upscaler",
+  "modernopt.option.softness": "SoftScale softness",
+  "modernopt.option.fsr1Sharpness": "FSR 1 sharpness",
+  "modernopt.option.msaa": "MSAA",
+  "modernopt.option.ssaa": "SSAA (2x supersampling)",
+  "modernopt.option.fxaa": "FXAA",
+  "modernopt.option.overlay": "Status overlay",
+  "key.modernopt.config": "Open ModernOPT options"
+}
