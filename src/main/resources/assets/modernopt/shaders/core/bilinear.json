@@ -1,0 +1,12 @@
+{
+    "vertex": "modernopt:bilinear",
+    "fragment": "modernopt:bilinear",
+    "samplers": [
+        { "name": "InputSampler" }
+    ],
+    "uniforms": [
+        { "name": "InputSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] },
+        { "name": "OutputSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] },
+        { "name": "Params", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.0 ] }
+    ]
+}
