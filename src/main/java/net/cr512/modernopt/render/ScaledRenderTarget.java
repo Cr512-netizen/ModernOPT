@@ -122,10 +122,15 @@ public final class ScaledRenderTarget extends RenderTarget {
 
     private void bindWriteInternal(boolean setViewport) {
         RenderSystem.assertOnRenderThreadOrInit();
+
+        // Go through the vanilla implementation first. Iris mixes into RenderTarget#bindWrite
+        // and only learns that "the main target is bound" from there; skipping it makes Iris
+        // believe the main target is not bound, so it stops replacing vanilla entity shaders
+        // with its gbuffer shaders and the entity pass is overwritten by the final composite.
+        super.bindWrite(setViewport);
+
         if (this.msaa != null) {
             GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, this.msaa.id());
-        } else {
-            GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, this.frameBufferId);
         }
 
         if (setViewport) {

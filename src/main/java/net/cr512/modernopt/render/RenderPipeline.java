@@ -116,8 +116,8 @@ public final class RenderPipeline {
         }
 
         scaled.setLinearFilter(ModernOptSettings.upscaler() != UpscalerType.NEAREST);
-        scaled.bindWrite(true);
         worldActive = true;
+        scaled.bindWrite(true);
     }
 
     /** Called right before {@code Gui#render}, i.e. after the world and before the HUD. */

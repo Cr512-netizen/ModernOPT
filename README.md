@@ -65,7 +65,12 @@ Key points:
   passes, and vanilla rebinds the world target afterwards without resetting it; the scaled target
   therefore re-applies its own viewport whenever it is bound (and rejects window sized viewports
   while it is the draw target), otherwise entities and the first person hand are rasterised for
-  the window size and clipped out of view. Pack detection is reflective and tries both
+  the window size and clipped out of view. Iris tracks whether the main target is bound by
+  injecting at the end of `RenderTarget#bindWrite`; the scaled target therefore runs the vanilla
+  bind first and only then redirects to its multisampled buffers. That keeps Iris' gbuffer shaders
+  (including `gbuffers_entities`) enabled while the world is scaled - without it, entities were
+  drawn with vanilla shaders and then overwritten by the composite, so they disappeared or looked
+  transparent. Pack detection is reflective and tries both
   `isShaderPackInUse()` and `isPackInUseQuick()`, so Iris is optional and nothing is compiled
   against it.
 * **Fabulous graphics** - MSAA is skipped (it needs a single-sampled depth buffer); render
