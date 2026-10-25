@@ -7,6 +7,8 @@ import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL30C;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 /**
  * Off-screen target the world is rendered into while render scaling is active.
  *
@@ -17,6 +19,26 @@ import org.lwjgl.opengl.GL30C;
  * upscaler samples.</p>
  */
 public final class ScaledRenderTarget extends RenderTarget {
+
+    /**
+     * First value of the buffer version counters below.
+     *
+     * <p>Iris mixins {@code Blaze3dRenderTargetExt} into {@link RenderTarget} and uses
+     * {@code iris$getDepthBufferVersion()} to decide whether the depth texture it bound to its
+     * own framebuffers is still the right one. The vanilla counter starts at 0 and is only
+     * incremented when a target destroys its buffers, so the vanilla target and this one could
+     * report the same small number. Swapping between two targets with equal versions makes Iris
+     * keep drawing against a stale depth texture. Staying far above that range keeps the two
+     * target instances distinguishable without touching Iris at all.</p>
+     */
+    private static final AtomicInteger IRIS_VERSION = new AtomicInteger(0x40000000);
+
+    private static int nextIrisVersion() {
+        return IRIS_VERSION.getAndIncrement();
+    }
+
+    private int irisDepthBufferVersion = nextIrisVersion();
+    private int irisColorBufferVersion = nextIrisVersion();
 
     private MsaaFramebuffer msaa;
     private int requestedSamples = 1;
@@ -44,6 +66,10 @@ public final class ScaledRenderTarget extends RenderTarget {
     public void createBuffers(int width, int height, boolean clear) {
         super.createBuffers(width, height, clear);
 
+        // Fresh depth/colour textures: Iris has to re-attach them to its framebuffers.
+        this.irisDepthBufferVersion = nextIrisVersion();
+        this.irisColorBufferVersion = nextIrisVersion();
+
         if (this.msaa != null) {
             this.msaa.delete();
             this.msaa = null;
@@ -64,6 +90,23 @@ public final class ScaledRenderTarget extends RenderTarget {
             this.msaa = null;
         }
         super.destroyBuffers();
+        this.irisDepthBufferVersion = nextIrisVersion();
+        this.irisColorBufferVersion = nextIrisVersion();
+    }
+
+    /**
+     * {@code Blaze3dRenderTargetExt} member, added to {@link RenderTarget} by an Iris mixin at
+     * runtime. Declaring it here is a plain override as far as the JVM is concerned and is
+     * inert when Iris is not installed, so ModernOPT needs neither a compile nor a runtime
+     * dependency on Iris.
+     */
+    public int iris$getDepthBufferVersion() {
+        return this.irisDepthBufferVersion;
+    }
+
+    /** Counterpart of {@link #iris$getDepthBufferVersion()} for the colour attachment. */
+    public int iris$getColorBufferVersion() {
+        return this.irisColorBufferVersion;
     }
 
     @Override
