@@ -52,8 +52,11 @@ Key points:
 ## Compatibility
 
 * **Sodium** - no rendering conflict by design (only `getMainRenderTarget()` is redirected). The
-  options screen gets a `ModernOPT` button via a `@Pseudo` mixin, so Sodium is never a compile
-  dependency and its absence is harmless.
+  Sodium video settings get a **ModernOPT** page that opens the full options screen, plus a
+  native **Settings** page with the common options. This uses Sodium 0.8.13's config API and its
+  `sodium:config_api_user` mod property, the same mechanism Iris uses. Sodium is a compile-only
+  dependency: its classes are only touched by `ModernOptSodiumConfig`, which Sodium itself loads,
+  so the mod still starts normally when Sodium is absent.
 * **Iris** - supported. Iris sizes its gbuffer and depth targets from
   `Minecraft#getMainRenderTarget()`, so the same redirect scales the whole shader pipeline, not
   just the vanilla world pass. While a shader pack is active MSAA is forced off (the pack owns
@@ -100,7 +103,7 @@ resized or the shader pipeline is rebuilt.
 `config/modernopt-client.toml` (created on first launch), or the in-game screen:
 
 * `Options -> ModernOPT` on NeoForge's mod list, or
-* the Sodium video settings page button, or
+* `Video Settings -> ModernOPT` in Sodium (the full screen or the native `Settings` page), or
 * the `F10` keybind (in game).
 
 ## Building
@@ -111,7 +114,9 @@ Requires JDK 21.
 gradle build
 ```
 
-The jar lands in `build/libs/modernopt-<version>.jar`. The included GitHub Actions workflow does
+The jar lands in `build/libs/modernopt-<version>.jar`. Sodium 0.8.13 is downloaded from Modrinth's
+Maven repository at build time only; the `extractSodiumInnerJar` task unpacks Sodium's nested mod
+jar so the optional config API can be compiled against. The included GitHub Actions workflow does
 exactly this on every push and uploads the jar as an artifact.
 
 ## Credits
