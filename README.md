@@ -54,10 +54,14 @@ Key points:
 * **Sodium** - no rendering conflict by design (only `getMainRenderTarget()` is redirected). The
   options screen gets a `ModernOPT` button via a `@Pseudo` mixin, so Sodium is never a compile
   dependency and its absence is harmless.
-* **Iris** - while a shader pack is active ModernOPT deliberately keeps its hands off: Iris owns
-  the gbuffer/depth pipeline and interposing a rescaled or multisampled target on top of it
-  produces broken shadows. Detection is reflective, so Iris is optional. With no shader pack
-  selected the mod works normally.
+* **Iris** - supported. Iris sizes its gbuffer and depth targets from
+  `Minecraft#getMainRenderTarget()`, so the same redirect scales the whole shader pipeline, not
+  just the vanilla world pass. While a shader pack is active MSAA is forced off (the pack owns
+  its multisampled buffers); render scaling, the upscaler and FXAA still apply. Iris caches the
+  depth texture it attaches to its framebuffers behind a version counter, so the scaled target
+  exposes its own counter through the `Blaze3dRenderTargetExt` methods. That keeps depth correct
+  when the game switches between the vanilla and the scaled target, including after a resize.
+  Detection is reflective, so Iris is optional and nothing is compiled against it.
 * **Fabulous graphics** - MSAA is skipped (it needs a single-sampled depth buffer); render
   scaling itself still works.
 * **Distant Horizons** - rendered through the same redirected target, so LODs scale together with
@@ -65,12 +69,19 @@ Key points:
 
 ## Limitations (honest list)
 
-* Everything above about Iris/Fabulous is a deliberate safety decision, not a tested
-  combination: this build has **not** been run inside a real client session with Sodium and Iris
-  installed. Logic is verified by compilation only.
-* MSAA resolves colour only; a shader pack or mod that needs multisampled depth will not get it.
+* MSAA is disabled while an Iris shader pack is active; the pack brings its own antialiasing.
+* A shader pack owns its lighting pipeline, so effects it computes at internal resolution
+  (shadows, SSAO, reflections) are also at internal resolution. That is the point of the feature,
+  but it means very low scales soften those effects too.
 * The upscalers are presentation filters. They cannot recover detail that was never rendered,
   which is why FSR 1 looks best at 67-85 % scale.
+
+## Testing
+
+Verified in a NeoForge dev client with only **Sodium 0.8.13**, **Iris 1.8.14-beta.1** and
+**Complementary Unbound r5.9.3** installed: 75 % render scale, FSR 1 + FXAA, correct depth
+(no holes or LODs over the world), HUD at native resolution, and no OpenGL errors when the
+window is resized or the shader pipeline is rebuilt.
 
 ## Configuration
 
