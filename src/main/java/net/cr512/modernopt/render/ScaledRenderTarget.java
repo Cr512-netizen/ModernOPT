@@ -6,7 +6,9 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL30C;
+import org.lwjgl.system.MemoryStack;
 
+import java.nio.IntBuffer;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -122,15 +124,63 @@ public final class ScaledRenderTarget extends RenderTarget {
         RenderSystem.assertOnRenderThreadOrInit();
         if (this.msaa != null) {
             GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, this.msaa.id());
-            if (setViewport) {
-                GlStateManager._viewport(0, 0, this.viewWidth, this.viewHeight);
-            }
         } else {
             GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, this.frameBufferId);
-            if (setViewport) {
-                GlStateManager._viewport(0, 0, this.viewWidth, this.viewHeight);
-            }
         }
+
+        if (setViewport) {
+            GlStateManager._viewport(0, 0, this.viewWidth, this.viewHeight);
+        } else {
+            this.repairStaleViewport();
+        }
+    }
+
+    /**
+     * Repairs the viewport after a {@code bindWrite(false)}.
+     *
+     * <p>Vanilla re-binds the world target with {@code setViewport = false} in the middle of the
+     * frame, assuming the viewport is still the one it set before. If a window sized helper target
+     * was bound in between, the viewport now describes the window instead of this target, and every
+     * later pass (entities, hand, particles) is clipped to a corner. Only that exact case is
+     * repaired, so deliberately smaller viewports (Iris composite passes) are left alone.</p>
+     */
+    private void repairStaleViewport() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.getWindow() == null) {
+            return;
+        }
+
+        MemoryStack stack = MemoryStack.stackPush();
+        try {
+            IntBuffer viewport = stack.mallocInt(4);
+            GL11C.glGetIntegerv(GL11C.GL_VIEWPORT, viewport);
+            int width = viewport.get(2);
+            int height = viewport.get(3);
+            if (width == this.viewWidth && height == this.viewHeight) {
+                return;
+            }
+            if (width != minecraft.getWindow().getWidth() || height != minecraft.getWindow().getHeight()) {
+                return;
+            }
+        } finally {
+            stack.pop();
+        }
+
+        GlStateManager._viewport(0, 0, this.viewWidth, this.viewHeight);
+    }
+
+    /**
+     * True when this target (or its multisampled attachment) is the framebuffer OpenGL is
+     * currently drawing into. Used to keep the GL viewport in sync with the scaled image: some
+     * vanilla passes bind a full size target and leave its window sized viewport behind, and the
+     * next pass then draws into the small target with coordinates twice as large as it can hold.
+     */
+    public boolean isCurrentDrawTarget() {
+        if (this.frameBufferId < 0) {
+            return false;
+        }
+        int bound = GL11C.glGetInteger(GL30C.GL_DRAW_FRAMEBUFFER_BINDING);
+        return bound == this.frameBufferId || this.msaa != null && bound == this.msaa.id();
     }
 
     /** Resolves multisampled colour into {@link #getColorTextureId()} when MSAA is active. */

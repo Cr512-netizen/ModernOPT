@@ -61,7 +61,13 @@ Key points:
   depth texture it attaches to its framebuffers behind a version counter, so the scaled target
   exposes its own counter through the `Blaze3dRenderTargetExt` methods. That keeps depth correct
   when the game switches between the vanilla and the scaled target, including after a resize.
-  Detection is reflective, so Iris is optional and nothing is compiled against it.
+  Iris also drives the GL viewport itself for its shadow map and its half resolution composite
+  passes, and vanilla rebinds the world target afterwards without resetting it; the scaled target
+  therefore re-applies its own viewport whenever it is bound (and rejects window sized viewports
+  while it is the draw target), otherwise entities and the first person hand are rasterised for
+  the window size and clipped out of view. Pack detection is reflective and tries both
+  `isShaderPackInUse()` and `isPackInUseQuick()`, so Iris is optional and nothing is compiled
+  against it.
 * **Fabulous graphics** - MSAA is skipped (it needs a single-sampled depth buffer); render
   scaling itself still works.
 * **Distant Horizons** - rendered through the same redirected target, so LODs scale together with
@@ -79,9 +85,10 @@ Key points:
 ## Testing
 
 Verified in a NeoForge dev client with only **Sodium 0.8.13**, **Iris 1.8.14-beta.1** and
-**Complementary Unbound r5.9.3** installed: 75 % render scale, FSR 1 + FXAA, correct depth
-(no holes or LODs over the world), HUD at native resolution, and no OpenGL errors when the
-window is resized or the shader pipeline is rebuilt.
+**Complementary Unbound r5.9.3** installed: render scale 50-75 %, bilinear and FSR 1, correct
+depth (no holes or LODs over the world), HUD at native resolution, first person hand and nearby
+entities visible in place under an active shader pack, and no OpenGL errors when the window is
+resized or the shader pipeline is rebuilt.
 
 ## Configuration
 

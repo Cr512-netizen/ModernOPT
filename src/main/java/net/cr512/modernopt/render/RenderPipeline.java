@@ -2,6 +2,7 @@ package net.cr512.modernopt.render;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.cr512.modernopt.ModernOPT;
 import net.cr512.modernopt.config.ModernOptSettings;
@@ -291,6 +292,34 @@ public final class RenderPipeline {
             loggedIrisSkip = true;
             ModernOPT.LOG.info("[ModernOPT] Iris: {}", what);
         }
+    }
+
+    /**
+     * Keeps the GL viewport matched to the scaled target.
+     *
+     * <p>Vanilla passes occasionally bind a window sized render target in the middle of the world
+     * pass and then return with {@code bindWrite(false)}, which deliberately leaves the viewport
+     * untouched. The terrain still looks right because it was already drawn, but every later pass
+     * (entities, hand, particles) is then rasterised for a target twice as large and is clipped
+     * away outside a corner. Forcing the size back whenever the scaled target is bound fixes that
+     * without touching any other framebuffer (Iris gbuffers, shadow maps, post chains).</p>
+     *
+     * @return {@code true} when this call already applied the corrected viewport
+     */
+    public static boolean clampViewport(int x, int y, int width, int height) {
+        ScaledRenderTarget target = scaled;
+        if (!worldActive || target == null) {
+            return false;
+        }
+        if (width == target.viewWidth && height == target.viewHeight) {
+            return false;
+        }
+        if (!target.isCurrentDrawTarget()) {
+            return false;
+        }
+
+        GlStateManager._viewport(0, 0, target.viewWidth, target.viewHeight);
+        return true;
     }
 
     /** Drops every GL object; called from the client stopping event so nothing leaks on world exit. */

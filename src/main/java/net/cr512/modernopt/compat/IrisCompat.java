@@ -34,9 +34,18 @@ public final class IrisCompat {
             probed = true;
             try {
                 Class<?> iris = Class.forName("net.irisshaders.iris.Iris");
-                Method method = iris.getMethod("isShaderPackInUse");
-                method.setAccessible(true);
-                isShaderPackInUse = method;
+                // Iris renamed this method over time: 1.8.x exposes isPackInUseQuick(),
+                // older builds used isShaderPackInUse(). Accept either.
+                for (String name : new String[] {"isShaderPackInUse", "isPackInUseQuick"}) {
+                    try {
+                        Method method = iris.getMethod(name);
+                        method.setAccessible(true);
+                        isShaderPackInUse = method;
+                        break;
+                    } catch (NoSuchMethodException ignored) {
+                        // try the next name
+                    }
+                }
             } catch (Throwable ignored) {
                 isShaderPackInUse = null;
             }
