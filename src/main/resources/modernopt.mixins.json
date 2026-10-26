@@ -5,9 +5,9 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "GameRendererMixin",
+    "GlStateManagerMixin",
     "GuiMixin",
-    "MinecraftMixin",
-    "SodiumOptionsScreenMixin"
+    "MinecraftMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -52,12 +52,30 @@ Key points:
 ## Compatibility
 
 * **Sodium** - no rendering conflict by design (only `getMainRenderTarget()` is redirected). The
-  options screen gets a `ModernOPT` button via a `@Pseudo` mixin, so Sodium is never a compile
-  dependency and its absence is harmless.
-* **Iris** - while a shader pack is active ModernOPT deliberately keeps its hands off: Iris owns
-  the gbuffer/depth pipeline and interposing a rescaled or multisampled target on top of it
-  produces broken shadows. Detection is reflective, so Iris is optional. With no shader pack
-  selected the mod works normally.
+  Sodium video settings get a **ModernOPT** page that opens the full options screen, plus a
+  native **Settings** page with the common options. This uses Sodium 0.8.13's config API and its
+  `sodium:config_api_user` mod property, the same mechanism Iris uses. Sodium is a compile-only
+  dependency: its classes are only touched by `ModernOptSodiumConfig`, which Sodium itself loads,
+  so the mod still starts normally when Sodium is absent.
+* **Iris** - supported. Iris sizes its gbuffer and depth targets from
+  `Minecraft#getMainRenderTarget()`, so the same redirect scales the whole shader pipeline, not
+  just the vanilla world pass. While a shader pack is active MSAA is forced off (the pack owns
+  its multisampled buffers); render scaling, the upscaler and FXAA still apply. Iris caches the
+  depth texture it attaches to its framebuffers behind a version counter, so the scaled target
+  exposes its own counter through the `Blaze3dRenderTargetExt` methods. That keeps depth correct
+  when the game switches between the vanilla and the scaled target, including after a resize.
+  Iris also drives the GL viewport itself for its shadow map and its half resolution composite
+  passes, and vanilla rebinds the world target afterwards without resetting it; the scaled target
+  therefore re-applies its own viewport whenever it is bound (and rejects window sized viewports
+  while it is the draw target), otherwise entities and the first person hand are rasterised for
+  the window size and clipped out of view. Iris tracks whether the main target is bound by
+  injecting at the end of `RenderTarget#bindWrite`; the scaled target therefore runs the vanilla
+  bind first and only then redirects to its multisampled buffers. That keeps Iris' gbuffer shaders
+  (including `gbuffers_entities`) enabled while the world is scaled - without it, entities were
+  drawn with vanilla shaders and then overwritten by the composite, so they disappeared or looked
+  transparent. Pack detection is reflective and tries both
+  `isShaderPackInUse()` and `isPackInUseQuick()`, so Iris is optional and nothing is compiled
+  against it.
 * **Fabulous graphics** - MSAA is skipped (it needs a single-sampled depth buffer); render
   scaling itself still works.
 * **Distant Horizons** - rendered through the same redirected target, so LODs scale together with
@@ -65,19 +83,27 @@ Key points:
 
 ## Limitations (honest list)
 
-* Everything above about Iris/Fabulous is a deliberate safety decision, not a tested
-  combination: this build has **not** been run inside a real client session with Sodium and Iris
-  installed. Logic is verified by compilation only.
-* MSAA resolves colour only; a shader pack or mod that needs multisampled depth will not get it.
+* MSAA is disabled while an Iris shader pack is active; the pack brings its own antialiasing.
+* A shader pack owns its lighting pipeline, so effects it computes at internal resolution
+  (shadows, SSAO, reflections) are also at internal resolution. That is the point of the feature,
+  but it means very low scales soften those effects too.
 * The upscalers are presentation filters. They cannot recover detail that was never rendered,
   which is why FSR 1 looks best at 67-85 % scale.
+
+## Testing
+
+Verified in a NeoForge dev client with only **Sodium 0.8.13**, **Iris 1.8.14-beta.1** and
+**Complementary Unbound r5.9.3** installed: render scale 50-75 %, bilinear and FSR 1, correct
+depth (no holes or LODs over the world), HUD at native resolution, first person hand and nearby
+entities visible in place under an active shader pack, and no OpenGL errors when the window is
+resized or the shader pipeline is rebuilt.
 
 ## Configuration
 
 `config/modernopt-client.toml` (created on first launch), or the in-game screen:
 
 * `Options -> ModernOPT` on NeoForge's mod list, or
-* the Sodium video settings page button, or
+* `Video Settings -> ModernOPT` in Sodium (the full screen or the native `Settings` page), or
 * the `F10` keybind (in game).
 
 ## Building
@@ -88,7 +114,9 @@ Requires JDK 21.
 gradle build
 ```
 
-The jar lands in `build/libs/modernopt-<version>.jar`. The included GitHub Actions workflow does
+The jar lands in `build/libs/modernopt-<version>.jar`. Sodium 0.8.13 is downloaded from Modrinth's
+Maven repository at build time only; the `extractSodiumInnerJar` task unpacks Sodium's nested mod
+jar so the optional config API can be compiled against. The included GitHub Actions workflow does
 exactly this on every push and uploads the jar as an artifact.
 
 ## Credits
