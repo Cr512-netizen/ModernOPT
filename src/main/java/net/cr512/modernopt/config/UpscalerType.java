@@ -9,7 +9,12 @@ public enum UpscalerType {
     /** 9-tap tent filter with a tunable softening radius. */
     SOFT("Soft scale", true),
     /** AMD FidelityFX Super Resolution 1: EASU reconstruction + RCAS sharpening. */
-    FSR1("FSR 1", true);
+    FSR1("FSR 1", true),
+    /**
+     * Temporal FSR 2 style upscaler: jittered world pass, camera reprojection, history
+     * accumulation, then RCAS. Uses the same sharpness setting as FSR 1.
+     */
+    FSR2("FSR 2", true);
 
     private final String label;
     private final boolean shader;

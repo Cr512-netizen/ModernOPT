@@ -27,3 +27,8 @@ ModernOPT includes a GLSL port of the AMD FidelityFX Super Resolution 1 spatial 
 
 The FXAA pass follows the luma-based edge detection and resolve described by Timothy Lottes
 in the public FXAA 3.x publication.
+
+The optional FSR 2 mode (temporal jitter, EASU, reprojection, neighbourhood clamping and RCAS)
+is an original implementation written for ModernOPT. It is inspired by the design of AMD's
+FidelityFX Super Resolution 2 but contains no code copied from the FSR 2 reference
+implementation; the MIT-licensed FSR 1 code above is used for the spatial EASU/RCAS passes.
