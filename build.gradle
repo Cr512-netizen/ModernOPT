@@ -20,13 +20,6 @@ java {
 repositories {
     mavenCentral()
     maven { name = 'NeoForged'; url = 'https://maven.neoforged.net/releases' }
-    // Sodium / Iris are compiled against reflectively only, but the maven entries
-    // are kept so a developer can add them without editing the build script.
-    maven {
-        name = 'CaffeineMC'
-        url = 'https://maven.caffeinemc.net/releases'
-        content { includeGroup 'net.caffeinemc' }
-    }
     maven {
         name = 'Modrinth'
         url = 'https://api.modrinth.com/maven'
@@ -34,8 +27,44 @@ repositories {
     }
 }
 
+configurations {
+    // Sodium's download is a jar-in-jar wrapper. This configuration only feeds the
+    // extraction task below; it is never added to the runtime classpath.
+    sodiumCompile {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
+}
+
 dependencies {
     compileOnly 'org.spongepowered:mixin:0.8.5'
+    sodiumCompile 'maven.modrinth:sodium:mc1.21.1-0.8.13-neoforge'
+}
+
+// Compile-only against Sodium's inner mod jar so the optional config entry point can
+// implement Sodium's 0.8.13 config API. ModernOPT does not ship or require Sodium:
+// the class is only loaded by Sodium itself, and is inert when Sodium is absent.
+def sodiumInnerJar = layout.buildDirectory.file('sodium/sodium-inner.jar')
+def extractSodiumInnerJar = tasks.register('extractSodiumInnerJar', Copy) {
+    from({ zipTree(configurations.sodiumCompile.singleFile) }) {
+        include 'META-INF/jarjar/net.caffeinemc.sodium-*.jar'
+    }
+    into layout.buildDirectory.dir('sodium')
+    eachFile { details ->
+        if (!details.isDirectory()) {
+            details.path = 'sodium-inner.jar'
+        }
+    }
+    includeEmptyDirs = false
+}
+
+dependencies {
+    compileOnly files(sodiumInnerJar)
+}
+
+tasks.withType(JavaCompile).configureEach {
+    dependsOn extractSodiumInnerJar
 }
 
 neoForge {

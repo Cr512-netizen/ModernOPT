@@ -2,6 +2,7 @@ package net.cr512.modernopt.render;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.cr512.modernopt.ModernOPT;
 import net.cr512.modernopt.config.ModernOptSettings;
@@ -87,16 +88,18 @@ public final class RenderPipeline {
                     ModernOPT.LOG.info("[ModernOPT] Fabulous graphics mode is on, MSAA is disabled (it needs a single sampled depth buffer)");
                 }
             } else if (IrisCompat.isShaderPackInUse()) {
-                // Iris owns its own gbuffer/depth targets, interposing a multisampled target on
-                // top of them breaks the shader pack pipeline.
-                disableForIris("MSAA");
-                return;
+                // A shader pack builds its own gbuffer and depth targets and resolves them
+                // itself; a second multisampled pass on top of that would be useless and can
+                // break depth sampling. Render scaling and the upscaler still apply.
+                samples = 1;
+                logIrisOnce("MSAA is off while an Iris shader pack is active");
             }
         }
 
         if (IrisCompat.isShaderPackInUse()) {
-            disableForIris("render scaling");
-            return;
+            // Iris sizes its gbuffer targets from Minecraft#getMainRenderTarget(), so the
+            // redirected target below scales the whole shader pipeline, not just the world pass.
+            logIrisOnce("shader pack detected, scaling the Iris pipeline as well");
         }
 
         int[] size = RenderScaleMath.targetSize(windowWidth, windowHeight, ModernOptSettings.renderScalePercent(),
@@ -113,8 +116,8 @@ public final class RenderPipeline {
         }
 
         scaled.setLinearFilter(ModernOptSettings.upscaler() != UpscalerType.NEAREST);
-        scaled.bindWrite(true);
         worldActive = true;
+        scaled.bindWrite(true);
     }
 
     /** Called right before {@code Gui#render}, i.e. after the world and before the HUD. */
@@ -284,11 +287,39 @@ public final class RenderPipeline {
         }
     }
 
-    private static void disableForIris(String what) {
+    private static void logIrisOnce(String what) {
         if (!loggedIrisSkip) {
             loggedIrisSkip = true;
-            ModernOPT.LOG.info("[ModernOPT] {} disabled while an Iris shader pack is active", what);
+            ModernOPT.LOG.info("[ModernOPT] Iris: {}", what);
         }
+    }
+
+    /**
+     * Keeps the GL viewport matched to the scaled target.
+     *
+     * <p>Vanilla passes occasionally bind a window sized render target in the middle of the world
+     * pass and then return with {@code bindWrite(false)}, which deliberately leaves the viewport
+     * untouched. The terrain still looks right because it was already drawn, but every later pass
+     * (entities, hand, particles) is then rasterised for a target twice as large and is clipped
+     * away outside a corner. Forcing the size back whenever the scaled target is bound fixes that
+     * without touching any other framebuffer (Iris gbuffers, shadow maps, post chains).</p>
+     *
+     * @return {@code true} when this call already applied the corrected viewport
+     */
+    public static boolean clampViewport(int x, int y, int width, int height) {
+        ScaledRenderTarget target = scaled;
+        if (!worldActive || target == null) {
+            return false;
+        }
+        if (width == target.viewWidth && height == target.viewHeight) {
+            return false;
+        }
+        if (!target.isCurrentDrawTarget()) {
+            return false;
+        }
+
+        GlStateManager._viewport(0, 0, target.viewWidth, target.viewHeight);
+        return true;
     }
 
     /** Drops every GL object; called from the client stopping event so nothing leaks on world exit. */

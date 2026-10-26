@@ -10,6 +10,9 @@ displayName = "${mod_name}"
 authors = "${mod_authors}"
 description = '''${mod_description}'''
 
+[[mixins]]
+config = "modernopt.mixins.json"
+
 [[dependencies.${mod_id}]]
 modId = "neoforge"
 type = "required"
@@ -23,3 +26,8 @@ type = "required"
 versionRange = "${minecraft_version_range}"
 ordering = "NONE"
 side = "CLIENT"
+
+# Sodium 0.8.13 reads this property to find optional config entry points.
+# The class is only loaded by Sodium and is inert when Sodium is not installed.
+[modproperties.${mod_id}]
+"sodium:config_api_user" = "net.cr512.modernopt.compat.sodium.ModernOptSodiumConfig"
