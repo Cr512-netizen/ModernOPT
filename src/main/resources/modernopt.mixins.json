@@ -6,8 +6,8 @@
   "client": [
     "GameRendererMixin",
     "GlStateManagerMixin",
-    "GuiMixin",
-    "MinecraftMixin"
+    "MinecraftMixin",
+    "ScreenshotMixin"
   ],
   "injectors": {
     "defaultRequire": 1

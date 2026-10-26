@@ -35,7 +35,7 @@ public final class ModernOptConfig {
                 .defineEnum("upscaler", UpscalerType.FSR1);
         SOFTNESS = b.comment("SoftScale blur strength, 0 = neutral, 100 = very soft.")
                 .defineInRange("softness", 35, 0, 100);
-        FSR1_SHARPNESS = b.comment("FSR 1 RCAS sharpening, 0 = off, 100 = strong.")
+        FSR1_SHARPNESS = b.comment("FSR 1 / FSR 2 RCAS sharpening, 0 = off, 100 = strong.")
                 .defineInRange("fsr1Sharpness", 25, 0, 100);
         b.pop();
 
