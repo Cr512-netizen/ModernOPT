@@ -96,9 +96,11 @@ Key points:
   when the game switches between the vanilla and the scaled target, including after a resize.
   Iris also drives the GL viewport itself for its shadow map and its half resolution composite
   passes, and vanilla rebinds the world target afterwards without resetting it; the scaled target
-  therefore re-applies its own viewport whenever it is bound (and rejects window sized viewports
-  while it is the draw target), otherwise entities and the first person hand are rasterised for
-  the window size and clipped out of view. Iris tracks whether the main target is bound by
+  therefore re-applies its own viewport whenever it is bound, otherwise entities and the first
+  person hand are rasterised for the window size and clipped out of view. Only a viewport request
+  that matches the window size is treated as stale: Iris' shadow-map viewport (for example
+  2048x2048) and its composite viewports are left untouched, so shadows stay intact at every
+  render scale. Iris tracks whether the main target is bound by
   injecting at the end of `RenderTarget#bindWrite`; the scaled target therefore runs the vanilla
   bind first and only then redirects to its multisampled buffers. That keeps Iris' gbuffer shaders
   (including `gbuffers_entities`) enabled while the world is scaled - without it, entities were
@@ -157,6 +159,20 @@ The 50 % result is 2.27x native. Native 1:1 crops: FSR 2 spatial at 100 % measur
 the gradient ratio was 0.985-0.999 on terrain and 0.955-0.966 on water. At 50 %, the terrain
 gradient ratio was 0.599 vs 0.593 for FSR 1-50, and water 0.562 vs 0.558, so spatial FSR 2 is not
 softer than FSR 1. The hand and HUD stayed native, and no temporal grain or ghosting was added.
+
+The 0.3.2 shadow fix was validated with the same camera, Iris 1.8.14-beta.1 and Complementary
+Unbound r5.9.3, render distance 32, 1920x1080 fullscreen. Every state below shows the player
+shadow and the pack's terrain shadows; before the fix, every scaled state lost them:
+
+| Mode | Internal -> output | Frame rate | Player shadow |
+| --- | --- | ---: | --- |
+| Native, mod disabled | 1920x1080 | - | present |
+| FSR 2 spatial, 100 % | 1920x1080 | - | present |
+| FSR 2 spatial, 67 % | 1286x724 -> 1920x1080 | 144 fps | present |
+| FSR 1, 67 % | 1286x724 -> 1920x1080 | - | present |
+| Bilinear, 67 % | 1286x724 -> 1920x1080 | 155 fps | present |
+| FSR 2 spatial, 50 % | 960x540 -> 1920x1080 | 151 fps | present |
+| FSR 2 spatial, 25 % | 480x270 -> 1920x1080 | 247 fps | present |
 
 With shaders off, FSR 2 still uses the temporal path and was checked at 100 % (temporal AA + RCAS)
 and at 50-75 % scale.
