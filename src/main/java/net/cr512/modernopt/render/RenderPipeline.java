@@ -811,6 +811,12 @@ public final class RenderPipeline {
      * away outside a corner. Forcing the size back whenever the scaled target is bound fixes that
      * without touching any other framebuffer (Iris gbuffers, shadow maps, post chains).</p>
      *
+     * <p>Only a viewport that matches the window size is stale. Other sizes belong to the pass
+     * that is setting them up: Iris sets the shadow map viewport (for example 2048x2048) before
+     * it binds the shadow framebuffer, while the scaled world target is still current. Clamping
+     * that request to the scaled size made the shadow map render into a small corner and removed
+     * the shadows at every scale below 100%.</p>
+     *
      * @return {@code true} when this call already applied the corrected viewport
      */
     public static boolean clampViewport(int x, int y, int width, int height) {
@@ -822,6 +828,14 @@ public final class RenderPipeline {
             return false;
         }
         if (!target.isCurrentDrawTarget()) {
+            return false;
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.getWindow() == null) {
+            return false;
+        }
+        if (width != minecraft.getWindow().getWidth() || height != minecraft.getWindow().getHeight()) {
             return false;
         }
 
