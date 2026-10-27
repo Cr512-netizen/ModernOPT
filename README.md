@@ -12,9 +12,9 @@ resolution.
 | Option | Values | What it does |
 | --- | --- | --- |
 | Render scale | 25 - 100 % | Internal world resolution. 75 % means roughly 56 % of the pixels. |
-| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `FSR 2` | Filter used to present the internal image. `FSR 2` adds a temporal accumulation pass. |
+| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `FSR 2` | Filter used to present the internal image. `FSR 2` adds a temporal accumulation pass; with an Iris pack it switches to a spatial EASU + RCAS path. |
 | SoftScale softness | 0 - 100 % | Blur radius of the 9-tap tent filter (`Soft scale`). |
-| FSR sharpness | 0 - 100 % | RCAS strength applied after the FSR 1 EASU or FSR 2 temporal upscale. |
+| FSR sharpness | 0 - 100 % | RCAS strength applied after the FSR 1 EASU or FSR 2 upscale. |
 | MSAA | Off, 2x, 4x, 8x, 16x | Multisampling for the world pass (hardware, resolved before the upscale). |
 | SSAA | On / Off | Renders the world at 2x resolution and downsamples with a 2x2 box filter. |
 | FXAA | On / Off | Post-process edge smoothing on the final native-resolution image. |
@@ -36,10 +36,21 @@ camera only, so moving entities, particles and the hand rely on the clamp/reacti
 instead of per-object velocities; fast objects can leave a short trail. The first frame after a
 world load (FOV still 0, degenerate projection) is skipped and the history is reset.
 
-FSR 2 runs at 100 % too, where it acts as temporal anti-aliasing. SSAA has priority: enabling
-SSAA turns FSR 2 off. With an Iris shader pack active, ModernOPT disables its own projection
-jitter and lets the pack's temporal filter drive sub-pixel jitter; FSR 2 still reprojects the
-pack's output and upscales it. MSAA is also forced off in FSR 2 mode and that is logged once.
+With an Iris shader pack active, ModernOPT does **not** run the temporal pass. The pack already
+jitters its own gbuffers and resolves them in its TAA/TAAU pass; feeding that already-resolved
+image into a second zero-jitter history only blurs it (and, with Kappa, produced heavy grain and
+ghosting). The Iris path is spatial instead: EASU + RCAS upscale the pack's final image, no
+history targets are allocated, and the projection is left untouched. The overlay reports
+`FSR 2 (spatial)` so the active path is visible.
+
+At 1:1 (internal and output resolution are the same) EASU is bypassed entirely: the image is
+copied exactly, or only RCAS is applied when FSR sharpness is above zero. EASU is an upscaler,
+and running its reconstruction kernel at 1:1 only softens the pack's output; this was visible as
+a softer image at 100 % scale before 0.3.1.
+
+FSR 2 runs at 100 % too: without shaders it acts as temporal anti-aliasing, and under an Iris
+pack it is a 1:1 presentation pass with optional RCAS. SSAA has priority: enabling SSAA turns
+FSR 2 off. MSAA is also forced off in FSR 2 mode and that is logged once.
 
 ## How it works
 
@@ -78,7 +89,8 @@ Key points:
 * **Iris** - supported. Iris sizes its gbuffer and depth targets from
   `Minecraft#getMainRenderTarget()`, so the same redirect scales the whole shader pipeline, not
   just the vanilla world pass. While a shader pack is active MSAA is forced off (the pack owns
-  its multisampled buffers); render scaling, the upscaler and FXAA still apply. Iris caches the
+  its multisampled buffers); render scaling, the upscaler and FXAA still apply. FSR 2 uses the
+  spatial EASU + RCAS path under a pack and does not allocate a temporal history. Iris caches the
   depth texture it attaches to its framebuffers behind a version counter, so the scaled target
   exposes its own counter through the `Blaze3dRenderTargetExt` methods. That keeps depth correct
   when the game switches between the vanilla and the scaled target, including after a resize.
@@ -107,11 +119,15 @@ Key points:
   but it means very low scales soften those effects too.
 * The upscalers are presentation filters. They cannot recover detail that was never rendered,
   which is why FSR 1 looks best at 67-85 % scale.
-* FSR 2 uses camera-reconstructed motion vectors. It has no per-object velocities, so fast
-  moving entities and particles can ghost briefly before the neighbourhood clamp rejects them.
-  Under an Iris shader pack, depth is read from the pack's gbuffer when Iris exposes it; if it
-  cannot be read, FSR 2 falls back to rotation-only reprojection for that frame and logs a
-  warning once.
+* Without a shader pack, FSR 2 uses camera-reconstructed motion vectors. It has no per-object
+  velocities, so fast moving entities and particles can ghost briefly before the neighbourhood
+  clamp rejects them. Under an Iris pack FSR 2 runs spatially and keeps no history, so this
+  temporal ghosting does not apply; the pack's own TAA/TAAU owns sub-pixel jitter.
+* Kappa v5.3 hardcodes its own `ResolutionScale` to 0.75. ModernOPT scales the target Iris sees,
+  so ModernOPT 50 % with Kappa means 0.75 x 0.50 = 37.5 % effective gbuffer resolution, then
+  Kappa's TAAU brings it to the ModernOPT target and ModernOPT upscales again. That is why Kappa
+  looks softer than a pack that renders at 100 % of the target. ModernOPT does not override pack
+  options; lower the pack's own scale to 1.0 if its menu exposes it.
 * Under a heavy shader pack, FSR 2 cannot make the pack's fixed full-resolution passes cheaper.
   Complementary's shadow map, composite and post chain keep the GPU busy even at 25 % render
   scale; the upscaler only scales the gbuffer/world pass. Reaching a much higher frame rate can
@@ -121,27 +137,29 @@ Key points:
 
 ## Testing
 
-Verified in a NeoForge dev client with only **Sodium 0.8.13**, **Iris 1.8.14-beta.1** and
-**Complementary Unbound r5.9.3** installed: render scale 50-75 %, bilinear, FSR 1 and FSR 2,
-correct depth (no holes or LODs over the world), HUD at native resolution, first person hand and
-nearby entities visible in place under an active shader pack, and no OpenGL errors when the window
-is resized or the shader pipeline is rebuilt.
+Verified in a NeoForge dev client with **Sodium 0.8.13**, **Iris 1.8.14-beta.1**, **Kappa v5.3**
+and **Complementary Unbound r5.9.3**: render scale 25-100 %, FSR 1 and FSR 2, correct depth (no
+holes or LODs over the world), HUD and first person hand at native resolution, and no OpenGL
+errors when the window is resized or the shader pipeline is rebuilt.
 
-FSR 2 was also checked with shaders off, at 100 % (temporal AA + RCAS at native resolution) and
-under Complementary. With the pack active and the world loaded, the test scene at `300,63,300`
-measured on an RTX 5060 Ti 16 GB / Ryzen 7 7800X3D at 1920x1080, render distance 12:
+The 0.3.1 Kappa validation used a fixed camera at `300.5,63,300.5`, yaw 90, day 6000, 1920x1080,
+render distance 12, on an RTX 5060 Ti 16 GB / Ryzen 7 7800X3D:
 
-| Mode | Frame rate | GPU |
-| --- | ---: | ---: |
-| Native (mod disabled) | 111 fps | 94 % |
-| FSR 2, 100 % | 94 fps | 96 % |
-| FSR 2, 75 % | 123 fps | 96 % |
-| FSR 2, 50 % | 197-198 fps | 94 % |
-| FSR 2, 25 % | 216 fps | 93 % |
+| Mode | Frame rate |
+| --- | ---: |
+| Native (mod disabled) | 102-103 fps |
+| FSR 2 spatial, 75 % | 177 fps |
+| FSR 2 spatial, 50 % | 234 fps |
+| FSR 2 spatial, 25 % | 377 fps |
 
-The 50 % result is a real 1.78x over native. The small gain from 50 % to 25 % shows where the
-shader pack's fixed cost takes over; it is not an upscaler bug. Native 1:1 crops of the water,
-sky and HUD were clean, and an idle camera test measured no visible frame-to-frame shift.
+The 50 % result is 2.27x native. Native 1:1 crops: FSR 2 spatial at 100 % measured MAE 2.9
+(terrain) and 1.35 (water) against native, within the 2.3-2.5 MAE of a native-vs-native rerun;
+the gradient ratio was 0.985-0.999 on terrain and 0.955-0.966 on water. At 50 %, the terrain
+gradient ratio was 0.599 vs 0.593 for FSR 1-50, and water 0.562 vs 0.558, so spatial FSR 2 is not
+softer than FSR 1. The hand and HUD stayed native, and no temporal grain or ghosting was added.
+
+With shaders off, FSR 2 still uses the temporal path and was checked at 100 % (temporal AA + RCAS)
+and at 50-75 % scale.
 
 ## Configuration
 
