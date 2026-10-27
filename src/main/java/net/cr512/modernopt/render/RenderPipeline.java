@@ -6,7 +6,6 @@ import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import org.lwjgl.opengl.GL11C;
-import org.lwjgl.opengl.GL13C;
 import net.cr512.modernopt.ModernOPT;
 import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.config.UpscalerType;
@@ -60,6 +59,8 @@ public final class RenderPipeline {
     /** Temporal upscaling state. */
     private static boolean fsr2ThisFrame;
     private static boolean fsr2ActiveThisFrame;
+    private static boolean fsr2SpatialRequested;
+    private static boolean fsr2SpatialThisFrame;
     private static boolean fsr2Unsupported;
     private static boolean poseCaptured;
     private static boolean historyValid;
@@ -116,11 +117,16 @@ public final class RenderPipeline {
      */
     public static String activeUpscalerLabel() {
         UpscalerType requested = ModernOptSettings.upscaler();
-        if (requested == UpscalerType.FSR2 && !fsr2ActiveThisFrame) {
-            return ModernOptSettings.ssaa() ? "FSR 2 off (SSAA)" : "FSR 2 off (FSR 1)";
-        }
-        if (requested == UpscalerType.FSR2 && !fsr2DepthValidThisFrame) {
-            return "FSR 2 (no depth)";
+        if (requested == UpscalerType.FSR2) {
+            if (!fsr2ActiveThisFrame) {
+                return ModernOptSettings.ssaa() ? "FSR 2 off (SSAA)" : "FSR 2 off (FSR 1)";
+            }
+            if (fsr2SpatialThisFrame) {
+                return "FSR 2 (spatial)";
+            }
+            if (!fsr2DepthValidThisFrame) {
+                return "FSR 2 (no depth)";
+            }
         }
         return requested.label();
     }
@@ -134,6 +140,8 @@ public final class RenderPipeline {
     public static void beginWorldFrame() {
         worldActive = false;
         fsr2ThisFrame = false;
+        fsr2SpatialRequested = false;
+        fsr2SpatialThisFrame = false;
         poseCaptured = false;
 
         Minecraft minecraft = Minecraft.getInstance();
@@ -167,12 +175,19 @@ public final class RenderPipeline {
         if (iris != lastIris) {
             lastIris = iris;
             resetHistory();
+            if (iris) {
+                // Temporal history is never used under a shader pack. Free the two full-size
+                // RGBA16F targets instead of keeping them idle for the whole session.
+                destroyHistoryTargets();
+            }
         }
         boolean fsr2Wanted = requested == UpscalerType.FSR2 && !ModernOptSettings.ssaa();
-        if (requested == UpscalerType.FSR2 && iris && !loggedFsr2Iris) {
+        boolean fsr2Spatial = fsr2Wanted && iris;
+        fsr2SpatialRequested = fsr2Spatial;
+        if (fsr2Spatial && !loggedFsr2Iris) {
             loggedFsr2Iris = true;
-            ModernOPT.LOG.info("[ModernOPT] FSR 2 is active with the Iris shader pack: using Iris depth for "
-                    + "reprojection and letting the pack's own temporal filter handle sub-pixel jitter");
+            ModernOPT.LOG.info("[ModernOPT] FSR 2 spatial mode with the Iris shader pack: the pack owns "
+                    + "sub-pixel jitter, so temporal accumulation is disabled to avoid blurring; using EASU + RCAS");
         }
         if (fsr2Wanted && ModernOptSettings.msaa().samples() > 1 && !loggedFsr2Msaa) {
             loggedFsr2Msaa = true;
@@ -205,10 +220,13 @@ public final class RenderPipeline {
             logIrisOnce("shader pack detected, scaling the Iris pipeline as well");
         }
 
-        if (fsr2Wanted && (!ensureShaders(minecraft) || shaders == null || !shaders.hasTemporal())) {
+        if (fsr2Wanted && (!ensureShaders(minecraft) || shaders == null
+                || (!fsr2Spatial && !shaders.hasTemporal()))) {
             // Do not render into a target that cannot be presented. The whole shader library
             // failed (or only the temporal pass did); FSR 2 falls back to FSR 1 below, and a
-            // broken library leaves vanilla rendering untouched for this session.
+            // broken library leaves vanilla rendering untouched for this session. With an Iris
+            // pack the spatial path only needs EASU and RCAS, so a missing temporal shader is
+            // not a reason to fall back.
             if (shaders == null || !shaders.isValid()) {
                 return;
             }
@@ -237,7 +255,7 @@ public final class RenderPipeline {
             return;
         }
 
-        if (fsr2Wanted) {
+        if (fsr2Wanted && !fsr2Spatial) {
             try {
                 ensureHistoryTargets(minecraft.getMainRenderTarget().width, minecraft.getMainRenderTarget().height);
             } catch (Throwable throwable) {
@@ -271,7 +289,8 @@ public final class RenderPipeline {
 
         if (fsr2ThisFrame && !loggedFsr2Active) {
             loggedFsr2Active = true;
-            ModernOPT.LOG.info("[ModernOPT] FSR 2 temporal upscaling active ({}x{} -> {}x{}, camera-reconstructed motion)",
+            ModernOPT.LOG.info("[ModernOPT] FSR 2 {} active ({}x{} -> {}x{})",
+                    fsr2Spatial ? "spatial upscaling" : "temporal upscaling (camera-reconstructed motion)",
                     scaled.width, scaled.height, outputWidth, outputHeight);
         }
     }
@@ -286,6 +305,12 @@ public final class RenderPipeline {
      */
     public static Matrix4f jitterProjection(Matrix4f projection, Camera camera) {
         if (!fsr2ThisFrame || scaled == null) {
+            return projection;
+        }
+
+        if (fsr2SpatialRequested) {
+            // Iris packs jitter their own gbuffers and resolve them in their TAA pass. ModernOPT
+            // therefore uses the spatial EASU + RCAS path and must not touch the projection.
             return projection;
         }
 
@@ -309,13 +334,12 @@ public final class RenderPipeline {
         }
 
         if (irisThisFrame) {
-            // The shader pack already jitters its own gbuffers and resolves them in its TAA
-            // pass. Adding a second projection jitter here would be interpreted as camera
-            // motion by that pass and make the image wobble. FSR 2 still accumulates the
-            // (unjittered) pack output with camera reprojection and upscales it.
+            // Defensive guard: a temporal FSR 2 frame must never run against a shader pack's
+            // already-resolved output with zero jitter. Report it as spatial instead of
+            // accumulating a blurred history. This should be unreachable because
+            // beginWorldFrame selects the spatial path whenever a pack is active.
             jitterX = 0.0F;
             jitterY = 0.0F;
-            poseCaptured = true;
             return projection;
         }
 
@@ -359,8 +383,10 @@ public final class RenderPipeline {
         }
 
         boolean temporal = fsr2ThisFrame && poseCaptured && !fsr2Unsupported;
+        boolean spatial = fsr2ThisFrame && !temporal && fsr2SpatialRequested;
         boolean jittered = poseCaptured;
-        fsr2ActiveThisFrame = temporal;
+        fsr2ActiveThisFrame = temporal || spatial;
+        fsr2SpatialThisFrame = spatial;
         worldActive = false;
         fsr2ThisFrame = false;
         poseCaptured = false;
@@ -548,19 +574,44 @@ public final class RenderPipeline {
         ShaderLibrary.beginPassState();
         try {
             if (fsr1Path) {
-                TextureTarget easu = ensureIntermediates(outWidth, outHeight, true);
-                easu.bindWrite(true);
-                ShaderLibrary.draw(library.easu, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, 0.0F, 0.0F);
-
-                if (fxaa) {
-                    TextureTarget post = ensureIntermediates(outWidth, outHeight, false);
-                    post.bindWrite(true);
-                    ShaderLibrary.draw(library.rcas, easu.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, sharpness, 0.0F);
-                    main.bindWrite(true);
-                    ShaderLibrary.draw(library.fxaa, post.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, 0.0F, 0.0F);
+                boolean oneToOne = sourceWidth == outWidth && sourceHeight == outHeight;
+                if (oneToOne) {
+                    // EASU is an upscaler. At 1:1 its reconstruction kernel only softens the
+                    // pack's already resolved image, which is exactly the blur seen with Iris
+                    // packs at 100% render scale. Copy the image exactly and keep RCAS (the
+                    // user's sharpening setting) as the only optional filter.
+                    if (fxaa) {
+                        TextureTarget post = ensureIntermediates(outWidth, outHeight, false);
+                        post.bindWrite(true);
+                        ShaderLibrary.draw(library.nearest, sourceTexture, sourceWidth, sourceHeight,
+                                outWidth, outHeight, 0.0F, 0.0F);
+                        main.bindWrite(true);
+                        ShaderLibrary.draw(library.fxaa, post.getColorTextureId(), outWidth, outHeight,
+                                outWidth, outHeight, 0.0F, 0.0F);
+                    } else if (sharpness > 0.001F) {
+                        main.bindWrite(true);
+                        ShaderLibrary.draw(library.rcas, sourceTexture, sourceWidth, sourceHeight,
+                                outWidth, outHeight, sharpness, 0.0F);
+                    } else {
+                        main.bindWrite(true);
+                        ShaderLibrary.draw(library.nearest, sourceTexture, sourceWidth, sourceHeight,
+                                outWidth, outHeight, 0.0F, 0.0F);
+                    }
                 } else {
-                    main.bindWrite(true);
-                    ShaderLibrary.draw(library.rcas, easu.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, sharpness, 0.0F);
+                    TextureTarget easu = ensureIntermediates(outWidth, outHeight, true);
+                    easu.bindWrite(true);
+                    ShaderLibrary.draw(library.easu, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, 0.0F, 0.0F);
+
+                    if (fxaa) {
+                        TextureTarget post = ensureIntermediates(outWidth, outHeight, false);
+                        post.bindWrite(true);
+                        ShaderLibrary.draw(library.rcas, easu.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, sharpness, 0.0F);
+                        main.bindWrite(true);
+                        ShaderLibrary.draw(library.fxaa, post.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, 0.0F, 0.0F);
+                    } else {
+                        main.bindWrite(true);
+                        ShaderLibrary.draw(library.rcas, easu.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, sharpness, 0.0F);
+                    }
                 }
             } else {
                 ShaderInstance filter = ModernOptSettings.ssaa() ? library.box : filterFor(library, upscaler);
@@ -583,8 +634,13 @@ public final class RenderPipeline {
         if (outWidth != lastWidth || outHeight != lastHeight) {
             lastWidth = outWidth;
             lastHeight = outHeight;
-            ModernOPT.LOG.info("[ModernOPT] presenting {}x{} world image at {}x{} (samples={})",
-                    sourceWidth, sourceHeight, outWidth, outHeight, scaled.activeSamples());
+            if (fsr2SpatialThisFrame) {
+                ModernOPT.LOG.info("[ModernOPT] presenting {}x{} world image at {}x{} (FSR 2 spatial)",
+                        sourceWidth, sourceHeight, outWidth, outHeight);
+            } else {
+                ModernOPT.LOG.info("[ModernOPT] presenting {}x{} world image at {}x{} (samples={})",
+                        sourceWidth, sourceHeight, outWidth, outHeight, scaled.activeSamples());
+            }
         }
     }
 
@@ -774,44 +830,41 @@ public final class RenderPipeline {
     }
 
     /**
-     * Moves the screenshot's texture read to a scratch unit.
+     * Saves the texture unit that {@link Screenshot#takeScreenshot} is about to change.
      *
      * <p>Vanilla binds the main colour texture to the currently active unit and never restores
-     * it. Sodium and Iris cache which texture they last bound per unit, so writing the screen
-     * image to a unit they consider "already bound" desynchronises their cache: the next world
-     * frame keeps sampling the screen instead of the block atlas, and the HUD is smeared over
-     * every block. Doing the read on unit 11 (the last unit tracked by
-     * {@link GlStateManager}) leaves the units world rendering uses untouched. The scratch
-     * unit's previous binding is restored afterwards for the same reason.</p>
+     * it. Sodium and Iris cache which texture they last bound per unit, so leaving the screen
+     * image there desynchronises their cache: the next world frame keeps sampling the screen
+     * instead of the block atlas, and the HUD is smeared over every block. Saving and restoring
+     * the exact unit and binding makes screenshots side-effect free.</p>
+     *
+     * <p>The previous implementation moved the read to unit 11 to avoid touching world units.
+     * That is unsafe: {@code GlStateManager} caches bindings per unit, and Iris/Kappa may bind
+     * textures outside that cache. The cached unit 11 binding can then disagree with the real
+     * GL binding, and {@code takeScreenshot} downloads whatever texture is actually there (the
+     * font atlas, visible as glyphs tiled over the saved image) instead of the world colour.
+     * Reading on the current unit and restoring it keeps the cache and GL state in sync.</p>
      */
     public static void saveTextureStateBeforeScreenshot() {
         if (!RenderSystem.isOnRenderThread()) {
             return;
         }
-        // GlStateManager tracks units 0..11; 11 is the least likely one a world shader keeps
-        // bound between frames.
-        int scratch = GL13C.GL_TEXTURE0 + 11;
-        int previousActive = GlStateManager._getActiveTexture();
-        GlStateManager._activeTexture(scratch);
+        screenshotTextureUnit = GlStateManager._getActiveTexture();
         screenshotTextureId = GL11C.glGetInteger(GL11C.GL_TEXTURE_BINDING_2D);
-        screenshotTextureUnit = previousActive;
-        // Deliberately leave the scratch unit active: takeScreenshot() binds there.
     }
 
-    /** Restores the scratch unit and the active unit saved by the method above. */
+    /** Restores the unit and binding saved by the method above. */
     public static void restoreTextureStateAfterScreenshot() {
         if (!RenderSystem.isOnRenderThread() || screenshotTextureUnit < 0) {
             return;
         }
-        int previousActive = screenshotTextureUnit;
+        int unit = screenshotTextureUnit;
         int texture = screenshotTextureId;
         screenshotTextureUnit = -1;
         screenshotTextureId = 0;
 
-        int scratch = GL13C.GL_TEXTURE0 + 11;
-        GlStateManager._activeTexture(scratch);
+        GlStateManager._activeTexture(unit);
         GlStateManager._bindTexture(texture);
-        GlStateManager._activeTexture(previousActive);
     }
 
     /** Drops every GL object; called from the client stopping event so nothing leaks on world exit. */
