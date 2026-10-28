@@ -86,6 +86,8 @@ neoForge {
         client {
             client()
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            programArgument '--quickPlaySingleplayer'
+            programArgument 'ModernOPTTest'
         }
         server {
             server()

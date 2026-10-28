@@ -9,6 +9,9 @@ public final class RenderScaleMath {
     /** Lowest scale the mod accepts, in percent. */
     public static final int MIN_PERCENT = 25;
 
+    /** Colour attachment width alignment, in pixels (32 * 4 bytes = 128-byte rows). */
+    private static final int TARGET_ALIGNMENT = 32;
+
     private RenderScaleMath() {
     }
 
@@ -34,8 +37,26 @@ public final class RenderScaleMath {
      */
     public static int[] targetSize(int windowWidth, int windowHeight, int percent, boolean ssaa, int maxTextureSize) {
         double f = factor(percent, ssaa);
-        int width = Math.max(1, (int) Math.round(Math.max(1, windowWidth) * f));
-        int height = Math.max(1, (int) Math.round(Math.max(1, windowHeight) * f));
+        int windowW = Math.max(1, windowWidth);
+        int windowH = Math.max(1, windowHeight);
+        int width = Math.max(1, (int) Math.round(windowW * f));
+        int height = Math.max(1, (int) Math.round(windowH * f));
+
+        // Keep the colour attachment row pitch on a 128-byte boundary. Widths such as 1286 px
+        // (67 %) and 634 px (33 %) leave every row straddling a cache line, which made the
+        // whole frame 20-30 % slower on the test GPU. 32 px * 4 bytes = 128 bytes. The height
+        // is derived from the aligned width so the picture keeps the window aspect ratio.
+        if (f < 1.0D) {
+            int aligned = Math.max(TARGET_ALIGNMENT,
+                    (int) Math.round(width / (double) TARGET_ALIGNMENT) * TARGET_ALIGNMENT);
+            if (aligned >= windowW) {
+                aligned = Math.max(TARGET_ALIGNMENT, aligned - TARGET_ALIGNMENT);
+            }
+            if (aligned != width) {
+                width = aligned;
+                height = Math.max(1, (int) Math.round((double) width * windowH / windowW));
+            }
+        }
 
         int max = Math.max(1, maxTextureSize);
         if (width > max || height > max) {

@@ -1,7 +1,6 @@
 #version 150
 
-// AMD FidelityFX Super Resolution 1 - EASU pass, OPTIMIZED.
-// Reduced redundant calculations, faster luma, fused operations.
+// AMD FidelityFX Super Resolution 1 - EASU pass, OPTIMIZED + EXPOSURE-INVARIANT LUMA.
 
 uniform sampler2D InputSampler;
 uniform vec2 InputSize;
@@ -11,10 +10,16 @@ uniform vec4 Params;
 in vec2 texCoord;
 out vec4 fragColor;
 
+// Exposure-invariant luma - works with HDR/tonemapped colors from shader packs
+float lumaOf(vec3 c) {
+    vec3 mapped = c / (c + vec3(0.15));
+    return dot(mapped, vec3(0.299, 0.587, 0.114));
+}
+
 // Fused fetch with luma - single texture read per tap
 vec4 fetchLuma(vec2 p) {
     vec3 c = texture(InputSampler, (p + 0.5) / InputSize).rgb;
-    return vec4(c, c.r * 0.5 + c.g * 0.5 + c.b * 0.5);
+    return vec4(c, lumaOf(c));
 }
 
 // Optimized easuSet - branchless weight calculation
@@ -90,10 +95,10 @@ void main() {
     float w01 = (1.0 - pp.x) * pp.y;
     float w11 = pp.x * pp.y;
 
-    easuSet(dir, len, pp, w00, bL, eL, fL, gL, jL);
-    easuSet(dir, len, pp, w10, cL, fL, gL, hL, kL);
-    easuSet(dir, len, pp, w01, fL, iL, jL, kL, nL);
-    easuSet(dir, len, pp, w11, gL, jL, kL, lL, oL);
+    easuSet(dir, len, pp, w00, tapB.a, tapE.a, tapF.a, tapG.a, tapJ.a);
+    easuSet(dir, len, pp, w10, tapC.a, tapF.a, tapG.a, tapH.a, tapK.a);
+    easuSet(dir, len, pp, w01, tapF.a, tapI.a, tapJ.a, tapK.a, tapN.a);
+    easuSet(dir, len, pp, w11, tapG.a, tapJ.a, tapK.a, tapL.a, tapO.a);
 
     float dirR = dir.x * dir.x + dir.y * dir.y;
     float invDirR = inversesqrt(max(dirR, 3.0517578125e-5));

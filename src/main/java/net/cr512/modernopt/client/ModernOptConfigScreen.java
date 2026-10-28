@@ -71,10 +71,20 @@ public class ModernOptConfigScreen extends Screen {
 
         y += step;
         this.addRenderableWidget(new IntSlider(left, y, width, 20,
-                Component.translatable("modernopt.option.fsr1Sharpness"), 0, 100,
-                ModernOptSettings.fsrSharpness(),
+                Component.translatable("modernopt.option.fsrEasuSharpness"), 0, 100,
+                ModernOptSettings.fsrEasuSharpness(),
                 value -> {
-                    ModernOptConfig.FSR1_SHARPNESS.set(value);
+                    ModernOptConfig.FSR_EASU_SHARPNESS.set(value);
+                    ModernOptSettings.refresh();
+                },
+                value -> value + "%"));
+
+        y += step;
+        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+                Component.translatable("modernopt.option.fsrRcasSharpness"), 0, 100,
+                ModernOptSettings.fsrRcasSharpness(),
+                value -> {
+                    ModernOptConfig.FSR_RCAS_SHARPNESS.set(value);
                     ModernOptSettings.refresh();
                 },
                 value -> value + "%"));

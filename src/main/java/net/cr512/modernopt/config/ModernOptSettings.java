@@ -12,7 +12,8 @@ public final class ModernOptSettings {
     private static volatile boolean overlay;
     private static volatile int renderScalePercent = 75;
     private static volatile int softness = 35;
-    private static volatile int fsrSharpness = 25;
+    private static volatile int fsrEasuSharpness = 0;
+    private static volatile int fsrRcasSharpness = 25;
     private static volatile UpscalerType upscaler = UpscalerType.FSR1;
     private static volatile MsaaLevel msaa = MsaaLevel.OFF;
 
@@ -28,7 +29,8 @@ public final class ModernOptSettings {
         renderScalePercent = ModernOptConfig.RENDER_SCALE_PERCENT.get();
         upscaler = ModernOptConfig.UPSCALER.get();
         softness = ModernOptConfig.SOFTNESS.get();
-        fsrSharpness = ModernOptConfig.FSR1_SHARPNESS.get();
+        fsrEasuSharpness = ModernOptConfig.FSR_EASU_SHARPNESS.get();
+        fsrRcasSharpness = ModernOptConfig.FSR_RCAS_SHARPNESS.get();
         msaa = ModernOptConfig.MSAA.get();
         ssaa = ModernOptConfig.SSAA.get();
         fxaa = ModernOptConfig.FXAA.get();
@@ -58,8 +60,18 @@ public final class ModernOptSettings {
         return softness;
     }
 
+    public static int fsrEasuSharpness() {
+        return fsrEasuSharpness;
+    }
+
+    public static int fsrRcasSharpness() {
+        return fsrRcasSharpness;
+    }
+
+    // Deprecated alias for compatibility
+    @Deprecated
     public static int fsrSharpness() {
-        return fsrSharpness;
+        return fsrRcasSharpness;
     }
 
     public static UpscalerType upscaler() {

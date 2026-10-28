@@ -14,7 +14,8 @@ public final class ModernOptConfig {
     public static final ModConfigSpec.IntValue RENDER_SCALE_PERCENT;
     public static final ModConfigSpec.EnumValue<UpscalerType> UPSCALER;
     public static final ModConfigSpec.IntValue SOFTNESS;
-    public static final ModConfigSpec.IntValue FSR1_SHARPNESS;
+    public static final ModConfigSpec.IntValue FSR_EASU_SHARPNESS;
+    public static final ModConfigSpec.IntValue FSR_RCAS_SHARPNESS;
     public static final ModConfigSpec.EnumValue<MsaaLevel> MSAA;
     public static final ModConfigSpec.BooleanValue SSAA;
     public static final ModConfigSpec.BooleanValue FXAA;
@@ -35,8 +36,10 @@ public final class ModernOptConfig {
                 .defineEnum("upscaler", UpscalerType.FSR1);
         SOFTNESS = b.comment("SoftScale blur strength, 0 = neutral, 100 = very soft.")
                 .defineInRange("softness", 35, 0, 100);
-        FSR1_SHARPNESS = b.comment("FSR 1 / FSR 2 RCAS sharpening, 0 = off, 100 = strong.")
-                .defineInRange("fsr1Sharpness", 25, 0, 100);
+        FSR_EASU_SHARPNESS = b.comment("FSR 1 / FSR 2 EASU sharpening, 0 = off, 100 = strong.")
+                .defineInRange("fsrEasuSharpness", 0, 0, 100);
+        FSR_RCAS_SHARPNESS = b.comment("FSR 1 / FSR 2 RCAS sharpening, 0 = off, 100 = strong.")
+                .defineInRange("fsrRcasSharpness", 25, 0, 100);
         b.pop();
 
         b.comment("Anti-aliasing.").push("antialiasing");

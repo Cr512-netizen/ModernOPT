@@ -1,7 +1,6 @@
 #version 150
 
-// AMD FidelityFX Super Resolution 1 - RCAS pass, OPTIMIZED.
-// Fused luma fetch, reduced instructions, faster safe divide.
+// AMD FidelityFX Super Resolution 1 - RCAS pass, OPTIMIZED + EXPOSURE-INVARIANT LUMA.
 
 uniform sampler2D InputSampler;
 uniform vec2 InputSize;
@@ -11,10 +10,16 @@ uniform vec4 Params;
 in vec2 texCoord;
 out vec4 fragColor;
 
+// Exposure-invariant luma - works with HDR/tonemapped colors from shader packs
+float lumaOf(vec3 c) {
+    vec3 mapped = c / (c + vec3(0.15));
+    return dot(mapped, vec3(0.299, 0.587, 0.114));
+}
+
 // Fused fetch with luma
 vec4 fetchLuma(vec2 p) {
     vec3 c = texture(InputSampler, (p + 0.5) / InputSize).rgb;
-    return vec4(c, c.r * 0.5 + c.g * 0.5 + c.b * 0.5);
+    return vec4(c, lumaOf(c));
 }
 
 void main() {
