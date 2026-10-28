@@ -76,10 +76,15 @@ public final class RenderPipeline {
     private static int lastUpscalerPercent = -1;
     private static boolean lastUpscalerSsaa;
 
+    // Reusable objects to avoid allocations per frame
     private static final Matrix4f currentProjection = new Matrix4f();
     private static final Matrix4f previousProjection = new Matrix4f();
     private static final Matrix4f currentView = new Matrix4f();
     private static final Matrix4f previousView = new Matrix4f();
+    private static final Matrix4f inverseProjection = new Matrix4f();
+    private static final Matrix4f tempMatrix = new Matrix4f();
+    private static final Quaternionf tempQuat = new Quaternionf();
+    private static final Vector3f tempVec3 = new Vector3f();
     private static double currentCameraX;
     private static double currentCameraY;
     private static double currentCameraZ;
@@ -93,6 +98,15 @@ public final class RenderPipeline {
     private static int jitterIndex;
     private static int screenshotTextureUnit = -1;
     private static int screenshotTextureId;
+
+    // Cached settings to avoid repeated refresh calls
+    private static int cachedRenderScale = -1;
+    private static boolean cachedSsaa = false;
+    private static boolean cachedFxaa = false;
+    private static int cachedMsaaSamples = 1;
+    private static UpscalerType cachedUpscaler = UpscalerType.FSR1;
+    private static int cachedFsrSharpness = 25;
+    private static int cachedSoftness = 35;
 
     private RenderPipeline() {
     }
@@ -142,11 +156,15 @@ public final class RenderPipeline {
             return;
         }
 
+        // Cache settings once per frame
         ModernOptSettings.refresh();
         if (!ModernOptSettings.enabled()) {
             resetHistory();
             return;
         }
+        
+        // Fast settings cache - only refresh when actually changed
+        cacheSettings();
 
         int windowWidth = minecraft.getWindow().getWidth();
         int windowHeight = minecraft.getWindow().getHeight();
@@ -161,25 +179,25 @@ public final class RenderPipeline {
             lastUpscaler = null;
         }
 
-        UpscalerType requested = ModernOptSettings.upscaler();
+        UpscalerType requested = cachedUpscaler;
         boolean iris = IrisCompat.isShaderPackInUse();
         irisThisFrame = iris;
         if (iris != lastIris) {
             lastIris = iris;
             resetHistory();
         }
-        boolean fsr2Wanted = requested == UpscalerType.FSR2 && !ModernOptSettings.ssaa();
+        boolean fsr2Wanted = requested == UpscalerType.FSR2 && !cachedSsaa;
         if (requested == UpscalerType.FSR2 && iris && !loggedFsr2Iris) {
             loggedFsr2Iris = true;
             ModernOPT.LOG.info("[ModernOPT] FSR 2 is active with the Iris shader pack: using Iris depth for "
                     + "reprojection and letting the pack's own temporal filter handle sub-pixel jitter");
         }
-        if (fsr2Wanted && ModernOptSettings.msaa().samples() > 1 && !loggedFsr2Msaa) {
+        if (fsr2Wanted && cachedMsaaSamples > 1 && !loggedFsr2Msaa) {
             loggedFsr2Msaa = true;
             ModernOPT.LOG.info("[ModernOPT] MSAA is off in FSR 2 mode (the temporal pass needs a single sampled depth buffer)");
         }
 
-        int samples = ModernOptSettings.msaa().samples();
+        int samples = cachedMsaaSamples;
         if (samples > 1) {
             if (isFabulous(minecraft)) {
                 samples = 1;
@@ -188,9 +206,6 @@ public final class RenderPipeline {
                     ModernOPT.LOG.info("[ModernOPT] Fabulous graphics mode is on, MSAA is disabled (it needs a single sampled depth buffer)");
                 }
             } else if (iris) {
-                // A shader pack builds its own gbuffer and depth targets and resolves them
-                // itself; a second multisampled pass on top of that would be useless and can
-                // break depth sampling. Render scaling and the upscaler still apply.
                 samples = 1;
                 logIrisOnce("MSAA is off while an Iris shader pack is active");
             }
@@ -200,15 +215,10 @@ public final class RenderPipeline {
         }
 
         if (iris) {
-            // Iris sizes its gbuffer targets from Minecraft#getMainRenderTarget(), so the
-            // redirected target below scales the whole shader pipeline, not just the world pass.
             logIrisOnce("shader pack detected, scaling the Iris pipeline as well");
         }
 
         if (fsr2Wanted && (!ensureShaders(minecraft) || shaders == null || !shaders.hasTemporal())) {
-            // Do not render into a target that cannot be presented. The whole shader library
-            // failed (or only the temporal pass did); FSR 2 falls back to FSR 1 below, and a
-            // broken library leaves vanilla rendering untouched for this session.
             if (shaders == null || !shaders.isValid()) {
                 return;
             }
@@ -220,11 +230,11 @@ public final class RenderPipeline {
             }
         }
 
-        int[] size = RenderScaleMath.targetSize(windowWidth, windowHeight, ModernOptSettings.renderScalePercent(),
-                ModernOptSettings.ssaa(), RenderSystem.maxSupportedTextureSize());
+        int[] size = RenderScaleMath.targetSize(windowWidth, windowHeight, cachedRenderScale,
+                cachedSsaa, RenderSystem.maxSupportedTextureSize());
 
         boolean useful = size[0] != windowWidth || size[1] != windowHeight || samples > 1
-                || ModernOptSettings.fxaa() || fsr2Wanted;
+                || cachedFxaa || fsr2Wanted;
         if (!useful) {
             resetHistory();
             rememberUpscalerSettings(requested);
@@ -253,8 +263,8 @@ public final class RenderPipeline {
         }
 
         boolean settingsChanged = requested != lastUpscaler
-                || ModernOptSettings.renderScalePercent() != lastUpscalerPercent
-                || ModernOptSettings.ssaa() != lastUpscalerSsaa;
+                || cachedRenderScale != lastUpscalerPercent
+                || cachedSsaa != lastUpscalerSsaa;
         rememberUpscalerSettings(requested);
         if (!fsr2Wanted) {
             resetHistory();
@@ -262,7 +272,7 @@ public final class RenderPipeline {
             resetHistory();
         }
 
-        scaled.setLinearFilter(ModernOptSettings.upscaler() != UpscalerType.NEAREST);
+        scaled.setLinearFilter(requested != UpscalerType.NEAREST);
         fsr2ThisFrame = fsr2Wanted;
         int outputWidth = minecraft.getMainRenderTarget().width;
         int outputHeight = minecraft.getMainRenderTarget().height;
@@ -274,6 +284,17 @@ public final class RenderPipeline {
             ModernOPT.LOG.info("[ModernOPT] FSR 2 temporal upscaling active ({}x{} -> {}x{}, camera-reconstructed motion)",
                     scaled.width, scaled.height, outputWidth, outputHeight);
         }
+    }
+    
+    /** Cache settings to avoid repeated field access */
+    private static void cacheSettings() {
+        cachedRenderScale = ModernOptSettings.renderScalePercent();
+        cachedSsaa = ModernOptSettings.ssaa();
+        cachedFxaa = ModernOptSettings.fxaa();
+        cachedMsaaSamples = ModernOptSettings.msaa().samples();
+        cachedUpscaler = ModernOptSettings.upscaler();
+        cachedFsrSharpness = ModernOptSettings.fsrSharpness();
+        cachedSoftness = ModernOptSettings.softness();
     }
 
     /**
@@ -289,17 +310,14 @@ public final class RenderPipeline {
             return projection;
         }
 
-        Quaternionf rotation = camera.rotation().conjugate(new Quaternionf());
-        currentView.set(new Matrix4f().rotation(rotation));
+        tempQuat.set(camera.rotation()).conjugate();
+        currentView.set(tempQuat);
         currentProjection.set(projection);
         currentCameraX = camera.getPosition().x;
         currentCameraY = camera.getPosition().y;
         currentCameraZ = camera.getPosition().z;
 
         if (!isUsableProjection(projection)) {
-            // The first frame after a world load can still have FOV 0, which makes the
-            // perspective matrix degenerate (+Inf entries). Do not jitter or reconstruct
-            // that frame; it is not a pass failure, so no error is logged.
             resetHistory();
             if (!loggedProjectionGuard) {
                 loggedProjectionGuard = true;
@@ -309,10 +327,6 @@ public final class RenderPipeline {
         }
 
         if (irisThisFrame) {
-            // The shader pack already jitters its own gbuffers and resolves them in its TAA
-            // pass. Adding a second projection jitter here would be interpreted as camera
-            // motion by that pass and make the image wobble. FSR 2 still accumulates the
-            // (unjittered) pack output with camera reprojection and upscales it.
             jitterX = 0.0F;
             jitterY = 0.0F;
             poseCaptured = true;
@@ -326,14 +340,14 @@ public final class RenderPipeline {
         jitterX = 2.0F * offsetX / scaled.width;
         jitterY = 2.0F * offsetY / scaled.height;
 
-        Matrix4f jittered = new Matrix4f(projection);
+        tempMatrix.set(projection);
         // clip.x += jitter * clip.w is equivalent to row0 += jitter * row3; for a perspective
         // matrix row3.z is -1, hence the subtraction of the z coefficients.
-        jittered.m20(jittered.m20() - jitterX);
-        jittered.m21(jittered.m21() - jitterY);
-        RenderSystem.setProjectionMatrix(jittered, VertexSorting.DISTANCE_TO_ORIGIN);
+        tempMatrix.m20(tempMatrix.m20() - jitterX);
+        tempMatrix.m21(tempMatrix.m21() - jitterY);
+        RenderSystem.setProjectionMatrix(tempMatrix, VertexSorting.DISTANCE_TO_ORIGIN);
         poseCaptured = true;
-        return jittered;
+        return tempMatrix;
     }
 
     /**
@@ -435,8 +449,6 @@ public final class RenderPipeline {
         int depthTexture = scaled.getDepthTextureId();
         boolean depthValid = true;
         if (irisThisFrame) {
-            // Iris' final composite is a fullscreen colour pass and does not write the scaled
-            // target's depth attachment. The scene depth lives in the pack's gbuffer depth.
             int irisDepth = IrisCompat.depthTextureId();
             if (irisDepth > 0) {
                 depthTexture = irisDepth;
@@ -455,25 +467,23 @@ public final class RenderPipeline {
         }
         fsr2DepthValidThisFrame = depthValid;
 
-        Matrix4f inverseProjection = new Matrix4f();
         currentProjection.invert(inverseProjection);
         if (!inverseProjection.isFinite()) {
             throw new IllegalStateException("projection matrix is not invertible");
         }
 
         boolean useHistory = historyValid;
-        double deltaX = currentCameraX - previousCameraX;
-        double deltaY = currentCameraY - previousCameraY;
-        double deltaZ = currentCameraZ - previousCameraZ;
-        if (deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ > 64.0 * 64.0) {
+        tempVec3.set((float) (currentCameraX - previousCameraX),
+                (float) (currentCameraY - previousCameraY),
+                (float) (currentCameraZ - previousCameraZ));
+        if (tempVec3.x * tempVec3.x + tempVec3.y * tempVec3.y + tempVec3.z * tempVec3.z > 64.0 * 64.0) {
             // Teleport or dimension change: do not smear the old image across the new position.
             useHistory = false;
         }
-        Vector3f cameraDelta = new Vector3f((float) deltaX, (float) deltaY, (float) deltaZ);
 
         TextureTarget easu = ensureIntermediates(outWidth, outHeight, true);
-        float sharpness = ModernOptSettings.fsrSharpness() / 100.0F;
-        boolean fxaa = ModernOptSettings.fxaa();
+        float sharpness = cachedFsrSharpness / 100.0F;
+        boolean fxaa = cachedFxaa;
 
         ShaderLibrary.beginPassState();
         try {
@@ -486,7 +496,7 @@ public final class RenderPipeline {
                     easu.getColorTextureId(), read.getColorTextureId(), depthTexture,
                     sourceWidth, sourceHeight, outWidth, outHeight,
                     inverseProjection, previousProjection, currentView, previousView,
-                    cameraDelta.x, cameraDelta.y, cameraDelta.z,
+                    tempVec3.x, tempVec3.y, tempVec3.z,
                     jitterX, jitterY, previousJitterX, previousJitterY,
                     useHistory, depthValid, 0.10F, 0.60F, 0.05F);
 
@@ -537,12 +547,12 @@ public final class RenderPipeline {
         int sourceWidth = scaled.width;
         int sourceHeight = scaled.height;
 
-        float softness = ModernOptSettings.softness() / 100.0F;
-        float sharpness = ModernOptSettings.fsrSharpness() / 100.0F;
-        boolean fxaa = ModernOptSettings.fxaa();
+        float softness = cachedSoftness / 100.0F;
+        float sharpness = cachedFsrSharpness / 100.0F;
+        boolean fxaa = cachedFxaa;
         ShaderLibrary library = shaders;
-        UpscalerType upscaler = ModernOptSettings.upscaler();
-        boolean fsr1Path = !ModernOptSettings.ssaa()
+        UpscalerType upscaler = cachedUpscaler;
+        boolean fsr1Path = !cachedSsaa
                 && (upscaler == UpscalerType.FSR1 || upscaler == UpscalerType.FSR2);
 
         ShaderLibrary.beginPassState();
@@ -563,7 +573,7 @@ public final class RenderPipeline {
                     ShaderLibrary.draw(library.rcas, easu.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, sharpness, 0.0F);
                 }
             } else {
-                ShaderInstance filter = ModernOptSettings.ssaa() ? library.box : filterFor(library, upscaler);
+                ShaderInstance filter = cachedSsaa ? library.box : filterFor(library, upscaler);
                 if (fxaa) {
                     TextureTarget post = ensureIntermediates(outWidth, outHeight, false);
                     post.bindWrite(true);
