@@ -6,9 +6,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL30C;
-import org.lwjgl.system.MemoryStack;
 
-import java.nio.IntBuffer;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -44,6 +42,10 @@ public final class ScaledRenderTarget extends RenderTarget {
 
     private MsaaFramebuffer msaa;
     private int requestedSamples = 1;
+
+    // Cached viewport dimensions to avoid GL viewport queries on the render thread
+    private static int cachedViewportWidth = -1;
+    private static int cachedViewportHeight = -1;
 
     public ScaledRenderTarget(int width, int height, int samples) {
         super(true);
@@ -135,6 +137,8 @@ public final class ScaledRenderTarget extends RenderTarget {
 
         if (setViewport) {
             GlStateManager._viewport(0, 0, this.viewWidth, this.viewHeight);
+            cachedViewportWidth = this.viewWidth;
+            cachedViewportHeight = this.viewHeight;
         } else {
             this.repairStaleViewport();
         }
@@ -150,28 +154,26 @@ public final class ScaledRenderTarget extends RenderTarget {
      * repaired, so deliberately smaller viewports (Iris composite passes) are left alone.</p>
      */
     private void repairStaleViewport() {
+        // Fast path: no GL query needed if our cached viewport already matches
+        if (cachedViewportWidth == this.viewWidth && cachedViewportHeight == this.viewHeight) {
+            return;
+        }
+
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || minecraft.getWindow() == null) {
             return;
         }
 
-        MemoryStack stack = MemoryStack.stackPush();
-        try {
-            IntBuffer viewport = stack.mallocInt(4);
-            GL11C.glGetIntegerv(GL11C.GL_VIEWPORT, viewport);
-            int width = viewport.get(2);
-            int height = viewport.get(3);
-            if (width == this.viewWidth && height == this.viewHeight) {
-                return;
-            }
-            if (width != minecraft.getWindow().getWidth() || height != minecraft.getWindow().getHeight()) {
-                return;
-            }
-        } finally {
-            stack.pop();
+        // Only repair when the window-sized viewport leaked in; deliberately smaller viewports
+        // (Iris composite passes) are left alone.
+        if (cachedViewportWidth != minecraft.getWindow().getWidth()
+                || cachedViewportHeight != minecraft.getWindow().getHeight()) {
+            return;
         }
 
         GlStateManager._viewport(0, 0, this.viewWidth, this.viewHeight);
+        cachedViewportWidth = this.viewWidth;
+        cachedViewportHeight = this.viewHeight;
     }
 
     /**
