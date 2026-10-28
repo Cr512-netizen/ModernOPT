@@ -1,7 +1,7 @@
 #version 150
 
-// FSR 2 style temporal accumulation for ModernOPT - OPTIMIZED.
-// Reduced texture fetches, optimized YCoCg, early exits, faster math.
+// FSR 2 style temporal accumulation for ModernOPT - OPTIMIZED + QUALITY IMPROVEMENTS.
+// R2 jitter, adaptive depth tolerance, weighted neighbourhood clamp, exposure-invariant luma.
 
 uniform sampler2D ColorSampler;   // EASU output of the current jittered frame (output size)
 uniform sampler2D HistorySampler; // previous accumulated (unjittered) frame, alpha = linear view depth
@@ -22,6 +22,13 @@ uniform float DepthValid;    // 0 when no correct scene depth available (Iris de
 
 in vec2 texCoord;
 out vec4 fragColor;
+
+// Exposure-invariant luma - works with HDR/tonemapped colors from shader packs
+float lumaOf(vec3 c) {
+    // ACES-like approximation: compress highlights, preserves perceptual luminance
+    vec3 mapped = c / (c + vec3(0.15));
+    return dot(mapped, vec3(0.299, 0.587, 0.114));
+}
 
 // Optimized YCoCg - fewer instructions
 vec3 toYCoCg(vec3 c) {
@@ -84,39 +91,43 @@ void main() {
 
     vec4 historySample = texture(HistorySampler, previousUv);
     if (valid && depthValid) {
-        float tolerance = max(Params.z * currentDepth, 0.15);
+        // Adaptive depth tolerance: quadratic in depth (far objects tolerate more disparity)
+        float tolerance = max(Params.z * currentDepth * currentDepth, 0.02);
         valid = abs(historySample.a - currentDepth) <= tolerance;
     }
 
-    // Optimized 3x3 neighbourhood clamp - unrolled loop, fewer texture fetches
+    // Weighted 3x3 neighbourhood clamp - center weighted more, edges less
+    // Preserves contrast on thin geometry while still clamping ghosts
     vec2 texel = 1.0 / OutputSize;
-    vec3 minYCoCg = toYCoCg(current);
-    vec3 maxYCoCg = minYCoCg;
+    vec3 centerYCoCg = toYCoCg(current);
+    vec3 minYCoCg = centerYCoCg;
+    vec3 maxYCoCg = centerYCoCg;
 
-    // Unrolled 3x3 neighbourhood (9 samples instead of loop)
     vec3 ycocg;
-    #define SAMPLE_NEIGHBOUR(ox, oy) \
-        ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(ox, oy) * texel, vec2(0.0), vec2(1.0))).rgb); \
-        minYCoCg = min(minYCoCg, ycocg); \
-        maxYCoCg = max(maxYCoCg, ycocg);
-
-    SAMPLE_NEIGHBOUR(-1.0, -1.0)
-    SAMPLE_NEIGHBOUR(0.0, -1.0)
-    SAMPLE_NEIGHBOUR(1.0, -1.0)
-    SAMPLE_NEIGHBOUR(-1.0, 0.0)
-    SAMPLE_NEIGHBOUR(1.0, 0.0)
-    SAMPLE_NEIGHBOUR(-1.0, 1.0)
-    SAMPLE_NEIGHBOUR(0.0, 1.0)
-    SAMPLE_NEIGHBOUR(1.0, 1.0)
-    // Center already in minYCoCg/maxYCoCg
-
-    #undef SAMPLE_NEIGHBOUR
+    // 8 neighbours with distance-based weights
+    // weight = 1.0 at center, ~0.29 at corners (distance sqrt(2))
+    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(-1.0, -1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
+    float w = 0.2929; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
+    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(0.0, -1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
+    w = 0.4142; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
+    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(1.0, -1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
+    w = 0.2929; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
+    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(-1.0, 0.0) * texel, vec2(0.0), vec2(1.0))).rgb);
+    w = 0.4142; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
+    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(1.0, 0.0) * texel, vec2(0.0), vec2(1.0))).rgb);
+    w = 0.4142; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
+    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(-1.0, 1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
+    w = 0.2929; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
+    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(0.0, 1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
+    w = 0.4142; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
+    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(1.0, 1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
+    w = 0.2929; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
 
     vec3 history = fromYCoCg(clamp(toYCoCg(historySample.rgb), minYCoCg, maxYCoCg));
 
     if (valid) {
-        // Fast luma approximation
-        float lumaDiff = abs(dot(current - history, vec3(0.299, 0.587, 0.114)));
+        // Exposure-invariant luma difference for reactive mask
+        float lumaDiff = abs(lumaOf(current) - lumaOf(history));
         float reactive = smoothstep(0.05, 0.35, lumaDiff);
         vec2 velocityPixels = (previousUv - uv) * OutputSize;
         float speed = length(velocityPixels);

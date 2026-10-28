@@ -38,7 +38,8 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
     private static final ResourceLocation RENDER_SCALE = id("render_scale");
     private static final ResourceLocation UPSCALER = id("upscaler");
     private static final ResourceLocation SOFTNESS = id("softness");
-    private static final ResourceLocation FSR1_SHARPNESS = id("fsr1_sharpness");
+    private static final ResourceLocation FSR_EASU_SHARPNESS = id("fsr_easu_sharpness");
+    private static final ResourceLocation FSR_RCAS_SHARPNESS = id("fsr_rcas_sharpness");
     private static final ResourceLocation MSAA = id("msaa");
     private static final ResourceLocation SSAA = id("ssaa");
     private static final ResourceLocation FXAA = id("fxaa");
@@ -91,10 +92,14 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
                         ModernOptConfig.SOFTNESS.getDefault(), 0, 100,
                         value -> ModernOptConfig.SOFTNESS.set(value),
                         () -> ModernOptConfig.SOFTNESS.get()))
-                .addOption(integerOption(builder, FSR1_SHARPNESS, "modernopt.option.fsr1Sharpness",
-                        ModernOptConfig.FSR1_SHARPNESS.getDefault(), 0, 100,
-                        value -> ModernOptConfig.FSR1_SHARPNESS.set(value),
-                        () -> ModernOptConfig.FSR1_SHARPNESS.get()));
+                .addOption(integerOption(builder, FSR_EASU_SHARPNESS, "modernopt.option.fsrEasuSharpness",
+                        ModernOptConfig.FSR_EASU_SHARPNESS.getDefault(), 0, 100,
+                        value -> ModernOptConfig.FSR_EASU_SHARPNESS.set(value),
+                        () -> ModernOptConfig.FSR_EASU_SHARPNESS.get()))
+                .addOption(integerOption(builder, FSR_RCAS_SHARPNESS, "modernopt.option.fsrRcasSharpness",
+                        ModernOptConfig.FSR_RCAS_SHARPNESS.getDefault(), 0, 100,
+                        value -> ModernOptConfig.FSR_RCAS_SHARPNESS.set(value),
+                        () -> ModernOptConfig.FSR_RCAS_SHARPNESS.get()));
         page.addOptionGroup(scaling);
 
         OptionGroupBuilder antialiasing = builder.createOptionGroup()

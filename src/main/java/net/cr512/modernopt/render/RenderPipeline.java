@@ -96,6 +96,18 @@ public final class RenderPipeline {
     private static float previousJitterX;
     private static float previousJitterY;
     private static int jitterIndex;
+
+    // R2 (Sobol) jitter sequence - better distribution than Halton, less clustering
+    private static final float[][] R2_JITTER = new float[64][2];
+    static {
+        float phi = 1.324717957244746f; // plastic constant (real root of x^3 = x + 1)
+        for (int i = 0; i < 64; i++) {
+            float f = (float) i;
+            R2_JITTER[i][0] = (0.5f + f * phi) % 1.0f - 0.5f;
+            R2_JITTER[i][1] = (0.5f + f * phi * phi) % 1.0f - 0.5f;
+        }
+    }
+
     private static int screenshotTextureUnit = -1;
     private static int screenshotTextureId;
 
@@ -105,7 +117,8 @@ public final class RenderPipeline {
     private static boolean cachedFxaa = false;
     private static int cachedMsaaSamples = 1;
     private static UpscalerType cachedUpscaler = UpscalerType.FSR1;
-    private static int cachedFsrSharpness = 25;
+    private static int cachedFsrEasuSharpness = 0;
+    private static int cachedFsrRcasSharpness = 25;
     private static int cachedSoftness = 35;
 
     private RenderPipeline() {
@@ -293,7 +306,8 @@ public final class RenderPipeline {
         cachedFxaa = ModernOptSettings.fxaa();
         cachedMsaaSamples = ModernOptSettings.msaa().samples();
         cachedUpscaler = ModernOptSettings.upscaler();
-        cachedFsrSharpness = ModernOptSettings.fsrSharpness();
+        cachedFsrEasuSharpness = ModernOptSettings.fsrEasuSharpness();
+        cachedFsrRcasSharpness = ModernOptSettings.fsrRcasSharpness();
         cachedSoftness = ModernOptSettings.softness();
     }
 
@@ -334,9 +348,9 @@ public final class RenderPipeline {
         }
 
         int index = jitterIndex;
-        jitterIndex = (jitterIndex + 1) & 15;
-        float offsetX = halton(index + 1, 2) - 0.5F;
-        float offsetY = halton(index + 1, 3) - 0.5F;
+        jitterIndex = (jitterIndex + 1) & 63; // 64-sample R2 sequence
+        float offsetX = R2_JITTER[index][0];
+        float offsetY = R2_JITTER[index][1];
         jitterX = 2.0F * offsetX / scaled.width;
         jitterY = 2.0F * offsetY / scaled.height;
 
@@ -482,7 +496,7 @@ public final class RenderPipeline {
         }
 
         TextureTarget easu = ensureIntermediates(outWidth, outHeight, true);
-        float sharpness = cachedFsrSharpness / 100.0F;
+        float rcasSharpness = cachedFsrRcasSharpness / 100.0F;
         boolean fxaa = cachedFxaa;
 
         ShaderLibrary.beginPassState();
@@ -508,14 +522,14 @@ public final class RenderPipeline {
                 TextureTarget post = ensureIntermediates(outWidth, outHeight, false);
                 post.bindWrite(true);
                 ShaderLibrary.draw(library.rcas, write.getColorTextureId(), outWidth, outHeight,
-                        outWidth, outHeight, sharpness, 0.0F);
+                        outWidth, outHeight, rcasSharpness, 0.0F);
                 main.bindWrite(true);
                 ShaderLibrary.draw(library.fxaa, post.getColorTextureId(), outWidth, outHeight,
                         outWidth, outHeight, 0.0F, 0.0F);
             } else {
                 main.bindWrite(true);
                 ShaderLibrary.draw(library.rcas, write.getColorTextureId(), outWidth, outHeight,
-                        outWidth, outHeight, sharpness, 0.0F);
+                        outWidth, outHeight, rcasSharpness, 0.0F);
             }
         } finally {
             ShaderLibrary.endPassState();
@@ -548,7 +562,7 @@ public final class RenderPipeline {
         int sourceHeight = scaled.height;
 
         float softness = cachedSoftness / 100.0F;
-        float sharpness = cachedFsrSharpness / 100.0F;
+        float rcasSharpness = cachedFsrRcasSharpness / 100.0F;
         boolean fxaa = cachedFxaa;
         ShaderLibrary library = shaders;
         UpscalerType upscaler = cachedUpscaler;
@@ -565,12 +579,12 @@ public final class RenderPipeline {
                 if (fxaa) {
                     TextureTarget post = ensureIntermediates(outWidth, outHeight, false);
                     post.bindWrite(true);
-                    ShaderLibrary.draw(library.rcas, easu.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, sharpness, 0.0F);
+                    ShaderLibrary.draw(library.rcas, easu.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, rcasSharpness, 0.0F);
                     main.bindWrite(true);
                     ShaderLibrary.draw(library.fxaa, post.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, 0.0F, 0.0F);
                 } else {
                     main.bindWrite(true);
-                    ShaderLibrary.draw(library.rcas, easu.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, sharpness, 0.0F);
+                    ShaderLibrary.draw(library.rcas, easu.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, rcasSharpness, 0.0F);
                 }
             } else {
                 ShaderInstance filter = cachedSsaa ? library.box : filterFor(library, upscaler);
