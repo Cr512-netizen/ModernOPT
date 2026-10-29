@@ -25,6 +25,12 @@ public final class ModernOptSettings {
     private static volatile double msrDepthThreshold = 0.02;
     private static volatile double msrHistoryWeight = 0.85;
 
+    // DRS settings
+    private static volatile boolean msrDynamicRes = true;
+    private static volatile int msrTemporalMinFps = 40;
+    private static volatile int msrScaleStep = 5;
+    private static volatile int msrMinScale = 50;
+
     private ModernOptSettings() {
     }
 
@@ -50,6 +56,12 @@ public final class ModernOptSettings {
         msrSharpness = ModernOptConfig.MSR_SHARPNESS.get();
         msrDepthThreshold = ModernOptConfig.MSR_DEPTH_THRESHOLD.get();
         msrHistoryWeight = ModernOptConfig.MSR_HISTORY_WEIGHT.get();
+
+        // DRS
+        msrDynamicRes = ModernOptConfig.MSR_DYNAMIC_RES.get();
+        msrTemporalMinFps = ModernOptConfig.MSR_TEMPORAL_MIN_FPS.get();
+        msrScaleStep = ModernOptConfig.MSR_SCALE_STEP.get();
+        msrMinScale = ModernOptConfig.MSR_MIN_SCALE.get();
     }
 
     public static boolean enabled() {
@@ -121,5 +133,22 @@ public final class ModernOptSettings {
 
     public static double msrHistoryWeight() {
         return msrHistoryWeight;
+    }
+
+    // DRS getters
+    public static boolean msrDynamicRes() {
+        return msrDynamicRes;
+    }
+
+    public static int msrTemporalMinFps() {
+        return msrTemporalMinFps;
+    }
+
+    public static int msrScaleStep() {
+        return msrScaleStep;
+    }
+
+    public static int msrMinScale() {
+        return msrMinScale;
     }
 }

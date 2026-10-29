@@ -14,7 +14,12 @@ public enum UpscalerType {
      * Temporal FSR 2 style upscaler: jittered world pass, camera reprojection, history
      * accumulation, then RCAS. Uses the same sharpness setting as FSR 1.
      */
-    FSR2("FSR 2", true);
+    FSR2("FSR 2", true),
+    /**
+     * Minecraft Super Resolution 2.0: Variance-clipping temporal pass + fused EASU+RCAS+Edge-Aware.
+     * Supports both compute shader (GL 4.3+) and fragment shader fallback paths.
+     */
+    MSR("MSR 2.0", true);
 
     private final String label;
     private final boolean shader;
