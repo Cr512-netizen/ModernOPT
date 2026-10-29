@@ -107,6 +107,7 @@ public final class RenderPipeline {
     private static MSRHistoryTarget msrHistory;
     private static ShaderInstance msrTemporalShader;
     private static ShaderInstance msrSpatialShader;
+    private static ShaderInstance msrTemporalComputeShader;
     private static boolean msrShaderFailure;
     private static boolean msrHistoryValid;
     private static int msrFrameIndex;
@@ -139,6 +140,10 @@ public final class RenderPipeline {
     private static int cachedMsrSharpness = 30;
     private static double cachedMsrDepthThreshold = 0.02;
     private static double cachedMsrHistoryWeight = 0.85;
+
+    // Compute shader support (GL 4.3+)
+    private static boolean computeAvailable = false;
+    private static MotionVectorCollector motionVectorCollector;
 
     private RenderPipeline() {
     }
@@ -338,6 +343,24 @@ public final class RenderPipeline {
         cachedMsrSharpness = ModernOptSettings.msrSharpness();
         cachedMsrDepthThreshold = ModernOptSettings.msrDepthThreshold();
         cachedMsrHistoryWeight = ModernOptSettings.msrHistoryWeight();
+// Compute shader detection (GL 4.3+)
+        if (!computeAvailable) {
+            try {
+                computeAvailable = org.lwjgl.opengl.GL.getCapabilities().OpenGL43;
+                if (computeAvailable) {
+                    motionVectorCollector = new MotionVectorCollector(true);
+                    ModernOPT.LOG.info("[ModernOPT] MSR: GL 4.3+ compute shaders available");
+                } else {
+                    ModernOPT.LOG.info("[ModernOPT] MSR: GL 4.3+ not available, using fragment shader fallback");
+                }
+            } catch (Throwable t) {
+                computeAvailable = false;
+                ModernOPT.LOG.warn("[ModernOPT] MSR: compute detection failed", t);
+            }
+        }
+        if (motionVectorCollector != null) {
+            motionVectorCollector.beginFrame();
+        }
     }
 
     /**
@@ -991,6 +1014,14 @@ public final class RenderPipeline {
             var spatialLoc = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(ModernOPT.MOD_ID, "msr_spatial");
             msrTemporalShader = new ShaderInstance(resources, temporalLoc, com.mojang.blaze3d.vertex.DefaultVertexFormat.BLIT_SCREEN);
             msrSpatialShader = new ShaderInstance(resources, spatialLoc, com.mojang.blaze3d.vertex.DefaultVertexFormat.BLIT_SCREEN);
+
+            // Load compute shader if GL 4.3+ available
+            if (org.lwjgl.opengl.GL.getCapabilities().OpenGL43) {
+                var computeLoc = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(ModernOPT.MOD_ID, "msr_temporal_compute");
+                msrTemporalComputeShader = new ShaderInstance(resources, computeLoc, com.mojang.blaze3d.vertex.DefaultVertexFormat.BLIT_SCREEN);
+                ModernOPT.LOG.info("[ModernOPT] MSR 2.0 compute shader compiled");
+            }
+
             ModernOPT.LOG.info("[ModernOPT] MSR 2.0 shaders compiled");
         } catch (Throwable throwable) {
             msrShaderFailure = true;
@@ -1020,33 +1051,43 @@ public final class RenderPipeline {
         int historyColorWrite = msrHistory.getWriteColorTexture();
         int historyDepthWrite = msrHistory.getWriteDepthTexture();
 
-        // Bind write target for temporal pass
-        msrHistory.bindWrite();
+        if (computeAvailable && motionVectorCollector != null) {
+            // ===== COMPUTE SHADER PATH (GL 4.3+) =====
+            uploadAndDispatchComputeTemporal(main, outWidth, outHeight, sourceWidth, sourceHeight,
+                    sourceTexture, depthTexture, historyColorRead, historyDepthRead,
+                    historyColorWrite, historyDepthWrite);
+        } else {
+            // ===== FRAGMENT SHADER FALLBACK (GL 3.2+) =====
+            msrHistory.bindWrite();
 
-        // ===== TEMPORAL PASS =====
-        msrTemporalShader.setSampler("CurrentColor", sourceTexture);
-        msrTemporalShader.setSampler("HistoryColor", historyColorRead);
-        msrTemporalShader.setSampler("HistoryDepth", historyDepthRead);
-        msrTemporalShader.setSampler("CurrentDepth", depthTexture);
+            // ===== TEMPORAL PASS =====
+            msrTemporalShader.setSampler("CurrentColor", sourceTexture);
+            msrTemporalShader.setSampler("HistoryColor", historyColorRead);
+            msrTemporalShader.setSampler("HistoryDepth", historyDepthRead);
+            msrTemporalShader.setSampler("CurrentDepth", depthTexture);
 
-        msrTemporalShader.getUniform("InputSize").set((float) sourceWidth, (float) sourceHeight);
-        msrTemporalShader.getUniform("OutputSize").set((float) outWidth, (float) outHeight);
-        msrTemporalShader.getUniform("Jitter").set(0.0f, 0.0f);
-        msrTemporalShader.getUniform("VarianceScale").set((float) cachedMsrVarianceScale);
-        msrTemporalShader.getUniform("DepthThreshold").set((float) cachedMsrDepthThreshold);
-        msrTemporalShader.getUniform("HistoryWeight").set((float) cachedMsrHistoryWeight);
+            msrTemporalShader.getUniform("InputSize").set((float) sourceWidth, (float) sourceHeight);
+            msrTemporalShader.getUniform("OutputSize").set((float) outWidth, (float) outHeight);
+            msrTemporalShader.getUniform("Jitter").set(0.0f, 0.0f);
+            msrTemporalShader.getUniform("VarianceScale").set((float) cachedMsrVarianceScale);
+            msrTemporalShader.getUniform("DepthThreshold").set((float) cachedMsrDepthThreshold);
+            msrTemporalShader.getUniform("HistoryWeight").set((float) cachedMsrHistoryWeight);
 
-        msrTemporalShader.apply();
-        drawFullscreenQuad();
-        msrTemporalShader.clear();
+            msrTemporalShader.apply();
+            drawFullscreenQuad();
+            msrTemporalShader.clear();
 
-        // Swap ping-pong for spatial pass
-        msrHistory.swap();
+            // Swap ping-pong for spatial pass
+            msrHistory.swap();
+        }
 
-        // ===== SPATIAL PASS =====
+        // ===== SPATIAL PASS (always fragment shader for TBDR compatibility) =====
         main.bindWrite(true);
 
-        msrSpatialShader.setSampler("TemporalColor", historyColorWrite);
+        // After swap, historyColorWrite becomes the read texture
+        int temporalColorRead = msrHistory.getReadColorTexture();
+
+        msrSpatialShader.setSampler("TemporalColor", temporalColorRead);
         msrSpatialShader.setSampler("DepthTexture", depthTexture);
 
         msrSpatialShader.getUniform("InputSize").set((float) outWidth, (float) outHeight);
@@ -1063,6 +1104,73 @@ public final class RenderPipeline {
         msrFrameIndex++;
     }
 
+    /**
+     * Upload motion vectors and dispatch compute temporal pass.
+     */
+    private static void uploadAndDispatchComputeTemporal(RenderTarget main, int outWidth, int outHeight,
+            int sourceWidth, int sourceHeight, int sourceTexture, int depthTexture,
+            int historyColorRead, int historyDepthRead, int historyColorWrite, int historyDepthWrite) {
+
+        // Upload motion vectors to SSBO
+        motionVectorCollector.uploadToSsbo();
+        motionVectorCollector.bindSsbo(0); // Binding point 0
+
+        // Bind history textures as images for compute shader output
+        org.lwjgl.opengl.GL42.glBindImageTexture(0, historyColorWrite, 0, false, 0,
+                org.lwjgl.opengl.GL42.GL_WRITE_ONLY, org.lwjgl.opengl.GL30.GL_RGBA32F);
+        org.lwjgl.opengl.GL42.glBindImageTexture(1, historyDepthWrite, 0, false, 0,
+                org.lwjgl.opengl.GL42.GL_WRITE_ONLY, org.lwjgl.opengl.GL30.GL_R32UI);
+
+        // Use compute shader if available, otherwise fall back to fragment
+        if (msrTemporalComputeShader != null) {
+            // Use compute shader
+            msrTemporalComputeShader.setSampler("CurrentColor", sourceTexture);
+            msrTemporalComputeShader.setSampler("HistoryColor", historyColorRead);
+            msrTemporalComputeShader.setSampler("HistoryDepth", historyDepthRead);
+            msrTemporalComputeShader.setSampler("CurrentDepth", scaled.getDepthTextureId());
+
+            msrTemporalComputeShader.getUniform("InputSize").set((float) sourceWidth, (float) sourceHeight);
+            msrTemporalComputeShader.getUniform("OutputSize").set((float) outWidth, (float) outHeight);
+            msrTemporalComputeShader.getUniform("Jitter").set(0.0f, 0.0f);
+            msrTemporalComputeShader.getUniform("VarianceScale").set((float) cachedMsrVarianceScale);
+            msrTemporalComputeShader.getUniform("DepthThreshold").set((float) cachedMsrDepthThreshold);
+            msrTemporalComputeShader.getUniform("HistoryWeight").set((float) cachedMsrHistoryWeight);
+
+            msrTemporalComputeShader.apply();
+
+            // Dispatch compute shader
+            int groupX = (outWidth + 7) / 8;
+            int groupY = (outHeight + 7) / 8;
+            org.lwjgl.opengl.GL31.glDispatchCompute(groupX, groupY, 1);
+            org.lwjgl.opengl.GL42.glMemoryBarrier(org.lwjgl.opengl.GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+            msrTemporalComputeShader.clear();
+        } else {
+            // Fallback to fragment shader
+            msrHistory.bindWrite();
+            msrTemporalShader.setSampler("CurrentColor", sourceTexture);
+            msrTemporalShader.setSampler("HistoryColor", historyColorRead);
+            msrTemporalShader.setSampler("HistoryDepth", historyDepthRead);
+            msrTemporalShader.setSampler("CurrentDepth", depthTexture);
+            msrTemporalShader.getUniform("InputSize").set((float) sourceWidth, (float) sourceHeight);
+            msrTemporalShader.getUniform("OutputSize").set((float) outWidth, (float) outHeight);
+            msrTemporalShader.getUniform("Jitter").set(0.0f, 0.0f);
+            msrTemporalShader.getUniform("VarianceScale").set((float) cachedMsrVarianceScale);
+            msrTemporalShader.getUniform("DepthThreshold").set((float) cachedMsrDepthThreshold);
+            msrTemporalShader.getUniform("HistoryWeight").set((float) cachedMsrHistoryWeight);
+            msrTemporalShader.apply();
+            drawFullscreenQuad();
+            msrTemporalShader.clear();
+        }
+
+        // Memory barrier before spatial pass
+        org.lwjgl.opengl.GL42.glMemoryBarrier(org.lwjgl.opengl.GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT |
+                org.lwjgl.opengl.GL42.GL_TEXTURE_FETCH_BARRIER_BIT);
+
+        // Swap ping-pong for spatial pass
+        msrHistory.swap();
+    }
+
     private static void drawFullscreenQuad() {
         com.mojang.blaze3d.vertex.BufferBuilder buffer = RenderSystem.renderThreadTesselator()
                 .begin(com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS, com.mojang.blaze3d.vertex.DefaultVertexFormat.BLIT_SCREEN);
@@ -1073,4 +1181,8 @@ public final class RenderPipeline {
         com.mojang.blaze3d.vertex.BufferUploader.draw(buffer.buildOrThrow());
     }
 }
+
+
+
+
 
