@@ -21,6 +21,14 @@ public final class ModernOptConfig {
     public static final ModConfigSpec.BooleanValue FXAA;
     public static final ModConfigSpec.BooleanValue SHOW_OVERLAY;
 
+    // MSR 2.0 config
+    public static final ModConfigSpec.BooleanValue MSR_ENABLED;
+    public static final ModConfigSpec.DoubleValue MSR_VARIANCE_SCALE;
+    public static final ModConfigSpec.BooleanValue MSR_EDGE_AWARE;
+    public static final ModConfigSpec.IntValue MSR_SHARPNESS;
+    public static final ModConfigSpec.DoubleValue MSR_DEPTH_THRESHOLD;
+    public static final ModConfigSpec.DoubleValue MSR_HISTORY_WEIGHT;
+
     static {
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
 
@@ -50,6 +58,21 @@ public final class ModernOptConfig {
                         "Takes priority over render scale and MSAA.")
                 .define("ssaa", false);
         FXAA = b.comment("Post-process edge smoothing on the final image.").define("fxaa", false);
+        b.pop();
+
+        b.comment("MSR 2.0 (Minecraft Super Resolution) - experimental upscaler.").push("msr");
+        MSR_ENABLED = b.comment("Enable MSR 2.0 upscaler (experimental). Overrides other upscalers when enabled.")
+                .define("enabled", false);
+        MSR_VARIANCE_SCALE = b.comment("Variance clipping threshold multiplier for temporal pass. Higher = more aggressive history rejection.")
+                .defineInRange("varianceScale", 2.0, 0.5, 4.0);
+        MSR_EDGE_AWARE = b.comment("Enable edge-aware interpolation in spatial pass (preserves geometry edges).")
+                .define("edgeAware", true);
+        MSR_SHARPNESS = b.comment("MSR spatial sharpening strength (CAS), 0 = off, 100 = strong.")
+                .defineInRange("sharpness", 30, 0, 100);
+        MSR_DEPTH_THRESHOLD = b.comment("Depth difference threshold for temporal disocclusion detection.")
+                .defineInRange("depthThreshold", 0.02, 0.005, 0.1);
+        MSR_HISTORY_WEIGHT = b.comment("Base history blend weight for temporal accumulation (0.0-1.0).")
+                .defineInRange("historyWeight", 0.85, 0.5, 0.95);
         b.pop();
 
         SPEC = b.build();

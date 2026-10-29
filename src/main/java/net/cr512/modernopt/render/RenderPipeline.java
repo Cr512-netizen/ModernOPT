@@ -7,6 +7,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL13C;
+import org.lwjgl.opengl.GL30C;
 import net.cr512.modernopt.ModernOPT;
 import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.config.UpscalerType;
@@ -99,6 +100,16 @@ public final class RenderPipeline {
 
     // R2 (Sobol) jitter sequence - better distribution than Halton, less clustering
     private static final float[][] R2_JITTER = new float[64][2];
+
+    // MSR 2.0 state
+    private static boolean msrThisFrame;
+    private static boolean msrActiveThisFrame;
+    private static MSRHistoryTarget msrHistory;
+    private static ShaderInstance msrTemporalShader;
+    private static ShaderInstance msrSpatialShader;
+    private static boolean msrShaderFailure;
+    private static boolean msrHistoryValid;
+    private static int msrFrameIndex;
     static {
         float phi = 1.324717957244746f; // plastic constant (real root of x^3 = x + 1)
         for (int i = 0; i < 64; i++) {
@@ -120,6 +131,14 @@ public final class RenderPipeline {
     private static int cachedFsrEasuSharpness = 0;
     private static int cachedFsrRcasSharpness = 25;
     private static int cachedSoftness = 35;
+
+    // MSR 2.0 cached settings
+    private static boolean cachedMsrEnabled = false;
+    private static double cachedMsrVarianceScale = 2.0;
+    private static boolean cachedMsrEdgeAware = true;
+    private static int cachedMsrSharpness = 30;
+    private static double cachedMsrDepthThreshold = 0.02;
+    private static double cachedMsrHistoryWeight = 0.85;
 
     private RenderPipeline() {
     }
@@ -246,10 +265,19 @@ public final class RenderPipeline {
         int[] size = RenderScaleMath.targetSize(windowWidth, windowHeight, cachedRenderScale,
                 cachedSsaa, RenderSystem.maxSupportedTextureSize());
 
+        // MSR 2.0 takes priority over other upscalers when enabled
+        if (cachedMsrEnabled) {
+            // MSR uses the same scaled target but different reconstruction
+            // Force single sample for MSR temporal pass
+            samples = 1;
+            fsr2Wanted = false;
+        }
+
         boolean useful = size[0] != windowWidth || size[1] != windowHeight || samples > 1
-                || cachedFxaa || fsr2Wanted;
+                || cachedFxaa || fsr2Wanted || cachedMsrEnabled;
         if (!useful) {
             resetHistory();
+            resetMsrHistory();
             rememberUpscalerSettings(requested);
             return;
         }
@@ -257,22 +285,15 @@ public final class RenderPipeline {
         ensureScaledTarget(size[0], size[1], samples);
         if (scaled == null) {
             resetHistory();
+            resetMsrHistory();
             return;
         }
 
-        if (fsr2Wanted) {
-            try {
-                ensureHistoryTargets(minecraft.getMainRenderTarget().width, minecraft.getMainRenderTarget().height);
-            } catch (Throwable throwable) {
-                fsr2Unsupported = true;
-                fsr2Wanted = false;
-                resetHistory();
-                if (!loggedFsr2Fallback) {
-                    loggedFsr2Fallback = true;
-                    ModernOPT.LOG.error("[ModernOPT] cannot allocate FSR 2 history targets, falling back to FSR 1",
-                            throwable);
-                }
-            }
+        // Initialize MSR history targets if needed
+        if (cachedMsrEnabled) {
+            ensureMsrHistoryTargets(minecraft.getMainRenderTarget().width, minecraft.getMainRenderTarget().height);
+            msrThisFrame = true;
+            fsr2Wanted = false;
         }
 
         boolean settingsChanged = requested != lastUpscaler
@@ -309,6 +330,14 @@ public final class RenderPipeline {
         cachedFsrEasuSharpness = ModernOptSettings.fsrEasuSharpness();
         cachedFsrRcasSharpness = ModernOptSettings.fsrRcasSharpness();
         cachedSoftness = ModernOptSettings.softness();
+
+        // MSR 2.0
+        cachedMsrEnabled = ModernOptSettings.msrEnabled();
+        cachedMsrVarianceScale = ModernOptSettings.msrVarianceScale();
+        cachedMsrEdgeAware = ModernOptSettings.msrEdgeAware();
+        cachedMsrSharpness = ModernOptSettings.msrSharpness();
+        cachedMsrDepthThreshold = ModernOptSettings.msrDepthThreshold();
+        cachedMsrHistoryWeight = ModernOptSettings.msrHistoryWeight();
     }
 
     /**
@@ -393,6 +422,13 @@ public final class RenderPipeline {
         fsr2ThisFrame = false;
         poseCaptured = false;
 
+        // Handle MSR 2.0
+        if (msrThisFrame) {
+            msrActiveThisFrame = true;
+            msrThisFrame = false;
+            // MSR doesn't use jitter, so no projection restore needed
+        }
+
         Minecraft minecraft = Minecraft.getInstance();
         RenderTarget main = minecraft.getMainRenderTarget();
         if (!ensureShaders(minecraft)) {
@@ -421,6 +457,16 @@ public final class RenderPipeline {
                     }
                     reconstructSpatial(main);
                 }
+            } else if (msrActiveThisFrame) {
+                try {
+                    reconstructMsr(main);
+                } catch (Throwable throwable) {
+                    msrShaderFailure = true;
+                    resetMsrHistory();
+                    ModernOPT.LOG.error("[ModernOPT] MSR 2.0 pass failed, falling back to FSR 1", throwable);
+                    reconstructSpatial(main);
+                }
+                msrActiveThisFrame = false;
             } else {
                 reconstructSpatial(main);
             }
@@ -878,5 +924,153 @@ public final class RenderPipeline {
         lastIris = false;
         lastUpscalerSsaa = false;
         jitterIndex = 0;
+
+        // MSR 2.0 cleanup
+        msrThisFrame = false;
+        msrActiveThisFrame = false;
+        msrShaderFailure = false;
+        msrHistoryValid = false;
+        msrFrameIndex = 0;
+        if (msrHistory != null) {
+            msrHistory.destroy();
+            msrHistory = null;
+        }
+        if (msrTemporalShader != null) {
+            msrTemporalShader.close();
+            msrTemporalShader = null;
+        }
+        if (msrSpatialShader != null) {
+            msrSpatialShader.close();
+            msrSpatialShader = null;
+        }
+    }
+
+    // ==================== MSR 2.0 METHODS ====================
+
+    private static void resetMsrHistory() {
+        msrHistoryValid = false;
+        msrFrameIndex = 0;
+        if (msrHistory != null) {
+            msrHistory.destroy();
+            msrHistory = null;
+        }
+    }
+
+    private static void destroyMsrHistoryTargets() {
+        if (msrHistory != null) {
+            msrHistory.destroy();
+            msrHistory = null;
+        }
+    }
+
+    private static void ensureMsrHistoryTargets(int width, int height) {
+        if (msrHistory != null && msrHistory.getWidth() == width && msrHistory.getHeight() == height) {
+            return;
+        }
+        if (msrHistory != null) {
+            msrHistory.destroy();
+        }
+        msrHistory = MSRHistoryTarget.create(width, height);
+        msrHistoryValid = false;
+        msrFrameIndex = 0;
+        ModernOPT.LOG.info("[ModernOPT] allocated MSR 2.0 history targets at {}x{}", width, height);
+    }
+
+    private static void ensureMsrShaders(Minecraft minecraft) {
+        if (msrShaderFailure) return;
+        if (msrTemporalShader != null && msrSpatialShader != null) return;
+
+        if (!(minecraft.getResourceManager() instanceof ResourceProvider resources)) {
+            msrShaderFailure = true;
+            ModernOPT.LOG.error("[ModernOPT] MSR: resource manager is not a ResourceProvider");
+            return;
+        }
+
+        try {
+            var temporalLoc = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(ModernOPT.MOD_ID, "msr_temporal");
+            var spatialLoc = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(ModernOPT.MOD_ID, "msr_spatial");
+            msrTemporalShader = new ShaderInstance(resources, temporalLoc, com.mojang.blaze3d.vertex.DefaultVertexFormat.BLIT_SCREEN);
+            msrSpatialShader = new ShaderInstance(resources, spatialLoc, com.mojang.blaze3d.vertex.DefaultVertexFormat.BLIT_SCREEN);
+            ModernOPT.LOG.info("[ModernOPT] MSR 2.0 shaders compiled");
+        } catch (Throwable throwable) {
+            msrShaderFailure = true;
+            ModernOPT.LOG.error("[ModernOPT] MSR 2.0 shaders failed to compile", throwable);
+        }
+    }
+
+    private static void reconstructMsr(RenderTarget main) {
+        ensureMsrShaders(Minecraft.getInstance());
+        if (msrShaderFailure || msrTemporalShader == null || msrSpatialShader == null) {
+            throw new IllegalStateException("MSR shaders not available");
+        }
+        if (msrHistory == null) {
+            throw new IllegalStateException("MSR history targets not allocated");
+        }
+
+        int outWidth = main.width;
+        int outHeight = main.height;
+        int sourceWidth = scaled.width;
+        int sourceHeight = scaled.height;
+        int sourceTexture = scaled.getColorTextureId();
+        int depthTexture = scaled.getDepthTextureId();
+
+        // Get ping-pong textures
+        int historyColorRead = msrHistory.getReadColorTexture();
+        int historyDepthRead = msrHistory.getReadDepthTexture();
+        int historyColorWrite = msrHistory.getWriteColorTexture();
+        int historyDepthWrite = msrHistory.getWriteDepthTexture();
+
+        // Bind write target for temporal pass
+        msrHistory.bindWrite();
+
+        // ===== TEMPORAL PASS =====
+        msrTemporalShader.setSampler("CurrentColor", sourceTexture);
+        msrTemporalShader.setSampler("HistoryColor", historyColorRead);
+        msrTemporalShader.setSampler("HistoryDepth", historyDepthRead);
+        msrTemporalShader.setSampler("CurrentDepth", depthTexture);
+
+        msrTemporalShader.getUniform("InputSize").set((float) sourceWidth, (float) sourceHeight);
+        msrTemporalShader.getUniform("OutputSize").set((float) outWidth, (float) outHeight);
+        msrTemporalShader.getUniform("Jitter").set(0.0f, 0.0f);
+        msrTemporalShader.getUniform("VarianceScale").set((float) cachedMsrVarianceScale);
+        msrTemporalShader.getUniform("DepthThreshold").set((float) cachedMsrDepthThreshold);
+        msrTemporalShader.getUniform("HistoryWeight").set((float) cachedMsrHistoryWeight);
+
+        msrTemporalShader.apply();
+        drawFullscreenQuad();
+        msrTemporalShader.clear();
+
+        // Swap ping-pong for spatial pass
+        msrHistory.swap();
+
+        // ===== SPATIAL PASS =====
+        main.bindWrite(true);
+
+        msrSpatialShader.setSampler("TemporalColor", historyColorWrite);
+        msrSpatialShader.setSampler("DepthTexture", depthTexture);
+
+        msrSpatialShader.getUniform("InputSize").set((float) outWidth, (float) outHeight);
+        msrSpatialShader.getUniform("OutputSize").set((float) outWidth, (float) outHeight);
+        msrSpatialShader.getUniform("Sharpness").set(cachedMsrSharpness / 100.0f);
+        msrSpatialShader.getUniform("EdgeAwareStrength").set(cachedMsrEdgeAware ? 1.0f : 0.0f);
+        msrSpatialShader.getUniform("DepthEdgeThreshold").set((float) cachedMsrDepthThreshold);
+
+        msrSpatialShader.apply();
+        drawFullscreenQuad();
+        msrSpatialShader.clear();
+
+        msrHistoryValid = true;
+        msrFrameIndex++;
+    }
+
+    private static void drawFullscreenQuad() {
+        com.mojang.blaze3d.vertex.BufferBuilder buffer = RenderSystem.renderThreadTesselator()
+                .begin(com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS, com.mojang.blaze3d.vertex.DefaultVertexFormat.BLIT_SCREEN);
+        buffer.addVertex(0.0F, 0.0F, 0.0F);
+        buffer.addVertex(1.0F, 0.0F, 0.0F);
+        buffer.addVertex(1.0F, 1.0F, 0.0F);
+        buffer.addVertex(0.0F, 1.0F, 0.0F);
+        com.mojang.blaze3d.vertex.BufferUploader.draw(buffer.buildOrThrow());
     }
 }
+

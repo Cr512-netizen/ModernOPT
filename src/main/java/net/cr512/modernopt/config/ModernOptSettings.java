@@ -17,6 +17,14 @@ public final class ModernOptSettings {
     private static volatile UpscalerType upscaler = UpscalerType.FSR1;
     private static volatile MsaaLevel msaa = MsaaLevel.OFF;
 
+    // MSR 2.0 settings
+    private static volatile boolean msrEnabled = false;
+    private static volatile double msrVarianceScale = 2.0;
+    private static volatile boolean msrEdgeAware = true;
+    private static volatile int msrSharpness = 30;
+    private static volatile double msrDepthThreshold = 0.02;
+    private static volatile double msrHistoryWeight = 0.85;
+
     private ModernOptSettings() {
     }
 
@@ -34,6 +42,14 @@ public final class ModernOptSettings {
         msaa = ModernOptConfig.MSAA.get();
         ssaa = ModernOptConfig.SSAA.get();
         fxaa = ModernOptConfig.FXAA.get();
+
+        // MSR 2.0
+        msrEnabled = ModernOptConfig.MSR_ENABLED.get();
+        msrVarianceScale = ModernOptConfig.MSR_VARIANCE_SCALE.get();
+        msrEdgeAware = ModernOptConfig.MSR_EDGE_AWARE.get();
+        msrSharpness = ModernOptConfig.MSR_SHARPNESS.get();
+        msrDepthThreshold = ModernOptConfig.MSR_DEPTH_THRESHOLD.get();
+        msrHistoryWeight = ModernOptConfig.MSR_HISTORY_WEIGHT.get();
     }
 
     public static boolean enabled() {
@@ -80,5 +96,30 @@ public final class ModernOptSettings {
 
     public static MsaaLevel msaa() {
         return msaa;
+    }
+
+    // MSR 2.0 getters
+    public static boolean msrEnabled() {
+        return msrEnabled;
+    }
+
+    public static double msrVarianceScale() {
+        return msrVarianceScale;
+    }
+
+    public static boolean msrEdgeAware() {
+        return msrEdgeAware;
+    }
+
+    public static int msrSharpness() {
+        return msrSharpness;
+    }
+
+    public static double msrDepthThreshold() {
+        return msrDepthThreshold;
+    }
+
+    public static double msrHistoryWeight() {
+        return msrHistoryWeight;
     }
 }
