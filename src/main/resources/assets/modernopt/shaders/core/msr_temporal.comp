@@ -1,0 +1,121 @@
+#version 450
+
+// MSR 2.0 Compute Temporal Pass - Variance Clipping
+// Runs on GL 4.3+ hardware. Falls back to fragment shader on older hardware.
+
+#extension GL_ARB_shader_storage_buffer_object : enable
+#extension GL_ARB_compute_shader : enable
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+uniform sampler2D CurrentColor;   // Current frame low-res color
+uniform sampler2D HistoryColor;   // Previous frame history color
+uniform sampler2D HistoryDepth;   // Previous frame depth (R16_UINT)
+uniform sampler2D CurrentDepth;   // Current frame depth
+
+uniform vec2 InputSize;           // Low-res input size
+uniform vec2 OutputSize;          // High-res output size
+uniform vec2 Jitter;              // Current frame jitter
+uniform float VarianceScale;      // Variance clipping threshold multiplier
+uniform float DepthThreshold;     // Depth difference threshold
+uniform float HistoryWeight;      // Base history blend weight
+
+// Output: write directly to history color/depth textures (image load/store)
+layout(rgba32f, binding = 0) uniform image2D HistoryColorOut;
+layout(r32ui, binding = 1) uniform image2D HistoryDepthOut;
+
+// YCoCg conversion
+vec3 rgbToYCoCg(vec3 rgb) {
+    return vec3(
+        rgb.r * 0.25 + rgb.g * 0.5 + rgb.b * 0.25,
+        rgb.r * 0.5 - rgb.b * 0.5,
+        rgb.g * 0.5 - rgb.r * 0.25 - rgb.b * 0.25
+    );
+}
+
+vec3 yCoCgToRgb(vec3 ycocg) {
+    float t = ycocg.x - ycocg.z;
+    return vec3(t + ycocg.y, ycocg.x + ycocg.z, t - ycocg.y);
+}
+
+float unpackDepth(uint packed) {
+    return float(packed) / 65535.0;
+}
+
+uint packDepth(float depth) {
+    return uint(clamp(depth * 65535.0, 0.0, 65535.0));
+}
+
+// 3x3 neighbourhood variance in YCoCg space
+void computeVariance(vec2 uv, vec2 texel,
+                     out vec3 meanYCoCg, out vec3 varianceYCoCg) {
+    meanYCoCg = vec3(0.0);
+    vec3 meanSq = vec3(0.0);
+
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 sampleUv = clamp(uv + vec2(float(x), float(y)) * texel, vec2(0.0), vec2(1.0));
+            vec3 color = texture(HistoryColor, sampleUv).rgb;
+            vec3 ycocg = rgbToYCoCg(color);
+            meanYCoCg += ycocg;
+            meanSq += ycocg * ycocg;
+        }
+    }
+
+    meanYCoCg /= 9.0;
+    meanSq /= 9.0;
+    varianceYCoCg = max(vec3(0.0), meanSq - meanYCoCg * meanYCoCg);
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = ivec2(InputSize);
+
+    // Skip if out of bounds
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(InputSize);
+    vec2 currentUv = uv + Jitter * 0.5;
+    currentUv = clamp(currentUv, vec2(0.0), vec2(1.0));
+
+    vec3 currentColor = texture(CurrentColor, currentUv).rgb;
+    uint currentDepthPacked = texture(CurrentDepth, currentUv).r * 65535.0;
+    float currentDepth = unpackDepth(currentDepthPacked);
+
+    vec3 historyColor = texture(HistoryColor, uv).rgb;
+    uint historyDepthPacked = texture(HistoryDepth, uv).r * 65535.0;
+    float historyDepth = unpackDepth(historyDepthPacked);
+
+    vec3 currentYCoCg = rgbToYCoCg(currentColor);
+    vec3 historyYCoCg = rgbToYCoCg(historyColor);
+
+    vec2 texel = 1.0 / InputSize;
+    vec3 meanYCoCg, varianceYCoCg;
+    computeVariance(uv, texel, meanYCoCg, varianceYCoCg);
+
+    vec3 stdDev = sqrt(max(vec3(0.0), varianceYCoCg));
+    vec3 lowerBound = meanYCoCg - VarianceScale * stdDev;
+    vec3 upperBound = meanYCoCg + VarianceScale * stdDev;
+
+    bool withinVariance = all(greaterThanEqual(historyYCoCg, lowerBound)) &&
+                          all(lessThanEqual(historyYCoCg, upperBound));
+
+    float depthDiff = abs(historyDepth - currentDepth);
+    bool depthOk = depthDiff < DepthThreshold;
+
+    float maxVariance = max(max(varianceYCoCg.x, varianceYCoCg.y), varianceYCoCg.z);
+    bool isStatic = maxVariance < 0.001;
+
+    float historyBlend = HistoryWeight;
+    if (!withinVariance || !depthOk) {
+        historyBlend = 0.0;
+    } else if (isStatic) {
+        historyBlend = min(HistoryWeight * 1.5, 0.95);
+    }
+
+    vec3 blendedYCoCg = mix(currentYCoCg, historyYCoCg, historyBlend);
+    vec3 outputColor = yCoCgToRgb(blendedYCoCg);
+
+    imageStore(HistoryColorOut, pixel, vec4(outputColor, currentDepth));
+    imageStore(HistoryDepthOut, pixel, uvec4(currentDepthPacked, 0, 0, 0));
+}
