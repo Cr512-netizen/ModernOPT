@@ -141,6 +141,12 @@ public final class RenderPipeline {
     private static double cachedMsrDepthThreshold = 0.02;
     private static double cachedMsrHistoryWeight = 0.85;
 
+    // DRS cached settings
+    private static boolean cachedMsrDynamicRes = true;
+    private static int cachedMsrTemporalMinFps = 40;
+    private static int cachedMsrScaleStep = 5;
+    private static int cachedMsrMinScale = 50;
+
     // Compute shader support (GL 4.3+)
     private static boolean computeAvailable = false;
     private static MotionVectorCollector motionVectorCollector;
@@ -343,6 +349,12 @@ public final class RenderPipeline {
         cachedMsrSharpness = ModernOptSettings.msrSharpness();
         cachedMsrDepthThreshold = ModernOptSettings.msrDepthThreshold();
         cachedMsrHistoryWeight = ModernOptSettings.msrHistoryWeight();
+
+        // DRS
+        cachedMsrDynamicRes = ModernOptSettings.msrDynamicRes();
+        cachedMsrTemporalMinFps = ModernOptSettings.msrTemporalMinFps();
+        cachedMsrScaleStep = ModernOptSettings.msrScaleStep();
+        cachedMsrMinScale = ModernOptSettings.msrMinScale();
 // Compute shader detection (GL 4.3+)
         if (!computeAvailable) {
             try {
@@ -1181,6 +1193,8 @@ public final class RenderPipeline {
         com.mojang.blaze3d.vertex.BufferUploader.draw(buffer.buildOrThrow());
     }
 }
+
+
 
 
 
