@@ -119,6 +119,68 @@ public class ModernOptConfigScreen extends Screen {
                     ModernOptSettings.refresh();
                 }));
 
+        // MSR 2.0 section
+        y += step;
+        this.addRenderableWidget(CycleButton.onOffBuilder(ModernOptSettings.msrEnabled())
+                .create(left, y, width, 20, Component.translatable("modernopt.option.msrEnabled"), (button, value) -> {
+                    ModernOptConfig.MSR_ENABLED.set(value);
+                    ModernOptSettings.refresh();
+                }));
+
+        y += step;
+        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+                Component.translatable("modernopt.option.msrVarianceScale"), 5, 40,
+                (int) (ModernOptSettings.msrVarianceScale() * 10),
+                value -> {
+                    ModernOptConfig.MSR_VARIANCE_SCALE.set(value / 10.0);
+                    ModernOptSettings.refresh();
+                },
+                value -> (value / 10.0) + "x"));
+
+        y += step;
+        this.addRenderableWidget(CycleButton.onOffBuilder(ModernOptSettings.msrEdgeAware())
+                .create(left, y, width, 20, Component.translatable("modernopt.option.msrEdgeAware"), (button, value) -> {
+                    ModernOptConfig.MSR_EDGE_AWARE.set(value);
+                    ModernOptSettings.refresh();
+                }));
+
+        y += step;
+        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+                Component.translatable("modernopt.option.msrSharpness"), 0, 100,
+                ModernOptSettings.msrSharpness(),
+                value -> {
+                    ModernOptConfig.MSR_SHARPNESS.set(value);
+                    ModernOptSettings.refresh();
+                },
+                value -> value + "%"));
+
+        y += step;
+        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+                Component.translatable("modernopt.option.msrDepthThreshold"), 5, 100,
+                (int) (ModernOptSettings.msrDepthThreshold() * 1000),
+                value -> {
+                    ModernOptConfig.MSR_DEPTH_THRESHOLD.set(value / 1000.0);
+                    ModernOptSettings.refresh();
+                },
+                value -> (value / 1000.0) + ""));
+
+        y += step;
+        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+                Component.translatable("modernopt.option.msrHistoryWeight"), 50, 95,
+                (int) (ModernOptSettings.msrHistoryWeight() * 100),
+                value -> {
+                    ModernOptConfig.MSR_HISTORY_WEIGHT.set(value / 100.0);
+                    ModernOptSettings.refresh();
+                },
+                value -> (value / 100.0) + ""));
+
+        y += step;
+        this.addRenderableWidget(CycleButton.onOffBuilder(ModernOptSettings.overlay())
+                .create(left, y, width, 20, Component.translatable("modernopt.option.overlay"), (button, value) -> {
+                    ModernOptConfig.SHOW_OVERLAY.set(value);
+                    ModernOptSettings.refresh();
+                }));
+
         this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
                 .bounds(left, this.height - 30, width, 20)
                 .build());
