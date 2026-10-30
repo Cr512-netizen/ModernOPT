@@ -44,13 +44,7 @@ vec3 fromYCoCg(vec3 c) {
 
 void main() {
     vec2 uv = texCoord;
-    vec2 sampleUv = uv + Jitter * 0.5;
-    // Fast boundary check without clamp
-    bool inBounds = all(greaterThanEqual(sampleUv, vec2(0.0))) && all(lessThanEqual(sampleUv, vec2(1.0)));
-    if (!inBounds) {
-        fragColor = vec4(0.0);
-        return;
-    }
+    vec2 sampleUv = clamp(uv + Jitter * 0.5, vec2(0.0), vec2(1.0));
 
     vec3 current = texture(ColorSampler, sampleUv).rgb;
     float rawDepth = texture(DepthSampler, sampleUv).r;
@@ -61,17 +55,15 @@ void main() {
     vec2 ndc = sampleUv * 2.0 - 1.0;
     vec4 clip = vec4(ndc - Jitter, depthForProjection * 2.0 - 1.0, 1.0);
     vec4 viewPosition = InvProjection * clip;
-    
-    // Early exit for invalid projection
+
     if (abs(viewPosition.w) <= 1.0e-6) {
         fragColor = vec4(current, 0.0);
         return;
     }
-    
+
     viewPosition /= viewPosition.w;
     currentDepth = depthValid ? max(-viewPosition.z, 1.0e-4) : 0.0;
 
-    // Reproject to previous frame
     vec3 worldRelative = (vec4(viewPosition.xyz, 0.0) * ViewRotation).xyz;
     bool isSky = !depthValid || rawDepth > 0.9999995;
     vec3 previousRelative = worldRelative + (isSky ? vec3(0.0) : CameraDelta);
@@ -89,45 +81,27 @@ void main() {
     bool valid = HistoryValid > 0.5;
     valid = valid && all(greaterThanEqual(previousUv, vec2(0.0))) && all(lessThanEqual(previousUv, vec2(1.0)));
 
-    vec4 historySample = texture(HistorySampler, previousUv);
+    vec4 historySample = texture(HistorySampler, clamp(previousUv, vec2(0.0), vec2(1.0)));
     if (valid && depthValid) {
-        // Adaptive depth tolerance: quadratic in depth (far objects tolerate more disparity)
-        float tolerance = max(Params.z * currentDepth * currentDepth, 0.02);
+        float tolerance = max(Params.z * currentDepth, 0.15);
         valid = abs(historySample.a - currentDepth) <= tolerance;
     }
 
-    // Weighted 3x3 neighbourhood clamp - center weighted more, edges less
-    // Preserves contrast on thin geometry while still clamping ghosts
     vec2 texel = 1.0 / OutputSize;
-    vec3 centerYCoCg = toYCoCg(current);
-    vec3 minYCoCg = centerYCoCg;
-    vec3 maxYCoCg = centerYCoCg;
-
-    vec3 ycocg;
-    // 8 neighbours with distance-based weights
-    // weight = 1.0 at center, ~0.29 at corners (distance sqrt(2))
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(-1.0, -1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    float w = 0.2929; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(0.0, -1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.4142; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(1.0, -1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.2929; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(-1.0, 0.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.4142; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(1.0, 0.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.4142; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(-1.0, 1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.2929; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(0.0, 1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.4142; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(1.0, 1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.2929; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-
+    vec3 minYCoCg = toYCoCg(current);
+    vec3 maxYCoCg = minYCoCg;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 neighbourhoodUv = clamp(sampleUv + vec2(float(x), float(y)) * texel, vec2(0.0), vec2(1.0));
+            vec3 ycocg = toYCoCg(texture(ColorSampler, neighbourhoodUv).rgb);
+            minYCoCg = min(minYCoCg, ycocg);
+            maxYCoCg = max(maxYCoCg, ycocg);
+        }
+    }
     vec3 history = fromYCoCg(clamp(toYCoCg(historySample.rgb), minYCoCg, maxYCoCg));
 
     if (valid) {
-        // Exposure-invariant luma difference for reactive mask
-        float lumaDiff = abs(lumaOf(current) - lumaOf(history));
+        float lumaDiff = abs(dot(current - history, vec3(0.299, 0.587, 0.114)));
         float reactive = smoothstep(0.05, 0.35, lumaDiff);
         vec2 velocityPixels = (previousUv - uv) * OutputSize;
         float speed = length(velocityPixels);
