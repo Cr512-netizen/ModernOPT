@@ -1,5 +1,7 @@
 package net.cr512.modernopt.compat;
 
+import java.lang.reflect.Method;
+
 /**
  * Distant Horizons compatibility detection.
  * Detects if DH is loaded and provides utilities for LOD-aware rendering.

@@ -92,8 +92,8 @@ public final class MotionVectorCollector {
             ssboId = org.lwjgl.opengl.GL15.glGenBuffers();
         }
 
-        org.lwjgl.opengl.GL15.glBindBuffer(org.lwjgl.opengl.GL31.GL_SHADER_STORAGE_BUFFER, ssboId);
-        org.lwjgl.opengl.GL15.glBufferData(org.lwjgl.opengl.GL31.GL_SHADER_STORAGE_BUFFER,
+        org.lwjgl.opengl.GL15.glBindBuffer(org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BUFFER, ssboId);
+        org.lwjgl.opengl.GL15.glBufferData(org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BUFFER,
                 MAX_ENTITIES * STRIDE, org.lwjgl.opengl.GL15.GL_DYNAMIC_DRAW);
 
         // Map buffer and write entity data
@@ -119,13 +119,13 @@ public final class MotionVectorCollector {
                 }
             }
             buffer.flip();
-            org.lwjgl.opengl.GL15.glBufferSubData(org.lwjgl.opengl.GL31.GL_SHADER_STORAGE_BUFFER,
+            org.lwjgl.opengl.GL15.glBufferSubData(org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BUFFER,
                     0, buffer);
         } finally {
             org.lwjgl.system.MemoryUtil.memFree(buffer);
         }
 
-        org.lwjgl.opengl.GL15.glBindBuffer(org.lwjgl.opengl.GL31.GL_SHADER_STORAGE_BUFFER, 0);
+        org.lwjgl.opengl.GL15.glBindBuffer(org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BUFFER, 0);
     }
 
     /**
@@ -133,7 +133,7 @@ public final class MotionVectorCollector {
      */
     public void bindSsbo(int bindingPoint) {
         if (computeAvailable && ssboId != 0) {
-            org.lwjgl.opengl.GL31.glBindBufferBase(org.lwjgl.opengl.GL31.GL_SHADER_STORAGE_BUFFER,
+            org.lwjgl.opengl.GL43.glBindBufferBase(org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BUFFER,
                     bindingPoint, ssboId);
         }
     }
