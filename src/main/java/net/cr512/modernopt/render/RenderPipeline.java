@@ -343,7 +343,7 @@ public final class RenderPipeline {
         cachedSoftness = ModernOptSettings.softness();
 
         // MSR 2.0
-        cachedMsrEnabled = ModernOptSettings.msrEnabled();
+        cachedMsrEnabled = ModernOptSettings.msrEnabled() || (cachedUpscaler == UpscalerType.MSR);
         cachedMsrVarianceScale = ModernOptSettings.msrVarianceScale();
         cachedMsrEdgeAware = ModernOptSettings.msrEdgeAware();
         cachedMsrSharpness = ModernOptSettings.msrSharpness();
@@ -697,7 +697,7 @@ public final class RenderPipeline {
         return switch (type) {
             case NEAREST -> library.nearest;
             case SOFT -> library.soft;
-            case BILINEAR, FSR1, FSR2 -> library.bilinear;
+            case BILINEAR, FSR1, FSR2, MSR -> library.bilinear;
         };
     }
 
@@ -1153,7 +1153,7 @@ public final class RenderPipeline {
             // Dispatch compute shader
             int groupX = (outWidth + 7) / 8;
             int groupY = (outHeight + 7) / 8;
-            org.lwjgl.opengl.GL31.glDispatchCompute(groupX, groupY, 1);
+            org.lwjgl.opengl.GL43.glDispatchCompute(groupX, groupY, 1);
             org.lwjgl.opengl.GL42.glMemoryBarrier(org.lwjgl.opengl.GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
             msrTemporalComputeShader.clear();

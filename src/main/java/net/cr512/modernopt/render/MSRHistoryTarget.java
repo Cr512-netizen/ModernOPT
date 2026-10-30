@@ -104,7 +104,7 @@ public final class MSRHistoryTarget {
         GlStateManager._texParameter(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_MAG_FILTER, GL11C.GL_NEAREST);
         // R16_UINT = 16 bits, packed linear depth
         GL30C.glTexImage2D(GL11C.GL_TEXTURE_2D, 0, GL30C.GL_R16UI, width, height, 0,
-                GL11C.GL_RED_INTEGER, GL11C.GL_UNSIGNED_SHORT, (IntBuffer) null);
+                GL30C.GL_RED_INTEGER, GL11C.GL_UNSIGNED_SHORT, (IntBuffer) null);
         return tex;
     }
 
