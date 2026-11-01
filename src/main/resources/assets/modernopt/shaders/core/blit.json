@@ -1,0 +1,7 @@
+{
+    "vertex": "modernopt:blit",
+    "fragment": "modernopt:blit",
+    "samplers": [
+        { "name": "Source" }
+    ]
+}

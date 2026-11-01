@@ -20,6 +20,7 @@ public final class ModernOptConfig {
     public static final ModConfigSpec.BooleanValue SSAA;
     public static final ModConfigSpec.BooleanValue FXAA;
     public static final ModConfigSpec.BooleanValue SHOW_OVERLAY;
+    public static final ModConfigSpec.BooleanValue LOG_FPS;
 
     // MSR 2.0 config
     public static final ModConfigSpec.BooleanValue MSR_ENABLED;
@@ -39,6 +40,8 @@ public final class ModernOptConfig {
         b.comment("Master switch. When disabled the mod touches nothing.").push("general");
         ENABLED = b.comment("Enable ModernOPT render modifications.").define("enabled", true);
         SHOW_OVERLAY = b.comment("Show the FPS / resolution overlay.").define("showOverlay", false);
+        LOG_FPS = b.comment("Log FPS statistics to file every second (avg FPS, ms/frame, worst frame, 1% low, 0.1% low, mod settings).")
+                .define("logFps", false);
         b.pop();
 
         b.comment("Internal world render resolution.").push("renderScale");

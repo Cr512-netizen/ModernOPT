@@ -33,12 +33,13 @@ public final class ShaderLibrary {
     public final ShaderInstance fxaa;
     public final ShaderInstance easu;
     public final ShaderInstance rcas;
+    public final ShaderInstance blit;
     /** {@code null} means this driver/program failed to link; FSR 2 then falls back to FSR 1. */
     public final ShaderInstance temporal;
 
     private ShaderLibrary(ShaderInstance bilinear, ShaderInstance nearest, ShaderInstance soft,
                           ShaderInstance box, ShaderInstance fxaa, ShaderInstance easu, ShaderInstance rcas,
-                          ShaderInstance temporal) {
+                          ShaderInstance blit, ShaderInstance temporal) {
         this.bilinear = bilinear;
         this.nearest = nearest;
         this.soft = soft;
@@ -46,6 +47,7 @@ public final class ShaderLibrary {
         this.fxaa = fxaa;
         this.easu = easu;
         this.rcas = rcas;
+        this.blit = blit;
         this.temporal = temporal;
     }
 
@@ -66,6 +68,7 @@ public final class ShaderLibrary {
                 create(resources, "fxaa"),
                 create(resources, "easu"),
                 create(resources, "rcas"),
+                create(resources, "blit"),
                 temporal);
     }
 
@@ -82,6 +85,7 @@ public final class ShaderLibrary {
         this.fxaa.close();
         this.easu.close();
         this.rcas.close();
+        this.blit.close();
         if (this.temporal != null) {
             this.temporal.close();
         }
@@ -103,7 +107,8 @@ public final class ShaderLibrary {
                 && isProgram(this.box)
                 && isProgram(this.fxaa)
                 && isProgram(this.easu)
-                && isProgram(this.rcas);
+                && isProgram(this.rcas)
+                && isProgram(this.blit);
     }
 
     private static boolean isProgram(@Nullable ShaderInstance shader) {
@@ -141,6 +146,27 @@ public final class ShaderLibrary {
             params.set(param0, param1, (float) sourceWidth, (float) sourceHeight);
         }
 
+        shader.apply();
+
+        BufferBuilder buffer = RenderSystem.renderThreadTesselator()
+                .begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLIT_SCREEN);
+        buffer.addVertex(0.0F, 0.0F, 0.0F);
+        buffer.addVertex(1.0F, 0.0F, 0.0F);
+        buffer.addVertex(1.0F, 1.0F, 0.0F);
+        buffer.addVertex(0.0F, 1.0F, 0.0F);
+        BufferUploader.draw(buffer.buildOrThrow());
+
+        shader.clear();
+    }
+
+    /**
+     * One-texel bilinear copy. Used by the MSR 2.0 spatial pass when the upscale factor is small
+     * enough that the fused EASU+RCAS sharpening costs more than it is worth.
+     */
+    public static void drawBlit(ShaderInstance shader, int source, int sourceWidth, int sourceHeight,
+                                int outputWidth, int outputHeight) {
+        RenderSystem.assertOnRenderThread();
+        shader.setSampler("Source", source);
         shader.apply();
 
         BufferBuilder buffer = RenderSystem.renderThreadTesselator()

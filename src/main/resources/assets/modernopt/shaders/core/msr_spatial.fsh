@@ -111,7 +111,11 @@ vec3 casSharpen(vec2 uv, vec2 texel, vec3 color) {
     amount = clamp(amount, 0.0, 1.0);
     
     // Unsharp mask
-    vec3 blur = (l + r + u + d) * 0.25;
+    vec3 colorL = texture(TemporalColor, uv + vec2(-texel.x, 0.0)).rgb;
+    vec3 colorR = texture(TemporalColor, uv + vec2(texel.x, 0.0)).rgb;
+    vec3 colorU = texture(TemporalColor, uv + vec2(0.0, -texel.y)).rgb;
+    vec3 colorD = texture(TemporalColor, uv + vec2(0.0, texel.y)).rgb;
+    vec3 blur = (colorL + colorR + colorU + colorD) * 0.25;
     vec3 sharpened = color + (color - blur) * amount;
     
     // Depth-aware: reduce sharpening on depth edges (prevents ringing on geometry edges)

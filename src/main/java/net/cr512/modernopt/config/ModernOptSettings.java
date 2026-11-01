@@ -10,6 +10,7 @@ public final class ModernOptSettings {
     private static volatile boolean ssaa;
     private static volatile boolean fxaa;
     private static volatile boolean overlay;
+    private static volatile boolean logFps = false;
     private static volatile int renderScalePercent = 75;
     private static volatile int softness = 35;
     private static volatile int fsrEasuSharpness = 0;
@@ -40,6 +41,7 @@ public final class ModernOptSettings {
         }
         enabled = ModernOptConfig.ENABLED.get();
         overlay = ModernOptConfig.SHOW_OVERLAY.get();
+        logFps = ModernOptConfig.LOG_FPS.get();
         renderScalePercent = ModernOptConfig.RENDER_SCALE_PERCENT.get();
         upscaler = ModernOptConfig.UPSCALER.get();
         softness = ModernOptConfig.SOFTNESS.get();
@@ -78,6 +80,10 @@ public final class ModernOptSettings {
 
     public static boolean overlay() {
         return overlay;
+    }
+
+    public static boolean logFps() {
+        return logFps;
     }
 
     public static int renderScalePercent() {
