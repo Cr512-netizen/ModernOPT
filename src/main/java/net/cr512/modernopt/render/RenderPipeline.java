@@ -458,7 +458,7 @@ public final class RenderPipeline {
             return;
         }
 
-        boolean temporal = fsr2ThisFrame && poseCaptured && !fsr2Unsupported && historyValid;
+        boolean temporal = fsr2ThisFrame && poseCaptured && !fsr2Unsupported && (historyValid || historyFront == null || historyBack == null);
         boolean jittered = poseCaptured;
         fsr2ActiveThisFrame = temporal;
         worldActive = false;
@@ -497,6 +497,8 @@ public final class RenderPipeline {
                         loggedFsr2Fallback = true;
                         ModernOPT.LOG.error("[ModernOPT] FSR 2 pass failed, falling back to FSR 1"
                                 + (fsr2FailureCount >= 3 ? " for this session" : " for this frame"), throwable);
+                    } else {
+                        ModernOPT.LOG.error("[ModernOPT] FSR 2 pass failed again (loggedFsr2Fallback already true): " + throwable.getMessage());
                     }
                     reconstructSpatial(main);
                 }
@@ -601,7 +603,8 @@ public final class RenderPipeline {
                     inverseProjection, previousProjection, currentView, previousView,
                     tempVec3.x, tempVec3.y, tempVec3.z,
                     jitterX, jitterY, previousJitterX, previousJitterY,
-                    useHistory, depthValid, 0.10F, 0.60F, 0.05F);
+                    useHistory, depthValid, irisThisFrame,
+                    0.10F, 0.60F, 0.05F);
 
             // The write target is now the newest history; ping-pong them for the next frame.
             historyFront = write;
