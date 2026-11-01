@@ -7,10 +7,8 @@ uniform sampler2D ColorSampler;   // EASU output of the current jittered frame (
 uniform sampler2D HistorySampler; // previous accumulated (unjittered) frame, alpha = linear view depth
 uniform sampler2D DepthSampler;   // current jittered depth buffer (internal size)
 
-uniform vec2 InputSize;
 uniform vec2 OutputSize;
 uniform vec2 Jitter;     // NDC offset added to current projection matrix
-uniform vec2 PrevJitter; // previous frame jitter (diagnostics)
 uniform vec3 CameraDelta; // current camera position - previous camera position, world axes
 uniform mat4 ViewRotation;
 uniform mat4 PrevViewRotation;
@@ -19,6 +17,7 @@ uniform mat4 PrevProjection; // unjittered previous projection
 uniform vec4 Params;         // x = base blend, y = reactive strength, z = depth tolerance
 uniform float HistoryValid;
 uniform float DepthValid;    // 0 when no correct scene depth available (Iris depth missing)
+uniform float DepthScale;    // InputSize.x / OutputSize.x when using native-res depth (Iris)
 
 in vec2 texCoord;
 out vec4 fragColor;
@@ -53,7 +52,7 @@ void main() {
     }
 
     vec3 current = texture(ColorSampler, sampleUv).rgb;
-    float rawDepth = texture(DepthSampler, sampleUv).r;
+    float rawDepth = texture(DepthSampler, sampleUv * DepthScale).r;
     bool depthValid = DepthValid > 0.5;
     float depthForProjection = depthValid ? rawDepth : 1.0;
     float currentDepth = 0.0;

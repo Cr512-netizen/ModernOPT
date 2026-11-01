@@ -195,7 +195,7 @@ public final class ShaderLibrary {
                                     float cameraDeltaX, float cameraDeltaY, float cameraDeltaZ,
                                     float jitterX, float jitterY,
                                     float previousJitterX, float previousJitterY,
-                                    boolean historyValid, boolean depthValid,
+                                    boolean historyValid, boolean depthValid, boolean irisDepth,
                                     float baseAlpha, float reactiveStrength, float depthTolerance) {
         RenderSystem.assertOnRenderThread();
 
@@ -223,6 +223,13 @@ public final class ShaderLibrary {
         Uniform depth = shader.getUniform("DepthValid");
         if (depth != null) {
             depth.set(depthValid ? 1.0F : 0.0F);
+        }
+        // When using Iris depth (native resolution = output size), DepthScale = 1.0
+        // When using scaled depth (internal resolution), DepthScale = inputWidth / outputWidth
+        float depthScale = irisDepth ? 1.0F : (float) inputWidth / (float) outputWidth;
+        Uniform depthScaleUniform = shader.getUniform("DepthScale");
+        if (depthScaleUniform != null) {
+            depthScaleUniform.set(depthScale);
         }
 
         shader.apply();
