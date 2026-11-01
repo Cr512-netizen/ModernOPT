@@ -458,7 +458,7 @@ public final class RenderPipeline {
             return;
         }
 
-        boolean temporal = fsr2ThisFrame && poseCaptured && !fsr2Unsupported;
+        boolean temporal = fsr2ThisFrame && poseCaptured && !fsr2Unsupported && historyValid;
         boolean jittered = poseCaptured;
         fsr2ActiveThisFrame = temporal;
         worldActive = false;
@@ -658,9 +658,9 @@ public final class RenderPipeline {
         boolean fsr1Path = !cachedSsaa
                 && (upscaler == UpscalerType.FSR1 || upscaler == UpscalerType.FSR2);
 
-        // At small upscale factors (< 1.33x), EASU is slower than bilinear - use simpler filter
+        // At small upscale factors (~1.25x), EASU is slower than bilinear - use simpler filter
         float upscale = (float) outWidth / (float) sourceWidth;
-        boolean simpleUpscale = upscale < 1.33F && fsr1Path;
+        boolean simpleUpscale = upscale < 1.25F && fsr1Path;
 
         ShaderLibrary.beginPassState();
         try {
@@ -1085,10 +1085,10 @@ public final class RenderPipeline {
         int depthTexture = scaled.getDepthTextureId();
 
         // At small upscale factors the temporal pass costs more than it is worth: once the
-        // output is within 1.33x of the source a plain bilinear blit + CAS is enough, so the whole
+        // output is within ~1.25x of the source a plain bilinear blit + CAS is enough, so the whole
         // frame degrades to "render at scale + blit + sharpen", which is always faster than native.
         float upscale = (float) outWidth / (float) sourceWidth;
-        boolean temporalWorthIt = upscale > 1.35F;
+        boolean temporalWorthIt = upscale > 1.25F && msrHistoryValid;
 
         // Get ping-pong textures
         int historyColorRead = msrHistory.getReadColorTexture();
@@ -1134,7 +1134,7 @@ public final class RenderPipeline {
         int temporalColorRead = temporalWorthIt ? msrHistory.getReadColorTexture() : sourceTexture;
 
         // At small upscale factors the fused EASU+RCAS spatial pass costs more than it is worth.
-        // A plain bilinear blit is enough once the output is within 1.25x of the source.
+        // A plain bilinear blit is enough once the output is within ~1.02x of the source.
         if (!temporalWorthIt && msrBlitShader != null && msrBlitShader.getId() != -1) {
             msrBlitShader.setSampler("Source", temporalColorRead);
             msrBlitShader.apply();
