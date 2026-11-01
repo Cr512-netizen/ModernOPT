@@ -37,10 +37,8 @@ vec3 yCoCgToRgb(vec3 ycocg) {
     );
 }
 
-// Unpack R16_UINT depth to linear 0..1
-float unpackDepth(uint packed) {
-    return float(packed) / 65535.0;
-}
+// Depth is already linear 0..1 from texture sampler
+// (no unpack needed)
 
 // 3x3 neighbourhood variance in YCoCg space
 void computeVariance(vec2 uv, vec2 texel, 
@@ -75,13 +73,11 @@ void main() {
     currentUv = clamp(currentUv, vec2(0.0), vec2(1.0));
     
     vec3 currentColor = texture(CurrentColor, currentUv).rgb;
-    uint currentDepthPacked = texture(CurrentDepth, currentUv).r * 65535.0;
-    float currentDepth = unpackDepth(currentDepthPacked);
+    float currentDepth = texture(CurrentDepth, currentUv).r;
     
     // Sample history
     vec3 historyColor = texture(HistoryColor, uv).rgb;
-    uint historyDepthPacked = texture(HistoryDepth, uv).r * 65535.0;
-    float historyDepth = unpackDepth(historyDepthPacked);
+    float historyDepth = texture(HistoryDepth, uv).r;
     
     // Convert to YCoCg for variance analysis
     vec3 currentYCoCg = rgbToYCoCg(currentColor);
