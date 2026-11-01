@@ -658,22 +658,42 @@ public final class RenderPipeline {
         boolean fsr1Path = !cachedSsaa
                 && (upscaler == UpscalerType.FSR1 || upscaler == UpscalerType.FSR2);
 
+        // At small upscale factors (< 1.33x), EASU is slower than bilinear - use simpler filter
+        float upscale = (float) outWidth / (float) sourceWidth;
+        boolean simpleUpscale = upscale < 1.33F && fsr1Path;
+
         ShaderLibrary.beginPassState();
         try {
             if (fsr1Path) {
-                TextureTarget easu = ensureIntermediates(outWidth, outHeight, true);
-                easu.bindWrite(true);
-                ShaderLibrary.draw(library.easu, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, 0.0F, 0.0F);
-
-                if (fxaa) {
-                    TextureTarget post = ensureIntermediates(outWidth, outHeight, false);
-                    post.bindWrite(true);
-                    ShaderLibrary.draw(library.rcas, easu.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, rcasSharpness, 0.0F);
-                    main.bindWrite(true);
-                    ShaderLibrary.draw(library.fxaa, post.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, 0.0F, 0.0F);
+                if (simpleUpscale) {
+                    // Simple bilinear + optional RCAS for small upscales
+                    ShaderInstance filter = cachedSsaa ? library.box : filterFor(library, upscaler);
+                    if (fxaa) {
+                        TextureTarget post = ensureIntermediates(outWidth, outHeight, false);
+                        post.bindWrite(true);
+                        ShaderLibrary.draw(filter, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, softness, 0.0F);
+                        main.bindWrite(true);
+                        ShaderLibrary.draw(library.fxaa, post.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, 0.0F, 0.0F);
+                    } else {
+                        main.bindWrite(true);
+                        ShaderLibrary.draw(filter, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, softness, 0.0F);
+                    }
                 } else {
-                    main.bindWrite(true);
-                    ShaderLibrary.draw(library.rcas, easu.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, rcasSharpness, 0.0F);
+                    // Full FSR 1 EASU + RCAS path
+                    TextureTarget easu = ensureIntermediates(outWidth, outHeight, true);
+                    easu.bindWrite(true);
+                    ShaderLibrary.draw(library.easu, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, 0.0F, 0.0F);
+
+                    if (fxaa) {
+                        TextureTarget post = ensureIntermediates(outWidth, outHeight, false);
+                        post.bindWrite(true);
+                        ShaderLibrary.draw(library.rcas, easu.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, rcasSharpness, 0.0F);
+                        main.bindWrite(true);
+                        ShaderLibrary.draw(library.fxaa, post.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, 0.0F, 0.0F);
+                    } else {
+                        main.bindWrite(true);
+                        ShaderLibrary.draw(library.rcas, easu.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, rcasSharpness, 0.0F);
+                    }
                 }
             } else {
                 ShaderInstance filter = cachedSsaa ? library.box : filterFor(library, upscaler);
@@ -1065,10 +1085,10 @@ public final class RenderPipeline {
         int depthTexture = scaled.getDepthTextureId();
 
         // At small upscale factors the temporal pass costs more than it is worth: once the
-        // output is within 1.5x of the source a plain bilinear blit + CAS is enough, so the whole
+        // output is within 1.33x of the source a plain bilinear blit + CAS is enough, so the whole
         // frame degrades to "render at scale + blit + sharpen", which is always faster than native.
         float upscale = (float) outWidth / (float) sourceWidth;
-        boolean temporalWorthIt = upscale > 1.5F;
+        boolean temporalWorthIt = upscale > 1.35F;
 
         // Get ping-pong textures
         int historyColorRead = msrHistory.getReadColorTexture();
