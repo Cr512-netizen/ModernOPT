@@ -151,9 +151,13 @@ public final class RenderPipeline {
     // DRS state
     private static int drsCurrentPercent = -1;
     private static long drsLastAdjustNanos = 0;
+    private static long drsFrameStartNanos = 0;
+    private static long drsAccumulatedFrameTimeNs = 0;
+    private static int drsSampleCount = 0;
     private static int drsStableFrames = 0;
     private static final long DRS_ADJUST_INTERVAL_NS = 1_000_000_000L; // 1 second
     private static final int DRS_STABLE_FRAMES_NEEDED = 60;
+    private static final int DRS_SAMPLE_FRAMES = 30;
 
     // Compute shader support (GL 4.3+)
     private static boolean computeAvailable = false;
@@ -352,42 +356,64 @@ public final class RenderPipeline {
         }
     }
     
-    /** Apply Dynamic Resolution Scaling based on FPS. */
+    /** Apply Dynamic Resolution Scaling based on real frame time. */
     private static void applyDrs() {
         if (drsCurrentPercent < 0) {
             drsCurrentPercent = cachedRenderScale;
         }
+
+        // Accumulate real frame time
         long now = System.nanoTime();
-        if (now - drsLastAdjustNanos < DRS_ADJUST_INTERVAL_NS) {
+        if (drsFrameStartNanos == 0) {
+            drsFrameStartNanos = now;
             return;
         }
-        drsLastAdjustNanos = now;
-        
-        // Estimate current FPS from frame time (simple heuristic)
-        // We lower scale when below temporalMinFps, raise when stable
-        // Use a simple frame counter for stability
-        drsStableFrames++;
-        
+        drsAccumulatedFrameTimeNs += (now - drsFrameStartNanos);
+        drsFrameStartNanos = now;
+        drsSampleCount++;
+
+        if (drsSampleCount < DRS_SAMPLE_FRAMES) {
+            return;
+        }
+
+        // Compute average frame time and FPS over the sample window
+        double avgFrameTimeMs = (drsAccumulatedFrameTimeNs / (double) drsSampleCount) / 1_000_000.0;
+        double fps = 1000.0 / avgFrameTimeMs;
+        drsSampleCount = 0;
+        drsAccumulatedFrameTimeNs = 0;
+
+        long adjustNow = System.nanoTime();
+        if (adjustNow - drsLastAdjustNanos < DRS_ADJUST_INTERVAL_NS) {
+            return;
+        }
+        drsLastAdjustNanos = adjustNow;
+
         int minScale = cachedMsrMinScale;
         int step = cachedMsrScaleStep;
-        
-        // Simple heuristic: if we've been stable for enough frames, try raising
-        // If performance drops, lower immediately
-        // This is a simplified DRS - full implementation would need FPS measurement
-        if (drsStableFrames >= DRS_STABLE_FRAMES_NEEDED) {
-            // Try to raise scale slightly
-            if (drsCurrentPercent < cachedRenderScale) {
+        int tempMinFps = cachedMsrTemporalMinFps;
+
+        // Lower scale immediately if FPS drops below threshold
+        if (fps < tempMinFps && drsCurrentPercent > minScale) {
+            drsCurrentPercent = Math.max(minScale, drsCurrentPercent - step);
+            drsStableFrames = 0;
+        } else if (fps >= tempMinFps * 1.2) {
+            // Raise scale gradually when stable (1.2x headroom)
+            drsStableFrames++;
+            if (drsStableFrames >= DRS_STABLE_FRAMES_NEEDED && drsCurrentPercent < cachedRenderScale) {
                 drsCurrentPercent = Math.min(cachedRenderScale, drsCurrentPercent + step);
                 drsStableFrames = 0;
             }
+        } else {
+            drsStableFrames = 0;
         }
-        
+
         // Clamp to valid range
         drsCurrentPercent = Math.max(minScale, Math.min(100, drsCurrentPercent));
-        
+
         // Apply to cachedRenderScale if DRS changed it
         if (drsCurrentPercent != cachedRenderScale) {
             cachedRenderScale = drsCurrentPercent;
+            ModernOPT.LOG.info("[ModernOPT] DRS: adjusted render scale to {}% (FPS: {:.1f})", drsCurrentPercent, fps);
         }
     }
     
