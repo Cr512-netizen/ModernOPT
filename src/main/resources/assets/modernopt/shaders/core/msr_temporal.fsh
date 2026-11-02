@@ -41,8 +41,9 @@ vec3 yCoCgToRgb(vec3 ycocg) {
 // (no unpack needed)
 
 // 3x3 neighbourhood variance in YCoCg space
+// Returns: meanYCoCg, varianceYCoCg, and centerYCoCg (history center pixel in YCoCg)
 void computeVariance(vec2 uv, vec2 texel, 
-                     out vec3 meanYCoCg, out vec3 varianceYCoCg) {
+                     out vec3 meanYCoCg, out vec3 varianceYCoCg, out vec3 centerYCoCg) {
     meanYCoCg = vec3(0.0);
     vec3 meanSq = vec3(0.0);
     int count = 0;
@@ -54,6 +55,12 @@ void computeVariance(vec2 uv, vec2 texel,
             sampleUv = clamp(sampleUv, vec2(0.0), vec2(1.0));
             vec3 color = texture(HistoryColor, sampleUv).rgb;
             vec3 ycocg = rgbToYCoCg(color);
+            
+            // Capture center pixel (x=0, y=0)
+            if (x == 0 && y == 0) {
+                centerYCoCg = ycocg;
+            }
+            
             meanYCoCg += ycocg;
             meanSq += ycocg * ycocg;
             count++;
@@ -79,14 +86,16 @@ void main() {
     vec3 historyColor = texture(HistoryColor, uv).rgb;
     float historyDepth = texture(HistoryDepth, uv).r;
     
-    // Convert to YCoCg for variance analysis
-    vec3 currentYCoCg = rgbToYCoCg(currentColor);
-    vec3 historyYCoCg = rgbToYCoCg(historyColor);
-    
-    // Compute local variance in 3x3 neighbourhood
+    // Compute local variance in 3x3 neighbourhood - returns center YCoCg to avoid recomputing
     vec2 texel = 1.0 / InputSize;  // texel size in low-res space
-    vec3 meanYCoCg, varianceYCoCg;
-    computeVariance(uv, texel, meanYCoCg, varianceYCoCg);
+    vec3 meanYCoCg, varianceYCoCg, historyCenterYCoCg;
+    computeVariance(uv, texel, meanYCoCg, varianceYCoCg, historyCenterYCoCg);
+    
+    // Convert current frame to YCoCg
+    vec3 currentYCoCg = rgbToYCoCg(currentColor);
+    
+    // Use precomputed history center YCoCg (avoids redundant conversion)
+    vec3 historyYCoCg = historyCenterYCoCg;
     
     // Variance clipping: reject history if outside confidence interval
     // Confidence interval = mean ± VarianceScale * stdDev

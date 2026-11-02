@@ -86,6 +86,10 @@ public final class RenderPipeline {
     private static final Matrix4f tempMatrix = new Matrix4f();
     private static final Quaternionf tempQuat = new Quaternionf();
     private static final Vector3f tempVec3 = new Vector3f();
+    
+    // Cache for inverse projection to avoid recomputation when projection unchanged
+    private static Matrix4f cachedProjection = null;
+    private static Matrix4f cachedInverseProjection = null;
     private static double currentCameraX;
     private static double currentCameraY;
     private static double currentCameraZ;
@@ -576,6 +580,12 @@ public final class RenderPipeline {
         if (!inverseProjection.isFinite()) {
             throw new IllegalStateException("projection matrix is not invertible");
         }
+        
+        // Cache the inverse for potential reuse (only recompute when projection changes)
+        if (cachedProjection == null || !currentProjection.equals(cachedProjection)) {
+            cachedProjection = new Matrix4f(currentProjection);
+            cachedInverseProjection = new Matrix4f(inverseProjection);
+        }
 
         boolean useHistory = historyValid;
         tempVec3.set((float) (currentCameraX - previousCameraX),
@@ -663,7 +673,7 @@ public final class RenderPipeline {
 
         // At small upscale factors (~1.25x), EASU is slower than bilinear - use simpler filter
         float upscale = (float) outWidth / (float) sourceWidth;
-        boolean simpleUpscale = upscale < 1.25F && fsr1Path;
+        boolean simpleUpscale = upscale < 1.11F && fsr1Path;
 
         ShaderLibrary.beginPassState();
         try {
@@ -1091,7 +1101,7 @@ public final class RenderPipeline {
         // output is within ~1.25x of the source a plain bilinear blit + CAS is enough, so the whole
         // frame degrades to "render at scale + blit + sharpen", which is always faster than native.
         float upscale = (float) outWidth / (float) sourceWidth;
-        boolean temporalWorthIt = upscale > 1.25F && msrHistoryValid;
+        boolean temporalWorthIt = upscale > 1.11F && msrHistoryValid;
 
         // Get ping-pong textures
         int historyColorRead = msrHistory.getReadColorTexture();
