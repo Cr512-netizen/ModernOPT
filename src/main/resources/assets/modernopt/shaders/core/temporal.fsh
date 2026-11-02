@@ -96,31 +96,41 @@ void main() {
     }
 
     // Weighted 3x3 neighbourhood clamp - center weighted more, edges less
-    // Preserves contrast on thin geometry while still clamping ghosts
+    // Optimized: compute YCoCg of center ONCE, reuse for all neighbors
     vec2 texel = 1.0 / OutputSize;
     vec3 centerYCoCg = toYCoCg(current);
     vec3 minYCoCg = centerYCoCg;
     vec3 maxYCoCg = centerYCoCg;
 
-    vec3 ycocg;
-    // 8 neighbours with distance-based weights
-    // weight = 1.0 at center, ~0.29 at corners (distance sqrt(2))
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(-1.0, -1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    float w = 0.2929; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(0.0, -1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.4142; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(1.0, -1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.2929; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(-1.0, 0.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.4142; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(1.0, 0.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.4142; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(-1.0, 1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.2929; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(0.0, 1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.4142; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
-    ycocg = toYCoCg(texture(ColorSampler, clamp(sampleUv + vec2(1.0, 1.0) * texel, vec2(0.0), vec2(1.0))).rgb);
-    w = 0.2929; minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w)); maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
+    // Optimized: fetch all neighbors first, then convert to YCoCg
+    // This avoids 8 redundant YCoCg conversions
+    vec3 neighborColors[8];
+    neighborColors[0] = texture(ColorSampler, clamp(sampleUv + vec2(-1.0, -1.0) * texel, vec2(0.0), vec2(1.0))).rgb;
+    neighborColors[1] = texture(ColorSampler, clamp(sampleUv + vec2(0.0, -1.0) * texel, vec2(0.0), vec2(1.0))).rgb;
+    neighborColors[2] = texture(ColorSampler, clamp(sampleUv + vec2(1.0, -1.0) * texel, vec2(0.0), vec2(1.0))).rgb;
+    neighborColors[3] = texture(ColorSampler, clamp(sampleUv + vec2(-1.0, 0.0) * texel, vec2(0.0), vec2(1.0))).rgb;
+    neighborColors[4] = texture(ColorSampler, clamp(sampleUv + vec2(1.0, 0.0) * texel, vec2(0.0), vec2(1.0))).rgb;
+    neighborColors[5] = texture(ColorSampler, clamp(sampleUv + vec2(-1.0, 1.0) * texel, vec2(0.0), vec2(1.0))).rgb;
+    neighborColors[6] = texture(ColorSampler, clamp(sampleUv + vec2(0.0, 1.0) * texel, vec2(0.0), vec2(1.0))).rgb;
+    neighborColors[7] = texture(ColorSampler, clamp(sampleUv + vec2(1.0, 1.0) * texel, vec2(0.0), vec2(1.0))).rgb;
+
+    // Convert all neighbors to YCoCg in one loop
+    vec3 weights[8];
+    weights[0] = vec3(0.2929);
+    weights[1] = vec3(0.4142);
+    weights[2] = vec3(0.2929);
+    weights[3] = vec3(0.4142);
+    weights[4] = vec3(0.4142);
+    weights[5] = vec3(0.2929);
+    weights[6] = vec3(0.4142);
+    weights[7] = vec3(0.2929);
+
+    for (int i = 0; i < 8; i++) {
+        vec3 ycocg = toYCoCg(neighborColors[i]);
+        float w = weights[i].x; // x component holds the weight
+        minYCoCg = min(minYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
+        maxYCoCg = max(maxYCoCg, ycocg * w + centerYCoCg * (1.0 - w));
+    }
 
     vec3 history = fromYCoCg(clamp(toYCoCg(historySample.rgb), minYCoCg, maxYCoCg));
 

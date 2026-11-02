@@ -2,6 +2,7 @@
 
 // MSR 2.0 Spatial Pass - Fused EASU + RCAS + Edge-Aware Interpolation
 // Single fragment shader pass for TBDR compatibility (iGPU, mobile)
+// Optimized: Fused EASU + CAS to share 5-tap neighborhood samples
 // Input: Temporal pass output (high-res), depth buffer (high-res)
 // Output: Final upscaled + sharpened image
 
@@ -17,53 +18,65 @@ uniform float DepthEdgeThreshold;   // Depth gradient threshold for edges
 in vec2 texCoord;
 out vec4 fragColor;
 
-// EASU constants (from AMD FidelityFX)
-const float EASU_SHARPNESS_DEFAULT = 0.0;
-
 // Luma calculation (rec709)
 float luma(vec3 c) {
     return dot(c, vec3(0.299, 0.587, 0.114));
 }
 
-// Edge-aware interpolation weight based on depth gradient
-float edgeAwareWeight(vec2 uv, vec2 texel) {
-    // Sample depth in cross pattern
-    float dC = texture(DepthTexture, uv).r;
-    float dL = texture(DepthTexture, uv + vec2(-texel.x, 0.0)).r;
-    float dR = texture(DepthTexture, uv + vec2(texel.x, 0.0)).r;
-    float dU = texture(DepthTexture, uv + vec2(0.0, -texel.y)).r;
-    float dD = texture(DepthTexture, uv + vec2(0.0, texel.y)).r;
+// Shared 5-tap neighborhood structure
+struct Neighborhood5 {
+    vec3 center;
+    vec3 left;
+    vec3 right;
+    vec3 up;
+    vec3 down;
+    float lumaCenter;
+    float lumaLeft;
+    float lumaRight;
+    float lumaUp;
+    float lumaDown;
+    float depthCenter;
+    float depthLeft;
+    float depthRight;
+    float depthUp;
+    float depthDown;
+};
+
+Neighborhood5 fetchNeighborhood5(vec2 uv, vec2 texel) {
+    Neighborhood5 n;
+    n.center = texture(TemporalColor, uv).rgb;
+    n.left = texture(TemporalColor, uv + vec2(-texel.x, 0.0)).rgb;
+    n.right = texture(TemporalColor, uv + vec2(texel.x, 0.0)).rgb;
+    n.up = texture(TemporalColor, uv + vec2(0.0, -texel.y)).rgb;
+    n.down = texture(TemporalColor, uv + vec2(0.0, texel.y)).rgb;
     
-    // Depth gradients
-    float gradX = abs(dR - dL);
-    float gradY = abs(dD - dU);
+    n.lumaCenter = luma(n.center);
+    n.lumaLeft = luma(n.left);
+    n.lumaRight = luma(n.right);
+    n.lumaUp = luma(n.up);
+    n.lumaDown = luma(n.down);
+    
+    n.depthCenter = texture(DepthTexture, uv).r;
+    n.depthLeft = texture(DepthTexture, uv + vec2(-texel.x, 0.0)).r;
+    n.depthRight = texture(DepthTexture, uv + vec2(texel.x, 0.0)).r;
+    n.depthUp = texture(DepthTexture, uv + vec2(0.0, -texel.y)).r;
+    n.depthDown = texture(DepthTexture, uv + vec2(0.0, texel.y)).r;
+    
+    return n;
+}
+
+float edgeAwareWeight(Neighborhood5 n) {
+    float gradX = abs(n.depthRight - n.depthLeft);
+    float gradY = abs(n.depthDown - n.depthUp);
     float maxGrad = max(gradX, gradY);
-    
-    // Edge = high depth gradient
     float edge = smoothstep(DepthEdgeThreshold, DepthEdgeThreshold * 4.0, maxGrad);
-    
-    // Return interpolation bias: 1.0 = interpolate along edge, 0.0 = standard
     return edge * EdgeAwareStrength;
 }
 
-// Simplified EASU - edge-adaptive spatial upsampling
-vec3 easuSample(vec2 uv, vec2 texel) {
-    // 5-tap cross pattern for edge direction
-    vec3 c = texture(TemporalColor, uv).rgb;
-    vec3 l = texture(TemporalColor, uv + vec2(-texel.x, 0.0)).rgb;
-    vec3 r = texture(TemporalColor, uv + vec2(texel.x, 0.0)).rgb;
-    vec3 u = texture(TemporalColor, uv + vec2(0.0, -texel.y)).rgb;
-    vec3 d = texture(TemporalColor, uv + vec2(0.0, texel.y)).rgb;
-    
-    float lC = luma(c);
-    float lL = luma(l);
-    float lR = luma(r);
-    float lU = luma(u);
-    float lD = luma(d);
-    
+vec3 easuSample(Neighborhood5 n, vec2 texel) {
     // Edge directions
-    float horz = abs(lL - lR);
-    float vert = abs(lU - lD);
+    float horz = abs(n.lumaLeft - n.lumaRight);
+    float vert = abs(n.lumaUp - n.lumaDown);
     
     // Interpolation weights based on edge direction
     float wH = 1.0 / max(horz, 0.001);
@@ -73,74 +86,58 @@ vec3 easuSample(vec2 uv, vec2 texel) {
     wV /= sumW;
     
     // Edge-aware weight
-    float ew = edgeAwareWeight(uv, texel);
+    float ew = edgeAwareWeight(n);
     
     // Blend horizontal/vertical based on edge direction
-    vec3 result = wH * (l + r) * 0.5 + wV * (u + d) * 0.5;
+    vec3 result = wH * (n.left + n.right) * 0.5 + wV * (n.up + n.down) * 0.5;
     
     // Apply edge-aware bias
-    result = mix(result, c, ew);
+    result = mix(result, n.center, ew);
     
     return result;
 }
 
-// CAS (Contrast Adaptive Sharpening) - simplified from AMD FidelityFX
-vec3 casSharpen(vec2 uv, vec2 texel, vec3 color) {
-    if (Sharpness <= 0.0) return color;
+vec3 casSharpen(Neighborhood5 n) {
+    if (Sharpness <= 0.0) return n.center;
     
-    // 5-tap luma
-    float lC = luma(color);
-    float lL = luma(texture(TemporalColor, uv + vec2(-texel.x, 0.0)).rgb);
-    float lR = luma(texture(TemporalColor, uv + vec2(texel.x, 0.0)).rgb);
-    float lU = luma(texture(TemporalColor, uv + vec2(0.0, -texel.y)).rgb);
-    float lD = luma(texture(TemporalColor, uv + vec2(0.0, texel.y)).rgb);
-    
-    // Local contrast
-    float lMin = min(min(min(lL, lR), min(lU, lD)), lC);
-    float lMax = max(max(max(lL, lR), max(lU, lD)), lC);
+    // Local contrast (reuse luma values from neighborhood)
+    float lMin = min(min(min(n.lumaLeft, n.lumaRight), min(n.lumaUp, n.lumaDown)), n.lumaCenter);
+    float lMax = max(max(max(n.lumaLeft, n.lumaRight), max(n.lumaUp, n.lumaDown)), n.lumaCenter);
     float contrast = lMax - lMin;
     
     // Edge detection
-    float edgeH = abs(lL - lR);
-    float edgeV = abs(lU - lD);
+    float edgeH = abs(n.lumaLeft - n.lumaRight);
+    float edgeV = abs(n.lumaUp - n.lumaDown);
     float edge = max(edgeH, edgeV);
     
     // Sharpening amount based on contrast and edge
-    float sharp = Sharpness * Sharpness;  // Square for smoother falloff
+    float sharp = Sharpness * Sharpness;
     float amount = sharp * contrast * edge;
     amount = clamp(amount, 0.0, 1.0);
     
-    // Unsharp mask
-    vec3 colorL = texture(TemporalColor, uv + vec2(-texel.x, 0.0)).rgb;
-    vec3 colorR = texture(TemporalColor, uv + vec2(texel.x, 0.0)).rgb;
-    vec3 colorU = texture(TemporalColor, uv + vec2(0.0, -texel.y)).rgb;
-    vec3 colorD = texture(TemporalColor, uv + vec2(0.0, texel.y)).rgb;
-    vec3 blur = (colorL + colorR + colorU + colorD) * 0.25;
-    vec3 sharpened = color + (color - blur) * amount;
+    // Unsharp mask - reuse already-fetched neighbors
+    vec3 blur = (n.left + n.right + n.up + n.down) * 0.25;
+    vec3 sharpened = n.center + (n.center - blur) * amount;
     
-    // Depth-aware: reduce sharpening on depth edges (prevents ringing on geometry edges)
-    float dC = texture(DepthTexture, uv).r;
-    float dL = texture(DepthTexture, uv + vec2(-texel.x, 0.0)).r;
-    float dR = texture(DepthTexture, uv + vec2(texel.x, 0.0)).r;
-    float dU = texture(DepthTexture, uv + vec2(0.0, -texel.y)).r;
-    float dD = texture(DepthTexture, uv + vec2(0.0, texel.y)).r;
-    
-    float depthEdge = max(abs(dL - dR), abs(dU - dD));
+    // Depth-aware: reduce sharpening on depth edges
+    float depthEdge = max(abs(n.depthLeft - n.depthRight), abs(n.depthUp - n.depthDown));
     amount *= 1.0 - smoothstep(0.0, DepthEdgeThreshold * 2.0, depthEdge);
     
-    return mix(color, sharpened, amount);
+    return mix(n.center, sharpened, amount);
 }
 
 void main() {
     vec2 uv = texCoord;
     vec2 texel = 1.0 / InputSize;
     
+    // Fetch shared 5-tap neighborhood once
+    Neighborhood5 n = fetchNeighborhood5(uv, texel);
+    
     // Step 1: EASU upsampling with edge-aware interpolation
-    vec3 color = easuSample(uv, texel);
+    vec3 color = easuSample(n, texel);
     
-    // Step 2: CAS sharpening (depth-aware)
-    color = casSharpen(uv, texel, color);
+    // Step 2: CAS sharpening (depth-aware) - reuses neighborhood data
+    color = casSharpen(n);
     
-    // Output
     fragColor = vec4(color, 1.0);
 }
