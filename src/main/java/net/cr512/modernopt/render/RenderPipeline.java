@@ -8,6 +8,8 @@ import com.mojang.blaze3d.vertex.VertexSorting;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL13C;
 import org.lwjgl.opengl.GL30C;
+import org.lwjgl.opengl.GL42;
+import org.lwjgl.opengl.GL43;
 import net.cr512.modernopt.ModernOPT;
 import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.config.UpscalerType;
@@ -162,6 +164,7 @@ public final class RenderPipeline {
     // Compute shader support (GL 4.3+)
     private static boolean computeAvailable = false;
     private static MotionVectorCollector motionVectorCollector;
+    private static int msrTemporalComputeProgram = 0;
 
     private RenderPipeline() {
     }
@@ -1295,13 +1298,20 @@ public final class RenderPipeline {
         library.msrTemporal.getUniform("HistoryValid").set(msrHistoryValid ? 1.0f : 0.0f);
         library.msrTemporal.getUniform("DepthValid").set(depthTexture != 0 ? 1.0f : 0.0f);
 
-        library.msrTemporal.apply();
-        drawFullscreenQuad();
-        library.msrTemporal.clear();
+        // Dispatch compute shader (GL 4.3+) — replaces fullscreen quad draw
+        // Workgroup size: 8x8 (optimal for iGPU schedulers)
+        int groupsX = (sourceWidth + 7) / 8;
+        int groupsY = (sourceHeight + 7) / 8;
+        org.lwjgl.opengl.GL43.glDispatchCompute(groupsX, groupsY, 1);
 
         // Memory barrier before spatial pass
-        org.lwjgl.opengl.GL42.glMemoryBarrier(org.lwjgl.opengl.GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT |
-                org.lwjgl.opengl.GL42.GL_TEXTURE_FETCH_BARRIER_BIT);
+        // Use numeric values for GL42 constants (LWJGL 3.3.3)
+        int SHADER_IMAGE_ACCESS_BARRIER_BIT = 0x82F4; // GL_SHADER_IMAGE_ACCESS_BARRIER_BIT
+        int TEXTURE_FETCH_BARRIER_BIT = 0x82F6;       // GL_TEXTURE_FETCH_BARRIER_BIT
+        int SHADER_STORAGE_BARRIER_BIT = 0x90C0;      // GL_SHADER_STORAGE_BARRIER_BIT
+        org.lwjgl.opengl.GL42.glMemoryBarrier(SHADER_IMAGE_ACCESS_BARRIER_BIT |
+                TEXTURE_FETCH_BARRIER_BIT |
+                SHADER_STORAGE_BARRIER_BIT);
 
         // Swap ping-pong for spatial pass
         msrHistory.swap();
