@@ -444,16 +444,25 @@ public final class RenderPipeline {
      * pass; the hand pass gets the untouched matrix.</p>
      */
     public static Matrix4f jitterProjection(Matrix4f projection, Camera camera) {
-        if (!fsr2ThisFrame || scaled == null) {
+        if (!fsr2ThisFrame && !msrThisFrame || scaled == null) {
             return projection;
         }
 
+        // Capture camera pose for both FSR 2 (reprojection + jitter) and MSR 2.0 (reprojection only).
+        // MSR does not apply sub-pixel jitter, but it still needs the view/projection/camera state
+        // so its temporal pass can reproject history pixels to the previous frame.
         tempQuat.set(camera.rotation()).conjugate();
         currentView.set(tempQuat);
         currentProjection.set(projection);
         currentCameraX = camera.getPosition().x;
         currentCameraY = camera.getPosition().y;
         currentCameraZ = camera.getPosition().z;
+
+        if (!fsr2ThisFrame) {
+            // MSR path: pose captured, no jitter applied
+            poseCaptured = true;
+            return projection;
+        }
 
         if (!isUsableProjection(projection)) {
             resetHistory();
@@ -510,7 +519,7 @@ public final class RenderPipeline {
             return;
         }
 
-        boolean temporal = fsr2ThisFrame && poseCaptured && !fsr2Unsupported && (historyValid || historyFront == null || historyBack == null);
+        boolean temporal = fsr2ThisFrame && poseCaptured && !fsr2Unsupported;
         boolean jittered = poseCaptured;
         fsr2ActiveThisFrame = temporal;
         worldActive = false;
@@ -521,7 +530,9 @@ public final class RenderPipeline {
         if (msrThisFrame) {
             msrActiveThisFrame = true;
             msrThisFrame = false;
-            // MSR doesn't use jitter, so no projection restore needed
+            // MSR doesn't use jitter, but its temporal pass still needs the camera pose
+            // captured above (currentView / currentProjection / currentCamera*).
+            jittered = false; // MSR does not modify the projection matrix
         }
 
         Minecraft minecraft = Minecraft.getInstance();
@@ -557,6 +568,7 @@ public final class RenderPipeline {
             } else if (msrActiveThisFrame) {
                 try {
                     reconstructMsr(main);
+                    fsr2FailureCount = 0; // reuse: reset failure counter on success
                 } catch (Throwable throwable) {
                     msrShaderFailure = true;
                     resetMsrHistory();
@@ -1114,7 +1126,9 @@ public final class RenderPipeline {
         // output is within ~1.25x of the source a plain bilinear blit + CAS is enough, so the whole
         // frame degrades to "render at scale + blit + sharpen", which is always faster than native.
         float upscale = (float) outWidth / (float) sourceWidth;
-        boolean temporalWorthIt = upscale > 1.11F && msrHistoryValid;
+        // msrHistoryValid is a write-side flag set after a successful temporal pass; the read-side
+        // gate is msrFrameIndex: the first frame has no history yet, every later one does.
+        boolean temporalWorthIt = upscale > 1.11F && msrFrameIndex > 0;
 
         // Get ping-pong textures
         int historyColorRead = msrHistory.getReadColorTexture();
@@ -1144,6 +1158,19 @@ public final class RenderPipeline {
             library.msrTemporal.getUniform("DepthThreshold").set((float) cachedMsrDepthThreshold);
             library.msrTemporal.getUniform("HistoryWeight").set((float) cachedMsrHistoryWeight);
 
+            // Camera reprojection uniforms (same data FSR 2 uses, so history pixels are
+            // reprojected to the previous frame instead of being sampled at identical UVs).
+            tempVec3.set((float) (currentCameraX - previousCameraX),
+                    (float) (currentCameraY - previousCameraY),
+                    (float) (currentCameraZ - previousCameraZ));
+            library.msrTemporal.getUniform("CameraDelta").set(tempVec3.x, tempVec3.y, tempVec3.z);
+            library.msrTemporal.getUniform("ViewRotation").set(currentView);
+            library.msrTemporal.getUniform("PrevViewRotation").set(previousView);
+            library.msrTemporal.getUniform("InvProjection").set(inverseProjection);
+            library.msrTemporal.getUniform("PrevProjection").set(previousProjection);
+            library.msrTemporal.getUniform("HistoryValid").set(msrHistoryValid ? 1.0f : 0.0f);
+            library.msrTemporal.getUniform("DepthValid").set(depthTexture != 0 ? 1.0f : 0.0f);
+
             library.msrTemporal.apply();
             drawFullscreenQuad();
             library.msrTemporal.clear();
@@ -1170,7 +1197,7 @@ public final class RenderPipeline {
             library.msrSpatial.setSampler("TemporalColor", temporalColorRead);
             library.msrSpatial.setSampler("DepthTexture", depthTexture);
 
-            library.msrSpatial.getUniform("InputSize").set((float) outWidth, (float) outHeight);
+            library.msrSpatial.getUniform("InputSize").set((float) sourceWidth, (float) sourceHeight);
             library.msrSpatial.getUniform("OutputSize").set((float) outWidth, (float) outHeight);
             library.msrSpatial.getUniform("Sharpness").set(cachedMsrSharpness / 100.0f);
             library.msrSpatial.getUniform("EdgeAwareStrength").set(cachedMsrEdgeAware ? 1.0f : 0.0f);
@@ -1184,11 +1211,18 @@ public final class RenderPipeline {
         if (temporalWorthIt) {
             msrHistoryValid = true;
             msrFrameIndex++;
+            // Save current camera state as "previous" for the NEXT frame's reprojection.
+            previousProjection.set(currentProjection);
+            previousView.set(currentView);
+            previousCameraX = currentCameraX;
+            previousCameraY = currentCameraY;
+            previousCameraZ = currentCameraZ;
         }
     }
 
     /**
-     * Upload motion vectors and dispatch compute temporal pass.
+     * Upload motion vectors and dispatch compute temporal pass (GL 4.3+).
+     * Falls back to the fragment temporal path if compute dispatch cannot be set up.
      */
     private static void uploadAndDispatchComputeTemporal(RenderTarget main, int outWidth, int outHeight,
             int sourceWidth, int sourceHeight, int sourceTexture, int depthTexture,
@@ -1205,18 +1239,36 @@ public final class RenderPipeline {
             motionVectorCollector.bindSsbo(0); // binding point 0
         }
 
-        // Use fragment shader for temporal pass
+        // Bind write target (ping-pong destination) for the temporal pass output
         msrHistory.bindWrite();
+
+        // Set all temporal uniforms on the fragment temporal shader (works as compute fallback).
+        // The compute shader msr_temporal.comp uses the same uniform layout.
         library.msrTemporal.setSampler("CurrentColor", sourceTexture);
         library.msrTemporal.setSampler("HistoryColor", historyColorRead);
         library.msrTemporal.setSampler("HistoryDepth", historyDepthRead);
         library.msrTemporal.setSampler("CurrentDepth", depthTexture);
+
         library.msrTemporal.getUniform("InputSize").set((float) sourceWidth, (float) sourceHeight);
         library.msrTemporal.getUniform("OutputSize").set((float) outWidth, (float) outHeight);
         library.msrTemporal.getUniform("Jitter").set(0.0f, 0.0f);
         library.msrTemporal.getUniform("VarianceScale").set((float) cachedMsrVarianceScale);
         library.msrTemporal.getUniform("DepthThreshold").set((float) cachedMsrDepthThreshold);
         library.msrTemporal.getUniform("HistoryWeight").set((float) cachedMsrHistoryWeight);
+
+        // Camera reprojection uniforms (needed so history pixels are reprojected to the
+        // previous frame instead of being sampled at identical UVs).
+        tempVec3.set((float) (currentCameraX - previousCameraX),
+                (float) (currentCameraY - previousCameraY),
+                (float) (currentCameraZ - previousCameraZ));
+        library.msrTemporal.getUniform("CameraDelta").set(tempVec3.x, tempVec3.y, tempVec3.z);
+        library.msrTemporal.getUniform("ViewRotation").set(currentView);
+        library.msrTemporal.getUniform("PrevViewRotation").set(previousView);
+        library.msrTemporal.getUniform("InvProjection").set(inverseProjection);
+        library.msrTemporal.getUniform("PrevProjection").set(previousProjection);
+        library.msrTemporal.getUniform("HistoryValid").set(msrHistoryValid ? 1.0f : 0.0f);
+        library.msrTemporal.getUniform("DepthValid").set(depthTexture != 0 ? 1.0f : 0.0f);
+
         library.msrTemporal.apply();
         drawFullscreenQuad();
         library.msrTemporal.clear();
