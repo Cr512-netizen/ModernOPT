@@ -36,10 +36,16 @@ public final class ShaderLibrary {
     public final ShaderInstance blit;
     /** {@code null} means this driver/program failed to link; FSR 2 then falls back to FSR 1. */
     public final ShaderInstance temporal;
+    
+    // MSR 2.0 shaders
+    public final ShaderInstance msrTemporal;
+    public final ShaderInstance msrSpatial;
+    public final ShaderInstance msrBlit;
 
     private ShaderLibrary(ShaderInstance bilinear, ShaderInstance nearest, ShaderInstance soft,
                           ShaderInstance box, ShaderInstance fxaa, ShaderInstance easu, ShaderInstance rcas,
-                          ShaderInstance blit, ShaderInstance temporal) {
+                          ShaderInstance blit, ShaderInstance temporal,
+                          ShaderInstance msrTemporal, ShaderInstance msrSpatial, ShaderInstance msrBlit) {
         this.bilinear = bilinear;
         this.nearest = nearest;
         this.soft = soft;
@@ -49,6 +55,9 @@ public final class ShaderLibrary {
         this.rcas = rcas;
         this.blit = blit;
         this.temporal = temporal;
+        this.msrTemporal = msrTemporal;
+        this.msrSpatial = msrSpatial;
+        this.msrBlit = msrBlit;
     }
 
     public static ShaderLibrary load(ResourceProvider resources) throws IOException {
@@ -60,6 +69,20 @@ public final class ShaderLibrary {
             ModernOPT.LOG.error("[ModernOPT] FSR 2 temporal shader failed to compile, FSR 2 will use the FSR 1 path",
                     throwable);
         }
+        
+        // MSR 2.0 shaders
+        ShaderInstance msrTemporal = null;
+        ShaderInstance msrSpatial = null;
+        ShaderInstance msrBlit = null;
+        try {
+            msrTemporal = create(resources, "msr_temporal");
+            msrSpatial = create(resources, "msr_spatial");
+            msrBlit = create(resources, "blit");
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.error("[ModernOPT] MSR 2.0 shaders failed to compile, MSR will be unavailable",
+                    throwable);
+        }
+        
         return new ShaderLibrary(
                 create(resources, "bilinear"),
                 create(resources, "nearest"),
@@ -69,7 +92,10 @@ public final class ShaderLibrary {
                 create(resources, "easu"),
                 create(resources, "rcas"),
                 create(resources, "blit"),
-                temporal);
+                temporal,
+                msrTemporal,
+                msrSpatial,
+                msrBlit);
     }
 
     private static ShaderInstance create(ResourceProvider resources, String name) throws IOException {
@@ -89,11 +115,25 @@ public final class ShaderLibrary {
         if (this.temporal != null) {
             this.temporal.close();
         }
+        if (this.msrTemporal != null) {
+            this.msrTemporal.close();
+        }
+        if (this.msrSpatial != null) {
+            this.msrSpatial.close();
+        }
+        if (this.msrBlit != null) {
+            this.msrBlit.close();
+        }
     }
 
     /** True when the temporal accumulation pass is available. */
     public boolean hasTemporal() {
         return isProgram(this.temporal);
+    }
+
+    /** True when MSR 2.0 shaders are available. */
+    public boolean hasMsr() {
+        return isProgram(this.msrTemporal) && isProgram(this.msrSpatial) && isProgram(this.msrBlit);
     }
 
     /**
