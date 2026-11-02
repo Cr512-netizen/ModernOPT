@@ -2,6 +2,7 @@
 
 // MSR 2.0 Compute Temporal Pass - Variance Clipping
 // Runs on GL 4.3+ hardware. Falls back to fragment shader on older hardware.
+// Reads entity motion vectors from SSBO for accurate per-entity reprojection.
 
 #extension GL_ARB_shader_storage_buffer_object : enable
 #extension GL_ARB_compute_shader : enable
@@ -19,6 +20,26 @@ uniform vec2 Jitter;              // Current frame jitter
 uniform float VarianceScale;      // Variance clipping threshold multiplier
 uniform float DepthThreshold;     // Depth difference threshold
 uniform float HistoryWeight;      // Base history blend weight
+uniform vec3 CameraDelta;         // current camera pos - previous camera pos, world axes
+uniform mat4 ViewRotation;        // current view rotation
+uniform mat4 PrevViewRotation;    // previous view rotation
+uniform mat4 InvProjection;       // inverse of unjittered current projection
+uniform mat4 PrevProjection;      // unjittered previous projection
+uniform float HistoryValid;       // 1.0 when history contains a valid frame
+uniform float DepthValid;         // 1.0 when a correct scene depth is available
+
+// SSBO: entity motion vectors (binding point 0)
+struct EntityMotion {
+    int entityId;
+    float screenX;
+    float screenY;
+    float deltaX;
+    float deltaY;
+    float active;
+};
+layout(std430, binding = 0) readonly buffer EntityMotionBuffer {
+    EntityMotion motions[];
+};
 
 // Output: write directly to history color/depth textures (image load/store)
 layout(rgba32f, binding = 0) uniform image2D HistoryColorOut;
@@ -44,6 +65,22 @@ float unpackDepth(uint packed) {
 
 uint packDepth(float depth) {
     return uint(clamp(depth * 65535.0, 0.0, 65535.0));
+}
+
+// Find entity motion vector for a given screen position (nearest entity within radius)
+vec2 findEntityMotion(vec2 screenUv) {
+    vec2 motion = vec2(0.0);
+    float bestDist = 0.1; // search radius in UV space
+    for (int i = 0; i < motions.length() && i < 1024; i++) {
+        if (motions[i].active < 0.5) continue;
+        vec2 entityPos = vec2(motions[i].screenX, motions[i].screenY);
+        float dist = distance(screenUv, entityPos);
+        if (dist < bestDist) {
+            bestDist = dist;
+            motion = vec2(motions[i].deltaX, motions[i].deltaY);
+        }
+    }
+    return motion;
 }
 
 // 3x3 neighbourhood variance in YCoCg space
@@ -79,20 +116,68 @@ void main() {
     currentUv = clamp(currentUv, vec2(0.0), vec2(1.0));
 
     vec3 currentColor = texture(CurrentColor, currentUv).rgb;
-    uint currentDepthPacked = texture(CurrentDepth, currentUv).r * 65535.0;
+    uint currentDepthPacked = uint(texture(CurrentDepth, currentUv).r * 65535.0);
     float currentDepth = unpackDepth(currentDepthPacked);
 
-    vec3 historyColor = texture(HistoryColor, uv).rgb;
-    uint historyDepthPacked = texture(HistoryDepth, uv).r * 65535.0;
-    float historyDepth = unpackDepth(historyDepthPacked);
+    // --- Reproject current pixel to previous frame ---
+    bool valid = HistoryValid > 0.5;
+    bool depthValid = DepthValid > 0.5;
+    vec2 historyUv = uv;
+    float historyDepth = 0.0;
+    vec3 historyColor = vec3(0.0);
 
-    vec3 currentYCoCg = rgbToYCoCg(currentColor);
-    vec3 historyYCoCg = rgbToYCoCg(historyColor);
+    if (valid && depthValid) {
+        vec2 ndc = currentUv * 2.0 - 1.0;
+        vec4 clip = vec4(ndc, currentDepth * 2.0 - 1.0, 1.0);
+        vec4 viewPosition = InvProjection * clip;
 
+        if (abs(viewPosition.w) > 1.0e-6) {
+            viewPosition /= viewPosition.w;
+            vec3 worldRelative = (vec4(viewPosition.xyz, 0.0) * ViewRotation).xyz;
+            bool isSky = currentDepth > 0.9999995;
+            vec3 previousRelative = worldRelative + (isSky ? vec3(0.0) : CameraDelta);
+
+            // Check for entity motion vector override
+            vec2 entityMotion = findEntityMotion(currentUv);
+            if (length(entityMotion) > 0.001) {
+                previousRelative += vec3(entityMotion.x, 0.0, entityMotion.y) * 0.1;
+            }
+
+            vec3 previousView = (PrevViewRotation * vec4(previousRelative, 1.0)).xyz;
+            vec4 previousClip = PrevProjection * vec4(previousView, 1.0);
+
+            if (previousClip.w > 1.0e-6) {
+                vec2 previousNdc = previousClip.xy / previousClip.w;
+                historyUv = previousNdc * 0.5 + 0.5;
+                valid = valid && all(greaterThanEqual(historyUv, vec2(0.0)))
+                                && all(lessThanEqual(historyUv, vec2(1.0)));
+            } else {
+                valid = false;
+            }
+        } else {
+            valid = false;
+        }
+    } else {
+        valid = false;
+    }
+
+    if (valid) {
+        historyColor = texture(HistoryColor, historyUv).rgb;
+        historyDepth = unpackDepth(uint(texture(HistoryDepth, historyUv).r * 65535.0));
+
+        float tolerance = max(DepthThreshold * currentDepth * currentDepth, 0.02);
+        valid = abs(historyDepth - currentDepth) <= tolerance;
+    }
+
+    // Compute local variance in 3x3 neighbourhood
     vec2 texel = 1.0 / InputSize;
     vec3 meanYCoCg, varianceYCoCg;
     computeVariance(uv, texel, meanYCoCg, varianceYCoCg);
 
+    vec3 currentYCoCg = rgbToYCoCg(currentColor);
+    vec3 historyYCoCg = rgbToYCoCg(historyColor);
+
+    // Variance clipping: reject history if outside confidence interval
     vec3 stdDev = sqrt(max(vec3(0.0), varianceYCoCg));
     vec3 lowerBound = meanYCoCg - VarianceScale * stdDev;
     vec3 upperBound = meanYCoCg + VarianceScale * stdDev;
@@ -100,14 +185,11 @@ void main() {
     bool withinVariance = all(greaterThanEqual(historyYCoCg, lowerBound)) &&
                           all(lessThanEqual(historyYCoCg, upperBound));
 
-    float depthDiff = abs(historyDepth - currentDepth);
-    bool depthOk = depthDiff < DepthThreshold;
-
     float maxVariance = max(max(varianceYCoCg.x, varianceYCoCg.y), varianceYCoCg.z);
     bool isStatic = maxVariance < 0.001;
 
     float historyBlend = HistoryWeight;
-    if (!withinVariance || !depthOk) {
+    if (!valid || !withinVariance) {
         historyBlend = 0.0;
     } else if (isStatic) {
         historyBlend = min(HistoryWeight * 1.5, 0.95);
