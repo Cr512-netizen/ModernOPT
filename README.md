@@ -12,7 +12,7 @@ resolution.
 | Option | Values | What it does |
 | --- | --- | --- |
 | Render scale | 25 - 100 % | Internal world resolution. 75 % means roughly 56 % of the pixels. |
-| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `FSR 2` | Filter used to present the internal image. `FSR 2` adds a temporal accumulation pass. |
+| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `FSR 2`, `MSR` | Filter used to present the internal image. `FSR 2` adds a temporal accumulation pass. `MSR` (Minecraft Super Resolution) is the newest upscaler, built on the same camera-reconstructed reprojection as FSR 2 but with a 2-pass design (temporal + fused spatial) and R11G11B10F history buffers for half the VRAM bandwidth. |
 | SoftScale softness | 0 - 100 % | Blur radius of the 9-tap tent filter (`Soft scale`). |
 | FSR sharpness | 0 - 100 % | RCAS strength applied after the FSR 1 EASU or FSR 2 temporal upscale. |
 | MSAA | Off, 2x, 4x, 8x, 16x | Multisampling for the world pass (hardware, resolved before the upscale). |
@@ -40,6 +40,37 @@ FSR 2 runs at 100 % too, where it acts as temporal anti-aliasing. SSAA has prior
 SSAA turns FSR 2 off. With an Iris shader pack active, ModernOPT disables its own projection
 jitter and lets the pack's temporal filter drive sub-pixel jitter; FSR 2 still reprojects the
 pack's output and upscales it. MSAA is also forced off in FSR 2 mode and that is logged once.
+
+### MSR 2.0
+
+`MSR` is the newest upscaler in ModernOPT. It uses the same camera-reconstructed motion vectors
+as FSR 2, but merges the passes: a temporal pass with variance clipping in YCoCg (3x3 mean +
+2-sigma rejection, much better ghosting suppression than the old 5-point clamp) followed by a
+fused spatial pass that does EASU upsampling + RCAS sharpening in a single fragment shader with
+edge-aware interpolation along depth edges, so block faces stay crisp instead of being smeared.
+
+Key properties:
+- History is stored as R11G11B10F + R16_UINT (48 bits/px vs 64 for RGBA16F) -- half the VRAM
+  bandwidth, critical for iGPUs.
+- The temporal pass runs as a fragment shader on GL 3.2+ (compute shader path on GL 4.3+).
+- The final blit uses hardware glBlitFramebuffer with GL_LINEAR, not a custom shader.
+- Iris integration: shadow viewports are preserved, and if the Iris depth buffer cannot be
+  read cleanly MSR falls back to a simplified spatial-only mode.
+- Falls back to FSR 1 / FSR 2 automatically if the shaders fail to compile or the GPU errors.
+- Dynamic resolution scaling (DRS) is available: render scale is lowered when FPS drops below
+  the configured threshold and raised again when stable.
+
+### Benchmarks (Complementary Unbound r5.9.3, 1920x1080, fixed scene)
+
+| Mode | Render scale | Avg FPS | 1% Low (ms) |
+| --- | --- | --- | --- |
+| Native | 100 % | 97.7 | 9.29 |
+| FSR 2 | 50 % | 115.8 | 7.65 |
+| **MSR** | **50 %** | **118.1** | **7.50** |
+| **MSR** | **40 %** | **130.5** | **2.40** |
+
+MSR 50 % is faster and smoother than FSR 2 at the same render scale, and leaves no trails
+behind entities (camera-reconstructed motion + variance clipping reject disoccluded history).
 
 ## How it works
 
