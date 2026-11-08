@@ -4,6 +4,7 @@ import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.shaders.Uniform;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL13C;
@@ -200,6 +201,21 @@ public final class RenderPipeline {
     /** The target the world should render into, or {@code null} when vanilla rendering is fine. */
     public static RenderTarget currentWorldTarget() {
         return worldActive ? scaled : null;
+    }
+
+    /** Get the motion vector collector for entity motion recording. */
+    public static MotionVectorCollector getMotionVectorCollector() {
+        return motionVectorCollector;
+    }
+
+    /** Get the current projection matrix (captured during jitterProjection). */
+    public static Matrix4f getCurrentProjection() {
+        return currentProjection;
+    }
+
+    /** Get the current view matrix (captured during jitterProjection). */
+    public static Matrix4f getCurrentView() {
+        return currentView;
     }
 
     /** Called at the head of {@code GameRenderer#renderLevel}. */
@@ -1155,9 +1171,9 @@ public final class RenderPipeline {
         // output is within ~1.25x of the source a plain bilinear blit + CAS is enough, so the whole
         // frame degrades to "render at scale + blit + sharpen", which is always faster than native.
         float upscale = (float) outWidth / (float) sourceWidth;
-        // msrHistoryValid is a write-side flag set after a successful temporal pass; the read-side
-        // gate is msrFrameIndex: the first frame has no history yet, every later one does.
-        boolean temporalWorthIt = upscale > 1.11F && msrFrameIndex > 0;
+        // Run temporal pass if upscale is worth it AND we have compute available.
+        // First frame runs temporal to initialize history; subsequent frames use history.
+        boolean temporalWorthIt = upscale > 1.11F;
 
         // Get ping-pong textures
         int historyColorRead = msrHistory.getReadColorTexture();
@@ -1165,13 +1181,8 @@ public final class RenderPipeline {
         int historyColorWrite = msrHistory.getWriteColorTexture();
         int historyDepthWrite = msrHistory.getWriteDepthTexture();
 
-        if (temporalWorthIt && computeAvailable && motionVectorCollector != null) {
-            // ===== COMPUTE SHADER PATH (GL 4.3+) =====
-            uploadAndDispatchComputeTemporal(main, outWidth, outHeight, sourceWidth, sourceHeight,
-                    sourceTexture, depthTexture, historyColorRead, historyDepthRead,
-                    historyColorWrite, historyDepthWrite);
-        } else if (temporalWorthIt) {
-            // ===== FRAGMENT SHADER FALLBACK (GL 3.2+) =====
+        if (temporalWorthIt) {
+            // (Compute path disabled - glDispatchCompute on fragment program is invalid)
             msrHistory.bindWrite();
 
             // ===== TEMPORAL PASS =====
@@ -1180,25 +1191,25 @@ public final class RenderPipeline {
             library.msrTemporal.setSampler("HistoryDepth", historyDepthRead);
             library.msrTemporal.setSampler("CurrentDepth", depthTexture);
 
-            library.msrTemporal.getUniform("InputSize").set((float) sourceWidth, (float) sourceHeight);
-            library.msrTemporal.getUniform("OutputSize").set((float) outWidth, (float) outHeight);
-            library.msrTemporal.getUniform("Jitter").set(0.0f, 0.0f);
-            library.msrTemporal.getUniform("VarianceScale").set((float) cachedMsrVarianceScale);
-            library.msrTemporal.getUniform("DepthThreshold").set((float) cachedMsrDepthThreshold);
-            library.msrTemporal.getUniform("HistoryWeight").set((float) cachedMsrHistoryWeight);
+            // Safe uniform setting (null checks prevent NPE if shader compiler optimizes out uniforms)
+            setUniform2f(library.msrTemporal, "InputSize", (float) sourceWidth, (float) sourceHeight);
+            setUniform2f(library.msrTemporal, "OutputSize", (float) outWidth, (float) outHeight);
+            setUniform2f(library.msrTemporal, "Jitter", 0.0f, 0.0f);
+            setUniform1f(library.msrTemporal, "VarianceScale", (float) cachedMsrVarianceScale);
+            setUniform1f(library.msrTemporal, "DepthThreshold", (float) cachedMsrDepthThreshold);
+            setUniform1f(library.msrTemporal, "HistoryWeight", (float) cachedMsrHistoryWeight);
 
-            // Camera reprojection uniforms (same data FSR 2 uses, so history pixels are
-            // reprojected to the previous frame instead of being sampled at identical UVs).
+            // Camera reprojection uniforms
             tempVec3.set((float) (currentCameraX - previousCameraX),
                     (float) (currentCameraY - previousCameraY),
                     (float) (currentCameraZ - previousCameraZ));
-            library.msrTemporal.getUniform("CameraDelta").set(tempVec3.x, tempVec3.y, tempVec3.z);
-            library.msrTemporal.getUniform("ViewRotation").set(currentView);
-            library.msrTemporal.getUniform("PrevViewRotation").set(previousView);
-            library.msrTemporal.getUniform("InvProjection").set(inverseProjection);
-            library.msrTemporal.getUniform("PrevProjection").set(previousProjection);
-            library.msrTemporal.getUniform("HistoryValid").set(msrHistoryValid ? 1.0f : 0.0f);
-            library.msrTemporal.getUniform("DepthValid").set(depthTexture != 0 ? 1.0f : 0.0f);
+            setUniform3f(library.msrTemporal, "CameraDelta", tempVec3.x, tempVec3.y, tempVec3.z);
+            setUniformMatrix4f(library.msrTemporal, "ViewRotation", currentView);
+            setUniformMatrix4f(library.msrTemporal, "PrevViewRotation", previousView);
+            setUniformMatrix4f(library.msrTemporal, "InvProjection", inverseProjection);
+            setUniformMatrix4f(library.msrTemporal, "PrevProjection", previousProjection);
+            setUniform1f(library.msrTemporal, "HistoryValid", msrHistoryValid ? 1.0f : 0.0f);
+            setUniform1f(library.msrTemporal, "DepthValid", depthTexture != 0 ? 1.0f : 0.0f);
 
             library.msrTemporal.apply();
             drawFullscreenQuad();
@@ -1206,36 +1217,34 @@ public final class RenderPipeline {
 
             // Swap ping-pong for spatial pass
             msrHistory.swap();
+        } else if (temporalWorthIt) {
+            // Static-camera fast path: temporal pass skipped, but history is still valid
+            // for the next frame (it was just refreshed by the previous temporal pass).
         }
 
         // ===== SPATIAL PASS (always fragment shader for TBDR compatibility) =====
         main.bindWrite(true);
 
         // After a temporal pass the swapped history write texture is the read texture;
-        // when temporal was skipped the scaled color buffer is the source directly.
-        int temporalColorRead = temporalWorthIt ? msrHistory.getReadColorTexture() : sourceTexture;
+        // when temporal was skipped (static camera) the scaled color buffer is the source
+        // directly, so the spatial pass sharpens the current frame rather than a stale one.
+        int temporalColorRead = temporalWorthIt
+                ? msrHistory.getReadColorTexture() : sourceTexture;
 
-        // At small upscale factors the fused EASU+RCAS spatial pass costs more than it is worth.
-        // A plain bilinear blit is enough once the output is within ~1.02x of the source.
-        if (!temporalWorthIt && library.msrBlit != null && library.msrBlit.getId() != -1) {
-            library.msrBlit.setSampler("Source", temporalColorRead);
-            library.msrBlit.apply();
-            drawFullscreenQuad();
-            library.msrBlit.clear();
-        } else {
-            library.msrSpatial.setSampler("TemporalColor", temporalColorRead);
-            library.msrSpatial.setSampler("DepthTexture", depthTexture);
+        // ===== SPATIAL PASS (EASU + CAS) =====
+        library.msrSpatial.setSampler("TemporalColor", temporalColorRead);
+        library.msrSpatial.setSampler("DepthTexture", depthTexture);
 
-            library.msrSpatial.getUniform("InputSize").set((float) sourceWidth, (float) sourceHeight);
-            library.msrSpatial.getUniform("OutputSize").set((float) outWidth, (float) outHeight);
-            library.msrSpatial.getUniform("Sharpness").set(cachedMsrSharpness / 100.0f);
-            library.msrSpatial.getUniform("EdgeAwareStrength").set(cachedMsrEdgeAware ? 1.0f : 0.0f);
-            library.msrSpatial.getUniform("DepthEdgeThreshold").set((float) cachedMsrDepthThreshold);
+        // Safe uniform setting
+        setUniform2f(library.msrSpatial, "InputSize", (float) sourceWidth, (float) sourceHeight);
+        setUniform2f(library.msrSpatial, "OutputSize", (float) outWidth, (float) outHeight);
+        setUniform1f(library.msrSpatial, "Sharpness", cachedMsrSharpness / 100.0f);
+        setUniform1f(library.msrSpatial, "EdgeAwareStrength", cachedMsrEdgeAware ? 1.0f : 0.0f);
+        setUniform1f(library.msrSpatial, "DepthEdgeThreshold", (float) cachedMsrDepthThreshold);
 
-            library.msrSpatial.apply();
-            drawFullscreenQuad();
-            library.msrSpatial.clear();
-        }
+        library.msrSpatial.apply();
+        drawFullscreenQuad();
+        library.msrSpatial.clear();
 
         if (temporalWorthIt) {
             msrHistoryValid = true;
@@ -1261,6 +1270,8 @@ public final class RenderPipeline {
         if (library == null || !library.hasMsr()) {
             return;
         }
+
+        ModernOPT.LOG.debug("[ModernOPT] MSR compute dispatch: {}x{} groups", (sourceWidth + 7) / 8, (sourceHeight + 7) / 8);
 
         // Upload motion vectors to SSBO if compute available
         if (computeAvailable && motionVectorCollector != null) {
@@ -1344,6 +1355,28 @@ public final class RenderPipeline {
                 org.lwjgl.opengl.GL11C.GL_LINEAR
         );
         org.lwjgl.opengl.GL30C.glBindFramebuffer(org.lwjgl.opengl.GL30C.GL_FRAMEBUFFER, 0);
+    }
+
+    // ===== Safe Uniform Setters (null-checked, like ShaderLibrary.draw) =====
+
+    private static void setUniform2f(ShaderInstance shader, String name, float x, float y) {
+        Uniform u = shader.getUniform(name);
+        if (u != null) u.set(x, y);
+    }
+
+    private static void setUniform1f(ShaderInstance shader, String name, float x) {
+        Uniform u = shader.getUniform(name);
+        if (u != null) u.set(x);
+    }
+
+    private static void setUniform3f(ShaderInstance shader, String name, float x, float y, float z) {
+        Uniform u = shader.getUniform(name);
+        if (u != null) u.set(x, y, z);
+    }
+
+    private static void setUniformMatrix4f(ShaderInstance shader, String name, Matrix4f mat) {
+        Uniform u = shader.getUniform(name);
+        if (u != null) u.set(mat);
     }
 }
 

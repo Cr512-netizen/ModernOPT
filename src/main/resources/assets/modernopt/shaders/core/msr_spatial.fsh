@@ -26,6 +26,14 @@ float luma(vec3 c) {
     return dot(c, vec3(0.299, 0.587, 0.114));
 }
 
+// Convert output UV to input UV for sampling
+vec2 uvToInput(vec2 uv) {
+    vec2 ratio = InputSize / OutputSize;
+    vec2 ip = uv * OutputSize;
+    vec2 pp = ip * ratio + 0.5 * ratio - 0.5;
+    return pp;
+}
+
 // Shared 5-tap neighborhood structure, sampled in source space.
 struct Neighborhood5 {
     vec3 center;
@@ -46,12 +54,16 @@ struct Neighborhood5 {
 };
 
 Neighborhood5 fetchNeighborhood5(vec2 uv, vec2 texel) {
+    // Convert output UV to input UV for sampling
+    vec2 inputUv = uvToInput(uv);
+    vec2 inputTexel = 1.0 / InputSize;
+    
     Neighborhood5 n;
-    n.center = texture(TemporalColor, uv).rgb;
-    n.left = texture(TemporalColor, uv + vec2(-texel.x, 0.0)).rgb;
-    n.right = texture(TemporalColor, uv + vec2(texel.x, 0.0)).rgb;
-    n.up = texture(TemporalColor, uv + vec2(0.0, -texel.y)).rgb;
-    n.down = texture(TemporalColor, uv + vec2(0.0, texel.y)).rgb;
+    n.center = texture(TemporalColor, inputUv).rgb;
+    n.left = texture(TemporalColor, inputUv + vec2(-inputTexel.x, 0.0)).rgb;
+    n.right = texture(TemporalColor, inputUv + vec2(inputTexel.x, 0.0)).rgb;
+    n.up = texture(TemporalColor, inputUv + vec2(0.0, -inputTexel.y)).rgb;
+    n.down = texture(TemporalColor, inputUv + vec2(0.0, inputTexel.y)).rgb;
 
     n.lumaCenter = luma(n.center);
     n.lumaLeft = luma(n.left);
@@ -59,11 +71,11 @@ Neighborhood5 fetchNeighborhood5(vec2 uv, vec2 texel) {
     n.lumaUp = luma(n.up);
     n.lumaDown = luma(n.down);
 
-    n.depthCenter = texture(DepthTexture, uv).r;
-    n.depthLeft = texture(DepthTexture, uv + vec2(-texel.x, 0.0)).r;
-    n.depthRight = texture(DepthTexture, uv + vec2(texel.x, 0.0)).r;
-    n.depthUp = texture(DepthTexture, uv + vec2(0.0, -texel.y)).r;
-    n.depthDown = texture(DepthTexture, uv + vec2(0.0, texel.y)).r;
+    n.depthCenter = texture(DepthTexture, inputUv).r;
+    n.depthLeft = texture(DepthTexture, inputUv + vec2(-inputTexel.x, 0.0)).r;
+    n.depthRight = texture(DepthTexture, inputUv + vec2(inputTexel.x, 0.0)).r;
+    n.depthUp = texture(DepthTexture, inputUv + vec2(0.0, -inputTexel.y)).r;
+    n.depthDown = texture(DepthTexture, inputUv + vec2(0.0, inputTexel.y)).r;
 
     return n;
 }
@@ -139,5 +151,8 @@ void main() {
     // Step 2: CAS sharpening of the EASU result (depth-aware).
     color = casSharpen(n, color);
 
+    // Use OutputSize to keep uniform active (prevents NPE in Java)
+    color.r += OutputSize.x * 0.0;
+    color.g += OutputSize.y * 0.0;
     fragColor = vec4(color, 1.0);
 }

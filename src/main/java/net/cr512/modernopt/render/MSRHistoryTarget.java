@@ -115,6 +115,13 @@ public final class MSRHistoryTarget {
     public void bindWrite() {
         int fbo = useA ? fboB : fboA;
         GL30C.glBindFramebuffer(GL30C.GL_FRAMEBUFFER, fbo);
+        // The temporal pass writes BOTH the colour history and the depth history, so both
+        // attachments have to be enabled. Leaving only COLOR_ATTACHMENT0 active means the
+        // depth texture is never updated and the next frame's disocclusion test reads zeros.
+        GL30C.glDrawBuffers(new int[] {
+                GL30C.GL_COLOR_ATTACHMENT0,
+                GL30C.GL_COLOR_ATTACHMENT1
+        });
         GL11C.glViewport(0, 0, width, height);
     }
 

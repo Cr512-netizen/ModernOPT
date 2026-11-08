@@ -18,7 +18,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** Temporary local benchmark: fixed camera, fixed time, frame-time stats per render state. */
+/**
+ * Local benchmark harness: measures frame time per render state.
+ *
+ * <p>The harness never takes control away from the player. It performs a single one-time
+ * placement/look-at when the world first loads and then only observes - no per-tick position,
+ * rotation, movement or screen overrides, no focus stealing and no forced client shutdown.</p>
+ */
 @EventBusSubscriber(modid = ModernOPT.MOD_ID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
 public final class SelfTest {
 
@@ -36,6 +42,8 @@ public final class SelfTest {
     private static int state = -1;
     private static boolean worldLogged;
     private static boolean sampling;
+    private static boolean windowWarned;
+    private static boolean finished;
     private static long lastFrameNanos;
     private static final List<Long> frameTimes = new ArrayList<>(4096);
 
@@ -63,10 +71,10 @@ public final class SelfTest {
             return;
         }
         if (minecraft.getWindow().getWidth() < 1280 || minecraft.getWindow().getHeight() < 720) {
-            if (++smallWindowTicks > 1200) {
-                ModernOPT.LOG.error("[BENCH] window never reached 1280x720 ({}x{}), aborting",
+            if (++smallWindowTicks > 1200 && !windowWarned) {
+                windowWarned = true;
+                ModernOPT.LOG.error("[BENCH] window never reached 1280x720 ({}x{}), benchmark disabled",
                         minecraft.getWindow().getWidth(), minecraft.getWindow().getHeight());
-                minecraft.stop();
             }
             return;
         }
@@ -76,20 +84,11 @@ public final class SelfTest {
             worldLogged = true;
             ticks = 0;
             ModernOPT.LOG.info("[BENCH] world loaded, player at {}", minecraft.player.position());
+            steerOnce(minecraft);
             logIrisTargets();
         }
 
         ticks++;
-        minecraft.level.setDayTime(1000L);
-        minecraft.player.setPos(300.5, 63.0, 300.5);
-        minecraft.player.setYRot(90.0F);
-        minecraft.player.setXRot(0.0F);
-        minecraft.player.setDeltaMovement(0.0, 0.0, 0.0);
-        minecraft.options.pauseOnLostFocus = false;
-        if (minecraft.screen != null) {
-            minecraft.setScreen(null);
-        }
-
         int elapsed = ticks - START_TICK;
         if (elapsed < 0) {
             return;
@@ -97,8 +96,12 @@ public final class SelfTest {
 
         int index = elapsed / STATE_TICKS;
         if (index >= STATES.length) {
-            ModernOPT.LOG.info("[BENCH] complete, stopping client");
-            minecraft.stop();
+            // Benchmark is done - hand the client back to the player instead of shutting it down.
+            sampling = false;
+            if (!finished) {
+                finished = true;
+                ModernOPT.LOG.info("[BENCH] complete, client stays under player control");
+            }
             return;
         }
 
@@ -127,6 +130,24 @@ public final class SelfTest {
         } else if (offset == STATE_TICKS - 1) {
             sampling = false;
             logStats(STATES[state]);
+        }
+    }
+
+    /**
+     * One-time startup steering: puts the player on the benchmark spot and points the camera
+     * at it exactly once. After this call the player owns the camera, movement and UI entirely.
+     */
+    private static void steerOnce(Minecraft minecraft) {
+        try {
+            minecraft.level.setDayTime(1000L);
+            minecraft.player.setPos(300.5, 320.0, 300.5);
+            minecraft.player.setYRot(90.0F);
+            minecraft.player.setXRot(0.0F);
+            minecraft.player.setDeltaMovement(0.0, 0.0, 0.0);
+            ModernOPT.LOG.info("[BENCH] startup steering done at {} - player now has full control",
+                    minecraft.player.position());
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.warn("[BENCH] startup steering skipped: {}", throwable.toString());
         }
     }
 
