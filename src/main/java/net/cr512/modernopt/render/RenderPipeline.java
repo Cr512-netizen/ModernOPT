@@ -165,7 +165,8 @@ public final class RenderPipeline {
     // Compute shader support (GL 4.3+)
     private static boolean computeAvailable = false;
     private static MotionVectorCollector motionVectorCollector;
-    private static int msrTemporalComputeProgram = 0;
+    private static MsrTemporalCompute msrComputeProgram;
+    private static boolean msrComputeFailed;
 
     private RenderPipeline() {
     }
@@ -222,6 +223,8 @@ public final class RenderPipeline {
     public static void beginWorldFrame() {
         worldActive = false;
         fsr2ThisFrame = false;
+        msrThisFrame = false;
+        msrActiveThisFrame = false;
         poseCaptured = false;
 
         Minecraft minecraft = Minecraft.getInstance();
@@ -255,6 +258,7 @@ public final class RenderPipeline {
         if (minecraft.level != lastLevel) {
             lastLevel = minecraft.level;
             resetHistory();
+            resetMsrHistory();
             lastUpscaler = null;
         }
 
@@ -264,6 +268,7 @@ public final class RenderPipeline {
         if (iris != lastIris) {
             lastIris = iris;
             resetHistory();
+            resetMsrHistory();
         }
         boolean fsr2Wanted = requested == UpscalerType.FSR2 && !cachedSsaa;
         if (requested == UpscalerType.FSR2 && iris && !loggedFsr2Iris) {
@@ -344,13 +349,8 @@ public final class RenderPipeline {
             return;
         }
 
-        // Initialize MSR history targets if needed
-        if (cachedMsrEnabled) {
-            ensureMsrHistoryTargets(size[0], size[1]);
-            msrThisFrame = true;
-            fsr2Wanted = false;
-        }
-
+        // Reset temporal history before allocating/reallocating the MSR targets. Resetting after
+        // ensureMsrHistoryTargets() would destroy the freshly created ping-pong pair.
         boolean settingsChanged = requested != lastUpscaler
                 || cachedRenderScale != lastUpscalerPercent
                 || cachedSsaa != lastUpscalerSsaa;
@@ -359,6 +359,17 @@ public final class RenderPipeline {
             resetHistory();
         } else if (settingsChanged) {
             resetHistory();
+        }
+        if (settingsChanged) {
+            // MSR history must not survive a scale or upscaler change either.
+            resetMsrHistory();
+        }
+
+        // Initialize MSR history targets if needed
+        if (cachedMsrEnabled) {
+            ensureMsrHistoryTargets(size[0], size[1]);
+            msrThisFrame = true;
+            fsr2Wanted = false;
         }
 
         scaled.setLinearFilter(requested != UpscalerType.NEAREST);
@@ -543,12 +554,16 @@ public final class RenderPipeline {
     }
 
     /**
-     * Called right before the vanilla hand pass. FSR 2 has to finish here: the hand pass clears
-     * the depth buffer, which the temporal pass still needs, and the hand itself should stay at
-     * native resolution.
+     * Called right before the vanilla hand pass. Both temporal upscalers have to finish here:
+     * the hand pass clears the depth buffer, which the temporal pass still needs, and the hand
+     * itself should stay at native resolution. Previously only FSR 2 stopped here; MSR ran
+     * after the hand and therefore read an already-cleared (all-sky) depth buffer.
      */
     public static void finishBeforeHand() {
-        if (!worldActive || scaled == null || !fsr2ThisFrame) {
+        if (!worldActive || scaled == null) {
+            return;
+        }
+        if (!fsr2ThisFrame && !msrThisFrame) {
             return;
         }
         finishWorldFrame();
@@ -616,9 +631,16 @@ public final class RenderPipeline {
                     fsr2FailureCount = 0; // reuse: reset failure counter on success
                 } catch (Throwable throwable) {
                     msrShaderFailure = true;
+                    // Never leave the MSR history FBO / compute program / image units bound:
+                    // the FSR 1 fallback below must draw into the real main target.
+                    releaseMsrState(main);
                     resetMsrHistory();
                     ModernOPT.LOG.error("[ModernOPT] MSR 2.0 pass failed, falling back to FSR 1", throwable);
-                    reconstructSpatial(main);
+                    try {
+                        reconstructSpatial(main);
+                    } catch (Throwable fallbackFailure) {
+                        ModernOPT.LOG.error("[ModernOPT] FSR 1 fallback after MSR failure also failed", fallbackFailure);
+                    }
                 }
                 msrActiveThisFrame = false;
             } else {
@@ -962,6 +984,7 @@ public final class RenderPipeline {
             }
             shaders = null;
         }
+        destroyMsrCompute();
 
         if (!(minecraft.getResourceManager() instanceof ResourceProvider resources)) {
             shaderFailure = true;
@@ -971,6 +994,7 @@ public final class RenderPipeline {
 
         try {
             shaders = ShaderLibrary.load(resources);
+            loadMsrCompute(resources);
             resetHistory();
             ModernOPT.LOG.info("[ModernOPT] upscaler shaders compiled");
             return true;
@@ -978,6 +1002,40 @@ public final class RenderPipeline {
             shaderFailure = true;
             ModernOPT.LOG.error("[ModernOPT] upscaler shaders failed to compile, render scaling disabled", throwable);
             return false;
+        }
+    }
+
+    /**
+     * Compiles the GL 4.3 compute temporal program. Failure is not fatal: the fragment
+     * temporal shader stays available as a fallback (and that fallback is also used when the
+     * driver reports GL < 4.3).
+     */
+    private static void loadMsrCompute(ResourceProvider resources) {
+        if (!computeAvailable) {
+            msrComputeProgram = null;
+            msrComputeFailed = false;
+            return;
+        }
+        msrComputeFailed = false;
+        try {
+            msrComputeProgram = MsrTemporalCompute.load(resources);
+            ModernOPT.LOG.info("[ModernOPT] MSR: GL 4.3 compute temporal shader compiled");
+        } catch (Throwable throwable) {
+            msrComputeProgram = null;
+            msrComputeFailed = true;
+            ModernOPT.LOG.warn("[ModernOPT] MSR: compute temporal unavailable, using the fragment fallback",
+                    throwable);
+        }
+    }
+
+    private static void destroyMsrCompute() {
+        if (msrComputeProgram != null) {
+            try {
+                msrComputeProgram.delete();
+            } catch (Throwable ignored) {
+                // context may already be gone during shutdown
+            }
+            msrComputeProgram = null;
         }
     }
 
@@ -1112,6 +1170,8 @@ public final class RenderPipeline {
         msrShaderFailure = false;
         msrHistoryValid = false;
         msrFrameIndex = 0;
+        destroyMsrCompute();
+        msrComputeFailed = false;
         if (msrHistory != null) {
             msrHistory.destroy();
             msrHistory = null;
@@ -1123,6 +1183,11 @@ public final class RenderPipeline {
     private static void resetMsrHistory() {
         msrHistoryValid = false;
         msrFrameIndex = 0;
+        if (computeAvailable) {
+            // A destroyed/invalidated history texture must not stay attached to image units.
+            MsrTemporalCompute.unbindImage(0, GL30C.GL_R11F_G11F_B10F);
+            MsrTemporalCompute.unbindImage(1, GL30C.GL_R16UI);
+        }
         if (msrHistory != null) {
             msrHistory.destroy();
             msrHistory = null;
@@ -1159,6 +1224,11 @@ public final class RenderPipeline {
         if (msrHistory == null) {
             throw new IllegalStateException("MSR history targets not allocated");
         }
+        if (msrHistory.getWidth() != scaled.width || msrHistory.getHeight() != scaled.height) {
+            // A resize slipped through beginWorldFrame (Alt+Enter, F11, window drag): recreate
+            // before anything samples a stale ping-pong pair.
+            ensureMsrHistoryTargets(scaled.width, scaled.height);
+        }
 
         int outWidth = main.width;
         int outHeight = main.height;
@@ -1167,89 +1237,80 @@ public final class RenderPipeline {
         int sourceTexture = scaled.getColorTextureId();
         int depthTexture = scaled.getDepthTextureId();
 
-        // At small upscale factors the temporal pass costs more than it is worth: once the
-        // output is within ~1.25x of the source a plain bilinear blit + CAS is enough, so the whole
-        // frame degrades to "render at scale + blit + sharpen", which is always faster than native.
-        float upscale = (float) outWidth / (float) sourceWidth;
-        // Run temporal pass if upscale is worth it AND we have compute available.
-        // First frame runs temporal to initialize history; subsequent frames use history.
-        boolean temporalWorthIt = upscale > 1.11F;
-
-        // Get ping-pong textures
-        int historyColorRead = msrHistory.getReadColorTexture();
-        int historyDepthRead = msrHistory.getReadDepthTexture();
-        int historyColorWrite = msrHistory.getWriteColorTexture();
-        int historyDepthWrite = msrHistory.getWriteDepthTexture();
-
-        if (temporalWorthIt) {
-            // (Compute path disabled - glDispatchCompute on fragment program is invalid)
-            msrHistory.bindWrite();
-
-            // ===== TEMPORAL PASS =====
-            library.msrTemporal.setSampler("CurrentColor", sourceTexture);
-            library.msrTemporal.setSampler("HistoryColor", historyColorRead);
-            library.msrTemporal.setSampler("HistoryDepth", historyDepthRead);
-            library.msrTemporal.setSampler("CurrentDepth", depthTexture);
-
-            // Safe uniform setting (null checks prevent NPE if shader compiler optimizes out uniforms)
-            setUniform2f(library.msrTemporal, "InputSize", (float) sourceWidth, (float) sourceHeight);
-            setUniform2f(library.msrTemporal, "OutputSize", (float) outWidth, (float) outHeight);
-            setUniform2f(library.msrTemporal, "Jitter", 0.0f, 0.0f);
-            setUniform1f(library.msrTemporal, "VarianceScale", (float) cachedMsrVarianceScale);
-            setUniform1f(library.msrTemporal, "DepthThreshold", (float) cachedMsrDepthThreshold);
-            setUniform1f(library.msrTemporal, "HistoryWeight", (float) cachedMsrHistoryWeight);
-
-            // Camera reprojection uniforms
-            tempVec3.set((float) (currentCameraX - previousCameraX),
-                    (float) (currentCameraY - previousCameraY),
-                    (float) (currentCameraZ - previousCameraZ));
-            setUniform3f(library.msrTemporal, "CameraDelta", tempVec3.x, tempVec3.y, tempVec3.z);
-            setUniformMatrix4f(library.msrTemporal, "ViewRotation", currentView);
-            setUniformMatrix4f(library.msrTemporal, "PrevViewRotation", previousView);
-            setUniformMatrix4f(library.msrTemporal, "InvProjection", inverseProjection);
-            setUniformMatrix4f(library.msrTemporal, "PrevProjection", previousProjection);
-            setUniform1f(library.msrTemporal, "HistoryValid", msrHistoryValid ? 1.0f : 0.0f);
-            setUniform1f(library.msrTemporal, "DepthValid", depthTexture != 0 ? 1.0f : 0.0f);
-
-            library.msrTemporal.apply();
-            drawFullscreenQuad();
-            library.msrTemporal.clear();
-
-            // Swap ping-pong for spatial pass
-            msrHistory.swap();
-        } else if (temporalWorthIt) {
-            // Static-camera fast path: temporal pass skipped, but history is still valid
-            // for the next frame (it was just refreshed by the previous temporal pass).
+        // MSR never runs reconstructFsr2(), which is where the shared inverse projection is
+        // normally built. Compute it here, otherwise reprojection silently uses a stale
+        // matrix (identity on the first frame) and the history is sampled at wrong UVs.
+        // On the very first world frame the projection may not have been captured yet; that
+        // must not kill the whole MSR pass (it used to throw and fall back to FSR 1 forever).
+        currentProjection.invert(inverseProjection);
+        if (!inverseProjection.isFinite()) {
+            inverseProjection.identity();
+            msrHistoryValid = false;
         }
 
-        // ===== SPATIAL PASS (always fragment shader for TBDR compatibility) =====
-        main.bindWrite(true);
+        // Iris owns the scene depth buffer. It is at source resolution (the whole Iris pipeline
+        // is sized from the redirected main target), so it can be sampled with input UVs.
+        if (irisThisFrame) {
+            int irisDepth = IrisCompat.depthTextureId();
+            if (irisDepth > 0) {
+                depthTexture = irisDepth;
+            }
+        }
 
-        // After a temporal pass the swapped history write texture is the read texture;
-        // when temporal was skipped (static camera) the scaled color buffer is the source
-        // directly, so the spatial pass sharpens the current frame rather than a stale one.
-        int temporalColorRead = temporalWorthIt
-                ? msrHistory.getReadColorTexture() : sourceTexture;
+        // Below ~1.11x the temporal pass costs more than it saves: a plain sharpened blit is
+        // both faster and artefact-free. The first frame still runs temporal to initialise the
+        // history because this decision depends only on the current scale, not on history.
+        float upscale = (float) outWidth / (float) sourceWidth;
+        boolean temporalWorthIt = upscale > 1.11F;
+        boolean useCompute = temporalWorthIt && computeAvailable
+                && msrComputeProgram != null && motionVectorCollector != null;
 
-        // ===== SPATIAL PASS (EASU + CAS) =====
-        library.msrSpatial.setSampler("TemporalColor", temporalColorRead);
-        library.msrSpatial.setSampler("DepthTexture", depthTexture);
+        if (temporalWorthIt) {
+            if (useCompute) {
+                runComputeTemporal(sourceWidth, sourceHeight, outWidth, outHeight,
+                        sourceTexture, depthTexture);
+            } else {
+                runFragmentTemporal(library, sourceWidth, sourceHeight, outWidth, outHeight,
+                        sourceTexture, depthTexture);
+            }
+            // The just-written ping-pong side becomes the read side for the spatial pass.
+            msrHistory.swap();
+        }
 
-        // Safe uniform setting
-        setUniform2f(library.msrSpatial, "InputSize", (float) sourceWidth, (float) sourceHeight);
-        setUniform2f(library.msrSpatial, "OutputSize", (float) outWidth, (float) outHeight);
-        setUniform1f(library.msrSpatial, "Sharpness", cachedMsrSharpness / 100.0f);
-        setUniform1f(library.msrSpatial, "EdgeAwareStrength", cachedMsrEdgeAware ? 1.0f : 0.0f);
-        setUniform1f(library.msrSpatial, "DepthEdgeThreshold", (float) cachedMsrDepthThreshold);
+        int temporalColor = temporalWorthIt ? msrHistory.getReadColorTexture() : sourceTexture;
 
-        library.msrSpatial.apply();
-        drawFullscreenQuad();
-        library.msrSpatial.clear();
+        // ===== SPATIAL PASS (EASU + CAS) - always a fragment shader =====
+        ShaderLibrary.beginPassState();
+        try {
+            // The final pass writes the real main target, so alpha must be written as well;
+            // beginPassState() disables alpha writes for the history passes.
+            GlStateManager._colorMask(true, true, true, true);
+
+            // Native resolution viewport and the real game framebuffer. main.bindWrite() goes
+            // through GlStateManager, which now agrees with the FBO actually bound because
+            // MSRHistoryTarget also uses GlStateManager.
+            main.bindWrite(true);
+
+            library.msrSpatial.setSampler("TemporalColor", temporalColor);
+            library.msrSpatial.setSampler("DepthTexture", depthTexture);
+
+            setUniform2f(library.msrSpatial, "InputSize", (float) sourceWidth, (float) sourceHeight);
+            setUniform1f(library.msrSpatial, "Sharpness", cachedMsrSharpness / 100.0F);
+            setUniform1f(library.msrSpatial, "EdgeAwareStrength", cachedMsrEdgeAware ? 1.0F : 0.0F);
+            setUniform1f(library.msrSpatial, "DepthEdgeThreshold", (float) cachedMsrDepthThreshold);
+
+            library.msrSpatial.apply();
+            drawFullscreenQuad();
+            library.msrSpatial.clear();
+        } finally {
+            ShaderLibrary.endPassState();
+            main.bindWrite(true);
+        }
 
         if (temporalWorthIt) {
             msrHistoryValid = true;
             msrFrameIndex++;
-            // Save current camera state as "previous" for the NEXT frame's reprojection.
+            // Save the current camera pose for the next frame's reprojection.
             previousProjection.set(currentProjection);
             previousView.set(currentView);
             previousCameraX = currentCameraX;
@@ -1259,73 +1320,153 @@ public final class RenderPipeline {
     }
 
     /**
-     * Upload motion vectors and dispatch compute temporal pass (GL 4.3+).
-     * Falls back to the fragment temporal path if compute dispatch cannot be set up.
+     * GL 4.3 compute temporal pass.
+     *
+     * <p>Order is mandatory: upload/bind the SSBO, bind every input texture to an explicit
+     * unit and pass that unit to the program, bind the write FBO and the two image units, then
+     * dispatch an 8x8 workgroup grid and issue a memory barrier before anyone samples the
+     * result.</p>
      */
-    private static void uploadAndDispatchComputeTemporal(RenderTarget main, int outWidth, int outHeight,
-            int sourceWidth, int sourceHeight, int sourceTexture, int depthTexture,
-            int historyColorRead, int historyDepthRead, int historyColorWrite, int historyDepthWrite) {
-
-        ShaderLibrary library = shaders;
-        if (library == null || !library.hasMsr()) {
-            return;
+    private static void runComputeTemporal(int sourceWidth, int sourceHeight,
+            int outWidth, int outHeight, int sourceTexture, int depthTexture) {
+        MsrTemporalCompute compute = msrComputeProgram;
+        if (compute == null) {
+            throw new IllegalStateException("MSR compute program is not loaded");
         }
 
-        ModernOPT.LOG.debug("[ModernOPT] MSR compute dispatch: {}x{} groups", (sourceWidth + 7) / 8, (sourceHeight + 7) / 8);
+        int historyColorRead = msrHistory.getReadColorTexture();
+        int historyDepthRead = msrHistory.getReadDepthTexture();
+        int historyColorWrite = msrHistory.getWriteColorTexture();
+        int historyDepthWrite = msrHistory.getWriteDepthTexture();
 
-        // Upload motion vectors to SSBO if compute available
-        if (computeAvailable && motionVectorCollector != null) {
-            motionVectorCollector.uploadToSsbo();
-            motionVectorCollector.bindSsbo(0); // binding point 0
+        int previousActive = GlStateManager._getActiveTexture();
+        try {
+            // Explicit texture units: the compute program's sampler uniforms are set to these
+            // exact indices below, so it can never read a default/unbound unit.
+            bindTextureUnit(GL13C.GL_TEXTURE0 + 4, sourceTexture);
+            bindTextureUnit(GL13C.GL_TEXTURE0 + 5, depthTexture);
+            bindTextureUnit(GL13C.GL_TEXTURE0 + 6, historyColorRead);
+            bindTextureUnit(GL13C.GL_TEXTURE0 + 7, historyDepthRead);
+
+            if (motionVectorCollector != null) {
+                motionVectorCollector.uploadToSsbo();
+                motionVectorCollector.bindSsbo(0);
+            }
+
+            compute.bind();
+            compute.setInt("CurrentColor", 4);
+            compute.setInt("CurrentDepth", 5);
+            compute.setInt("HistoryColor", 6);
+            compute.setInt("HistoryDepth", 7);
+            // The shader loops over this instead of over the fixed 1024-entry pool.
+            compute.setInt("EntityCount", motionVectorCollector != null
+                    ? motionVectorCollector.getEntityCount() : 0);
+
+            compute.setVec2("InputSize", (float) sourceWidth, (float) sourceHeight);
+            compute.setVec2("Jitter", 0.0F, 0.0F);
+            compute.setFloat("VarianceScale", (float) cachedMsrVarianceScale);
+            compute.setFloat("DepthThreshold", (float) cachedMsrDepthThreshold);
+            compute.setFloat("HistoryWeight", (float) cachedMsrHistoryWeight);
+
+            tempVec3.set((float) (currentCameraX - previousCameraX),
+                    (float) (currentCameraY - previousCameraY),
+                    (float) (currentCameraZ - previousCameraZ));
+            compute.setVec3("CameraDelta", tempVec3.x, tempVec3.y, tempVec3.z);
+            compute.setMatrix4("ViewRotation", currentView);
+            compute.setMatrix4("PrevViewRotation", previousView);
+            compute.setMatrix4("InvProjection", inverseProjection);
+            compute.setMatrix4("PrevProjection", previousProjection);
+            compute.setFloat("HistoryValid", msrHistoryValid ? 1.0F : 0.0F);
+            compute.setFloat("DepthValid", depthTexture != 0 ? 1.0F : 0.0F);
+
+            msrHistory.bindWriteForCompute();
+            compute.bindImage(0, historyColorWrite, GL30C.GL_R11F_G11F_B10F);
+            compute.bindImage(1, historyDepthWrite, GL30C.GL_R16UI);
+
+            // Workgroup size in msr_temporal.comp is 8x8.
+            int groupsX = (sourceWidth + 7) / 8;
+            int groupsY = (sourceHeight + 7) / 8;
+            GL43.glDispatchCompute(groupsX, groupsY, 1);
+
+            // Without this the spatial pass can sample the history before imageStore lands.
+            GL42.glMemoryBarrier(GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT
+                    | GL42.GL_TEXTURE_FETCH_BARRIER_BIT
+                    | GL43.GL_SHADER_STORAGE_BARRIER_BIT);
+
+            MsrTemporalCompute.unbindImage(0, GL30C.GL_R11F_G11F_B10F);
+            MsrTemporalCompute.unbindImage(1, GL30C.GL_R16UI);
+            compute.unbind();
+        } finally {
+            GlStateManager._activeTexture(previousActive);
         }
+    }
 
-        // Bind write target (ping-pong destination) for the temporal pass output
-        msrHistory.bindWrite();
+    /** Fragment-shader fallback for GPUs without a usable GL 4.3 compute program. */
+    private static void runFragmentTemporal(ShaderLibrary library, int sourceWidth, int sourceHeight,
+            int outWidth, int outHeight, int sourceTexture, int depthTexture) {
+        int historyColorRead = msrHistory.getReadColorTexture();
+        int historyDepthRead = msrHistory.getReadDepthTexture();
 
-        // Set all temporal uniforms on the fragment temporal shader (works as compute fallback).
-        // The compute shader msr_temporal.comp uses the same uniform layout.
-        library.msrTemporal.setSampler("CurrentColor", sourceTexture);
-        library.msrTemporal.setSampler("HistoryColor", historyColorRead);
-        library.msrTemporal.setSampler("HistoryDepth", historyDepthRead);
-        library.msrTemporal.setSampler("CurrentDepth", depthTexture);
+        ShaderLibrary.beginPassState();
+        try {
+            // Both MRT attachments (colour + R16UI depth) are written by this pass.
+            GlStateManager._colorMask(true, true, true, true);
+            msrHistory.bindWrite();
 
-        library.msrTemporal.getUniform("InputSize").set((float) sourceWidth, (float) sourceHeight);
-        library.msrTemporal.getUniform("OutputSize").set((float) outWidth, (float) outHeight);
-        library.msrTemporal.getUniform("Jitter").set(0.0f, 0.0f);
-        library.msrTemporal.getUniform("VarianceScale").set((float) cachedMsrVarianceScale);
-        library.msrTemporal.getUniform("DepthThreshold").set((float) cachedMsrDepthThreshold);
-        library.msrTemporal.getUniform("HistoryWeight").set((float) cachedMsrHistoryWeight);
+            library.msrTemporal.setSampler("CurrentColor", sourceTexture);
+            library.msrTemporal.setSampler("CurrentDepth", depthTexture);
+            library.msrTemporal.setSampler("HistoryColor", historyColorRead);
+            library.msrTemporal.setSampler("HistoryDepth", historyDepthRead);
 
-        // Camera reprojection uniforms (needed so history pixels are reprojected to the
-        // previous frame instead of being sampled at identical UVs).
-        tempVec3.set((float) (currentCameraX - previousCameraX),
-                (float) (currentCameraY - previousCameraY),
-                (float) (currentCameraZ - previousCameraZ));
-        library.msrTemporal.getUniform("CameraDelta").set(tempVec3.x, tempVec3.y, tempVec3.z);
-        library.msrTemporal.getUniform("ViewRotation").set(currentView);
-        library.msrTemporal.getUniform("PrevViewRotation").set(previousView);
-        library.msrTemporal.getUniform("InvProjection").set(inverseProjection);
-        library.msrTemporal.getUniform("PrevProjection").set(previousProjection);
-        library.msrTemporal.getUniform("HistoryValid").set(msrHistoryValid ? 1.0f : 0.0f);
-        library.msrTemporal.getUniform("DepthValid").set(depthTexture != 0 ? 1.0f : 0.0f);
+            setUniform2f(library.msrTemporal, "InputSize", (float) sourceWidth, (float) sourceHeight);
+            setUniform2f(library.msrTemporal, "Jitter", 0.0F, 0.0F);
+            setUniform1f(library.msrTemporal, "VarianceScale", (float) cachedMsrVarianceScale);
+            setUniform1f(library.msrTemporal, "DepthThreshold", (float) cachedMsrDepthThreshold);
+            setUniform1f(library.msrTemporal, "HistoryWeight", (float) cachedMsrHistoryWeight);
 
-        // Dispatch compute shader (GL 4.3+) — replaces fullscreen quad draw
-        // Workgroup size: 8x8 (optimal for iGPU schedulers)
-        int groupsX = (sourceWidth + 7) / 8;
-        int groupsY = (sourceHeight + 7) / 8;
-        org.lwjgl.opengl.GL43.glDispatchCompute(groupsX, groupsY, 1);
+            tempVec3.set((float) (currentCameraX - previousCameraX),
+                    (float) (currentCameraY - previousCameraY),
+                    (float) (currentCameraZ - previousCameraZ));
+            setUniform3f(library.msrTemporal, "CameraDelta", tempVec3.x, tempVec3.y, tempVec3.z);
+            setUniformMatrix4f(library.msrTemporal, "ViewRotation", currentView);
+            setUniformMatrix4f(library.msrTemporal, "PrevViewRotation", previousView);
+            setUniformMatrix4f(library.msrTemporal, "InvProjection", inverseProjection);
+            setUniformMatrix4f(library.msrTemporal, "PrevProjection", previousProjection);
+            setUniform1f(library.msrTemporal, "HistoryValid", msrHistoryValid ? 1.0F : 0.0F);
+            setUniform1f(library.msrTemporal, "DepthValid", depthTexture != 0 ? 1.0F : 0.0F);
 
-        // Memory barrier before spatial pass
-        // Use numeric values for GL42 constants (LWJGL 3.3.3)
-        int SHADER_IMAGE_ACCESS_BARRIER_BIT = 0x82F4; // GL_SHADER_IMAGE_ACCESS_BARRIER_BIT
-        int TEXTURE_FETCH_BARRIER_BIT = 0x82F6;       // GL_TEXTURE_FETCH_BARRIER_BIT
-        int SHADER_STORAGE_BARRIER_BIT = 0x90C0;      // GL_SHADER_STORAGE_BARRIER_BIT
-        org.lwjgl.opengl.GL42.glMemoryBarrier(SHADER_IMAGE_ACCESS_BARRIER_BIT |
-                TEXTURE_FETCH_BARRIER_BIT |
-                SHADER_STORAGE_BARRIER_BIT);
+            library.msrTemporal.apply();
+            drawFullscreenQuad();
+            library.msrTemporal.clear();
+        } finally {
+            ShaderLibrary.endPassState();
+        }
+    }
 
-        // Swap ping-pong for spatial pass
-        msrHistory.swap();
+    /**
+     * Emergency cleanup when the MSR pass throws: detach compute state, unbind the history
+     * framebuffer and put the real main target back before the FSR 1 fallback runs.
+     */
+    private static void releaseMsrState(RenderTarget main) {
+        if (msrComputeProgram != null) {
+            msrComputeProgram.unbind();
+        }
+        if (computeAvailable) {
+            MsrTemporalCompute.unbindImage(0, GL30C.GL_R11F_G11F_B10F);
+            MsrTemporalCompute.unbindImage(1, GL30C.GL_R16UI);
+        }
+        if (msrHistory != null) {
+            msrHistory.unbind();
+        }
+        // GlStateManager now tracks the default FBO; binding main afterwards is guaranteed to
+        // issue a real glBindFramebuffer and restore the native viewport.
+        main.bindWrite(true);
+        GlStateManager._activeTexture(GL13C.GL_TEXTURE0);
+    }
+
+    private static void bindTextureUnit(int glTextureUnit, int texture) {
+        GlStateManager._activeTexture(glTextureUnit);
+        GlStateManager._bindTexture(texture);
     }
 
     private static void drawFullscreenQuad() {

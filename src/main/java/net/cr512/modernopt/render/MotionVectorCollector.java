@@ -86,13 +86,16 @@ public final class MotionVectorCollector {
      * Upload motion data to SSBO. Call once per frame before compute dispatch.
      */
     public void uploadToSsbo() {
-        if (!computeAvailable || entityCount == 0) return;
+        if (!computeAvailable) return;
 
         if (ssboId == 0) {
             ssboId = org.lwjgl.opengl.GL15.glGenBuffers();
         }
 
         org.lwjgl.opengl.GL15.glBindBuffer(org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BUFFER, ssboId);
+        // Allocate (and freshly upload) the full pool every frame. Uploading even when no
+        // entity was recorded leaves a valid SSBO at binding point 0 instead of a stale or
+        // missing buffer, which would make the compute shader read undefined memory.
         org.lwjgl.opengl.GL15.glBufferData(org.lwjgl.opengl.GL43.GL_SHADER_STORAGE_BUFFER,
                 MAX_ENTITIES * STRIDE, org.lwjgl.opengl.GL15.GL_DYNAMIC_DRAW);
 

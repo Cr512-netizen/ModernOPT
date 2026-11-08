@@ -1,6 +1,5 @@
 package net.cr512.modernopt.render;
 
-import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import org.lwjgl.opengl.GL11C;
@@ -14,13 +13,20 @@ import java.nio.IntBuffer;
  * MSR 2.0 History Target using memory-efficient formats:
  * - Color: R11G11B10F (32 bits/pixel, no alpha)
  * - Depth: R16_UINT (packed linear depth, 16 bits/pixel)
- * 
+ *
  * Total: 48 bits/pixel vs 64 (RGBA16F) or 128 (RGBA32F)
  * At 1080p: ~12 MB for ping-pong pair (color + depth)
- * 
+ *
  * Ping-pong strategy eliminates read-after-write hazards:
  * Frame N: read from A, write to B
  * Frame N+1: read from B, write to A
+ *
+ * <p><b>Important:</b> every framebuffer bind goes through
+ * {@link GlStateManager#_glBindFramebuffer(int, int)}, not raw
+ * {@code glBindFramebuffer}. Minecraft caches the currently bound framebuffer; binding
+ * behind its back makes the following {@code main.bindWrite(true)} a no-op (the cache still
+ * says "the main target is bound"), the spatial pass then writes into the history texture and
+ * the real screen is never updated - the classic MSR black screen.</p>
  */
 public final class MSRHistoryTarget {
 
@@ -57,11 +63,15 @@ public final class MSRHistoryTarget {
             int colorTex = createColorTexture();
             int depthTex = createDepthTexture();
 
-            GL30C.glBindFramebuffer(GL30C.GL_FRAMEBUFFER, fbo);
+            GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, fbo);
             GL30C.glFramebufferTexture2D(GL30C.GL_FRAMEBUFFER, GL30C.GL_COLOR_ATTACHMENT0,
                     GL11C.GL_TEXTURE_2D, colorTex, 0);
             GL30C.glFramebufferTexture2D(GL30C.GL_FRAMEBUFFER, GL30C.GL_COLOR_ATTACHMENT1,
                     GL11C.GL_TEXTURE_2D, depthTex, 0);
+            GL30C.glDrawBuffers(new int[] {
+                    GL30C.GL_COLOR_ATTACHMENT0,
+                    GL30C.GL_COLOR_ATTACHMENT1
+            });
 
             int status = GL30C.glCheckFramebufferStatus(GL30C.GL_FRAMEBUFFER);
             if (status != GL30C.GL_FRAMEBUFFER_COMPLETE) {
@@ -79,7 +89,7 @@ public final class MSRHistoryTarget {
             }
         }
 
-        GL30C.glBindFramebuffer(GL30C.GL_FRAMEBUFFER, 0);
+        GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, 0);
     }
 
     private int createColorTexture() {
@@ -114,7 +124,7 @@ public final class MSRHistoryTarget {
      */
     public void bindWrite() {
         int fbo = useA ? fboB : fboA;
-        GL30C.glBindFramebuffer(GL30C.GL_FRAMEBUFFER, fbo);
+        GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, fbo);
         // The temporal pass writes BOTH the colour history and the depth history, so both
         // attachments have to be enabled. Leaving only COLOR_ATTACHMENT0 active means the
         // depth texture is never updated and the next frame's disocclusion test reads zeros.
@@ -122,7 +132,19 @@ public final class MSRHistoryTarget {
                 GL30C.GL_COLOR_ATTACHMENT0,
                 GL30C.GL_COLOR_ATTACHMENT1
         });
-        GL11C.glViewport(0, 0, width, height);
+        GlStateManager._viewport(0, 0, width, height);
+    }
+
+    /** Binds the FBO without touching draw buffers (compute path uses image load/store). */
+    public void bindWriteForCompute() {
+        int fbo = useA ? fboB : fboA;
+        GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, fbo);
+        GlStateManager._viewport(0, 0, width, height);
+    }
+
+    /** Brings back the default framebuffer through the state cache. */
+    public void unbind() {
+        GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, 0);
     }
 
     /**
@@ -163,6 +185,7 @@ public final class MSRHistoryTarget {
     }
 
     public void destroy() {
+        unbind();
         if (fboA != 0) GL30C.glDeleteFramebuffers(fboA);
         if (fboB != 0) GL30C.glDeleteFramebuffers(fboB);
         if (colorTexA != 0) GL11C.glDeleteTextures(colorTexA);

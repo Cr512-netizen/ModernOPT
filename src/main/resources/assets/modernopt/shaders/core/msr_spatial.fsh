@@ -1,40 +1,38 @@
 #version 150
 
-// MSR 2.0 Spatial Pass - Fused EASU + RCAS + Edge-Aware Interpolation
-// Single fragment shader pass for TBDR compatibility (iGPU, mobile)
-// Input: Temporal pass output (source resolution), depth buffer (source resolution)
-// Output: Final upscaled + sharpened image (output resolution)
+// MSR 2.0 Spatial Pass - fused edge-aware upsampling + CAS sharpening.
 //
-// EASU upsamples from InputSize to OutputSize along depth edges so block faces stay sharp.
-// CAS sharpens the EASU result (not the raw source) and is depth-aware: it is strongest on
-// geometry edges and fades to nothing on flat depth surfaces (grass, leaves, water).
+// Input : temporal history at source resolution (R11G11B10F), scene depth at source
+//         resolution (DEPTH_COMPONENT).
+// Output: final image at native resolution.
+//
+// Two details matter for the black-screen bug:
+//   * uvToInput() must return NORMALISED texture coordinates. The old version returned
+//     pixel coordinates, so every texture() lookup clamped to the last texel.
+//   * the final alpha is 1.0. A zero alpha with blending enabled makes the whole main
+//     framebuffer transparent and therefore black.
 
-uniform sampler2D TemporalColor;    // Output from temporal pass (source resolution)
-uniform sampler2D DepthTexture;     // Source-resolution depth buffer
+uniform sampler2D TemporalColor;    // temporal history at source resolution
+uniform sampler2D DepthTexture;     // scene depth at source resolution
 
-uniform vec2 InputSize;             // Source resolution (temporal output size)
-uniform vec2 OutputSize;            // Screen size (native / output resolution)
-uniform float Sharpness;            // CAS sharpness 0.0-1.0
-uniform float EdgeAwareStrength;    // Edge-aware interpolation strength 0.0-1.0
-uniform float DepthEdgeThreshold;   // Depth gradient threshold for edges
+uniform vec2 InputSize;             // source resolution
+uniform float Sharpness;            // CAS sharpness 0..1
+uniform float EdgeAwareStrength;    // edge-aware interpolation 0..1
+uniform float DepthEdgeThreshold;   // depth gradient threshold for edges
 
 in vec2 texCoord;
 out vec4 fragColor;
 
-// Luma calculation (rec709)
 float luma(vec3 c) {
     return dot(c, vec3(0.299, 0.587, 0.114));
 }
 
-// Convert output UV to input UV for sampling
+// Output UV -> normalised source UV. Both images cover the same screen area, so the
+// normalised coordinate is identical; the helper keeps the intent explicit.
 vec2 uvToInput(vec2 uv) {
-    vec2 ratio = InputSize / OutputSize;
-    vec2 ip = uv * OutputSize;
-    vec2 pp = ip * ratio + 0.5 * ratio - 0.5;
-    return pp;
+    return clamp(uv, vec2(0.0), vec2(1.0));
 }
 
-// Shared 5-tap neighborhood structure, sampled in source space.
 struct Neighborhood5 {
     vec3 center;
     vec3 left;
@@ -53,11 +51,10 @@ struct Neighborhood5 {
     float depthDown;
 };
 
-Neighborhood5 fetchNeighborhood5(vec2 uv, vec2 texel) {
-    // Convert output UV to input UV for sampling
+Neighborhood5 fetchNeighborhood5(vec2 uv) {
     vec2 inputUv = uvToInput(uv);
     vec2 inputTexel = 1.0 / InputSize;
-    
+
     Neighborhood5 n;
     n.center = texture(TemporalColor, inputUv).rgb;
     n.left = texture(TemporalColor, inputUv + vec2(-inputTexel.x, 0.0)).rgb;
@@ -80,7 +77,7 @@ Neighborhood5 fetchNeighborhood5(vec2 uv, vec2 texel) {
     return n;
 }
 
-// Depth-edge weight: 1.0 on a block face, ~0 on a flat surface.
+// 1.0 on a depth edge, ~0 on a flat surface.
 float edgeAwareWeight(Neighborhood5 n) {
     float gradX = abs(n.depthRight - n.depthLeft);
     float gradY = abs(n.depthDown - n.depthUp);
@@ -89,9 +86,9 @@ float edgeAwareWeight(Neighborhood5 n) {
     return edge * EdgeAwareStrength;
 }
 
-// EASU: upsample the source pixel to output resolution, biased toward the edge direction so
-// block faces are interpolated along the edge instead of across it.
-vec3 easuSample(Neighborhood5 n, vec2 texel) {
+// Edge-direction biased interpolation: along a depth edge the sample follows the edge,
+// on flat surfaces it falls back to a soft 4-neighbour average.
+vec3 easuSample(Neighborhood5 n) {
     float horz = abs(n.lumaLeft - n.lumaRight);
     float vert = abs(n.lumaUp - n.lumaDown);
 
@@ -101,37 +98,30 @@ vec3 easuSample(Neighborhood5 n, vec2 texel) {
     wH /= sumW;
     wV /= sumW;
 
-    float ew = edgeAwareWeight(n);
-
     vec3 result = wH * (n.left + n.right) * 0.5 + wV * (n.up + n.down) * 0.5;
-    // On a depth edge keep the edge-aligned interpolation; off-edge blend toward center.
+    float ew = edgeAwareWeight(n);
     result = mix(result, n.center, ew);
-
     return result;
 }
 
-// CAS: sharpen the EASU result. Adaptive to local contrast and edge strength so it does not
-// ring on noisy textures (foliage, grass) while still punching up block outlines.
+// Contrast-adaptive sharpening of the upsampled result, reduced on depth edges.
 vec3 casSharpen(Neighborhood5 n, vec3 easuColor) {
-    if (Sharpness <= 0.0) return easuColor;
+    if (Sharpness <= 0.0) {
+        return easuColor;
+    }
 
     float lMin = min(min(min(n.lumaLeft, n.lumaRight), min(n.lumaUp, n.lumaDown)), n.lumaCenter);
     float lMax = max(max(max(n.lumaLeft, n.lumaRight), max(n.lumaUp, n.lumaDown)), n.lumaCenter);
     float contrast = lMax - lMin;
 
-    float edgeH = abs(n.lumaLeft - n.lumaRight);
-    float edgeV = abs(n.lumaUp - n.lumaDown);
-    float edge = max(edgeH, edgeV);
+    float edge = max(abs(n.lumaLeft - n.lumaRight), abs(n.lumaUp - n.lumaDown));
 
     float sharp = Sharpness * Sharpness;
-    float amount = sharp * contrast * edge;
-    amount = clamp(amount, 0.0, 1.0);
+    float amount = clamp(sharp * contrast * edge, 0.0, 1.0);
 
-    // Unsharp mask around the EASU result, not the raw source.
     vec3 blur = (n.left + n.right + n.up + n.down) * 0.25;
     vec3 sharpened = easuColor + (easuColor - blur) * amount;
 
-    // Reduce sharpening on depth edges (already handled by EASU) and on flat surfaces.
     float depthEdge = max(abs(n.depthLeft - n.depthRight), abs(n.depthUp - n.depthDown));
     amount *= 1.0 - smoothstep(0.0, DepthEdgeThreshold * 2.0, depthEdge);
 
@@ -139,20 +129,11 @@ vec3 casSharpen(Neighborhood5 n, vec3 easuColor) {
 }
 
 void main() {
-    vec2 uv = texCoord;
-    vec2 texel = 1.0 / InputSize;
+    Neighborhood5 n = fetchNeighborhood5(texCoord);
 
-    // Fetch shared 5-tap neighborhood once, in source space.
-    Neighborhood5 n = fetchNeighborhood5(uv, texel);
-
-    // Step 1: EASU upsampling with edge-aware interpolation.
-    vec3 color = easuSample(n, texel);
-
-    // Step 2: CAS sharpening of the EASU result (depth-aware).
+    vec3 color = easuSample(n);
     color = casSharpen(n, color);
 
-    // Use OutputSize to keep uniform active (prevents NPE in Java)
-    color.r += OutputSize.x * 0.0;
-    color.g += OutputSize.y * 0.0;
+    // Opaque output: zero alpha + enabled blending = black screen.
     fragColor = vec4(color, 1.0);
 }
