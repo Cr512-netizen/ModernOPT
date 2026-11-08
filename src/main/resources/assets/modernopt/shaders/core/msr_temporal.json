@@ -9,7 +9,6 @@
   ],
   "uniforms": [
     { "name": "InputSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] },
-    { "name": "OutputSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] },
     { "name": "Jitter", "type": "float", "count": 2, "values": [ 0.0, 0.0 ] },
     { "name": "VarianceScale", "type": "float", "count": 1, "values": [ 2.0 ] },
     { "name": "DepthThreshold", "type": "float", "count": 1, "values": [ 0.05 ] },
