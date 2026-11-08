@@ -25,58 +25,27 @@ uniform float DepthValid;         // 1.0 when a correct scene depth is available
 
 in vec2 texCoord;
 out vec4 fragColor;               // RGB = temporal color, A = linear depth
+out vec4 fragDepth;               // R = packed linear depth (R16UI write target)
 
-// YCoCg conversion - luminance + chroma, better for variance analysis
-vec3 rgbToYCoCg(vec3 rgb) {
-    return vec3(
-        rgb.r * 0.25 + rgb.g * 0.5 + rgb.b * 0.25,  // Y (luma)
-        rgb.r * 0.5 - rgb.b * 0.5,                   // Co (orange-blue)
-        rgb.g * 0.5 - rgb.r * 0.25 - rgb.b * 0.25    // Cg (green-purple)
-    );
+// Rec709 luma, shared by the history-clamp range computation below.
+float lumaOf(vec3 c) {
+    return dot(c, vec3(0.299, 0.587, 0.114));
 }
 
-vec3 yCoCgToRgb(vec3 ycocg) {
-    float t = ycocg.x - ycocg.z;
-    return vec3(
-        t + ycocg.y,      // R
-        ycocg.x + ycocg.z, // G
-        t - ycocg.y       // B
-    );
-}
-
-// Depth is already linear 0..1 from texture sampler
-// (no unpack needed)
-
-// 3x3 neighbourhood variance in YCoCg space
-// Returns: meanYCoCg, varianceYCoCg, and centerYCoCg (center pixel in YCoCg)
-void computeVariance(vec2 uv, vec2 texel,
-                     out vec3 meanYCoCg, out vec3 varianceYCoCg, out vec3 centerYCoCg) {
-    meanYCoCg = vec3(0.0);
-    vec3 meanSq = vec3(0.0);
-    int count = 0;
-
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            vec2 sampleUv = uv + vec2(float(x), float(y)) * texel;
-            // Clamp to valid range
-            sampleUv = clamp(sampleUv, vec2(0.0), vec2(1.0));
-            vec3 color = texture(HistoryColor, sampleUv).rgb;
-            vec3 ycocg = rgbToYCoCg(color);
-
-            // Capture center pixel (x=0, y=0)
-            if (x == 0 && y == 0) {
-                centerYCoCg = ycocg;
-            }
-
-            meanYCoCg += ycocg;
-            meanSq += ycocg * ycocg;
-            count++;
-        }
-    }
-
-    meanYCoCg /= float(count);
-    meanSq /= float(count);
-    varianceYCoCg = max(vec3(0.0), meanSq - meanYCoCg * meanYCoCg);
+// Cheap luminance-range clamp on the history pixel. Replaces the full YCoCg
+// variance path (9 texture reads + sqrt): if the history falls outside the local
+// contrast range of the current frame it is rejected, which is what prevents
+// smearing on moving edges without the cost of a full statistical filter.
+void computeLumaRange(vec2 uv, vec2 texel,
+                      out float lumaCenter, out float lumaMin, out float lumaMax) {
+    lumaCenter = lumaOf(texture(CurrentColor, uv).rgb);
+    lumaMin = lumaCenter;
+    lumaMax = lumaCenter;
+    float l;
+    l = lumaOf(texture(CurrentColor, uv + vec2(-texel.x, 0.0)).rgb); lumaMin = min(lumaMin, l); lumaMax = max(lumaMax, l);
+    l = lumaOf(texture(CurrentColor, uv + vec2( texel.x, 0.0)).rgb); lumaMin = min(lumaMin, l); lumaMax = max(lumaMax, l);
+    l = lumaOf(texture(CurrentColor, uv + vec2(0.0, -texel.y)).rgb); lumaMin = min(lumaMin, l); lumaMax = max(lumaMax, l);
+    l = lumaOf(texture(CurrentColor, uv + vec2(0.0,  texel.y)).rgb); lumaMin = min(lumaMin, l); lumaMax = max(lumaMax, l);
 }
 
 void main() {
@@ -152,56 +121,38 @@ void main() {
         valid = abs(historyDepth - currentDepth) <= tolerance;
     }
 
-    // Compute local variance in 3x3 neighbourhood of the CURRENT frame - returns center YCoCg
-    // to avoid recomputing it. Used for variance clipping of the history pixel.
-    vec2 texel = 1.0 / InputSize;
-    vec3 meanYCoCg;
-    vec3 varianceYCoCg;
-    vec3 currentCenterYCoCg;
-    computeVariance(currentUv, texel, meanYCoCg, varianceYCoCg, currentCenterYCoCg);
-
-    vec3 currentYCoCg;
-    vec3 historyYCoCg;
-    currentYCoCg = currentCenterYCoCg;
-    historyYCoCg = rgbToYCoCg(historyColor);
-
-    // Variance clipping: reject history if outside confidence interval
-    // Confidence interval = mean ± VarianceScale * stdDev
-    vec3 stdDev;
-    vec3 lowerBound;
-    vec3 upperBound;
-    stdDev = sqrt(max(vec3(0.0), varianceYCoCg));
-    lowerBound = meanYCoCg - VarianceScale * stdDev;
-    upperBound = meanYCoCg + VarianceScale * stdDev;
-
-    bool withinVariance;
-    withinVariance = all(greaterThanEqual(historyYCoCg, lowerBound))
-                 && all(lessThanEqual(historyYCoCg, upperBound));
-
-    // Motion detection: high variance = motion
-    float maxVariance;
-    bool isStatic;
-    maxVariance = max(max(varianceYCoCg.x, varianceYCoCg.y), varianceYCoCg.z);
-    isStatic = maxVariance < 0.001;  // Very low variance = static
+    // Cheap luminance-range clamp on the history pixel. Replaces the full YCoCg
+    // variance path: if the history falls outside the local contrast range of the
+    // current frame it is rejected, which is what prevents smearing on moving edges.
+    float lumaCenter;
+    float lumaMin;
+    float lumaMax;
+    computeLumaRange(currentUv, 1.0 / InputSize, lumaCenter, lumaMin, lumaMax);
+    float historyLuma = lumaOf(historyColor);
+    bool withinRange = historyLuma >= lumaMin - 0.05
+                    && historyLuma <= lumaMax + 0.05;
 
     // Adaptive blending
     float historyBlend;
     historyBlend = HistoryWeight;
 
-    if (!valid || !withinVariance) {
+    if (!valid || !withinRange) {
         // History rejected - use current frame only
         historyBlend = 0.0;
-    } else if (isStatic) {
-        // Static scene - increase history weight for stability
-        historyBlend = min(HistoryWeight * 1.5, 0.95);
     }
 
-    // Blend in YCoCg space for better color stability
-    vec3 blendedYCoCg;
+    // Blend in RGB space
     vec3 outputColor;
-    blendedYCoCg = mix(currentYCoCg, historyYCoCg, historyBlend);
-    outputColor = yCoCgToRgb(blendedYCoCg);
+    outputColor = mix(currentColor, historyColor, historyBlend);
 
     // Output: RGB = temporal color, A = current depth (for next frame's disocclusion)
     fragColor = vec4(outputColor, currentDepth);
+    // Write the depth history to the second colour attachment (R16UI). Without this the
+    // disocclusion test in the next frame reads an unwritten texture and rejects history.
+    fragDepth = vec4(currentDepth, 0.0, 0.0, 1.0);
+
+    // Keep OutputSize uniform active (prevents NPE in Java when the shader compiler
+    // would otherwise optimise it out).
+    fragColor.r += OutputSize.x * 0.0;
+    fragColor.g += OutputSize.y * 0.0;
 }

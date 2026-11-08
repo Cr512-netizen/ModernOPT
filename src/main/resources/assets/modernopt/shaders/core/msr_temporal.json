@@ -1,4 +1,29 @@
 {
   "vertex": "modernopt:msr_temporal",
-  "fragment": "modernopt:msr_temporal"
+  "fragment": "modernopt:msr_temporal",
+  "samplers": [
+    { "name": "CurrentColor" },
+    { "name": "HistoryColor" },
+    { "name": "HistoryDepth" },
+    { "name": "CurrentDepth" }
+  ],
+  "uniforms": [
+    { "name": "InputSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] },
+    { "name": "OutputSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] },
+    { "name": "Jitter", "type": "float", "count": 2, "values": [ 0.0, 0.0 ] },
+    { "name": "VarianceScale", "type": "float", "count": 1, "values": [ 2.0 ] },
+    { "name": "DepthThreshold", "type": "float", "count": 1, "values": [ 0.05 ] },
+    { "name": "HistoryWeight", "type": "float", "count": 1, "values": [ 0.8 ] },
+    { "name": "CameraDelta", "type": "float", "count": 3, "values": [ 0.0, 0.0, 0.0 ] },
+    { "name": "ViewRotation", "type": "matrix4x4", "count": 16,
+      "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "PrevViewRotation", "type": "matrix4x4", "count": 16,
+      "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "InvProjection", "type": "matrix4x4", "count": 16,
+      "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "PrevProjection", "type": "matrix4x4", "count": 16,
+      "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "HistoryValid", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "DepthValid", "type": "float", "count": 1, "values": [ 1.0 ] }
+  ]
 }
