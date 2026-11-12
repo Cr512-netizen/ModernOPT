@@ -190,6 +190,11 @@ public final class ScaledRenderTarget extends RenderTarget {
         return bound == this.frameBufferId || this.msaa != null && bound == this.msaa.id();
     }
 
+    /** Raw GL id of this target's single sampled framebuffer (diagnostics). */
+    public int fboId() {
+        return this.frameBufferId;
+    }
+
     /** Resolves multisampled colour into {@link #getColorTextureId()} when MSAA is active. */
     public void resolveMsaa() {
         if (this.msaa != null) {

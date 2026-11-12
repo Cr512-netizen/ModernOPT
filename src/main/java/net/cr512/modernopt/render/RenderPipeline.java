@@ -17,7 +17,11 @@ import net.cr512.modernopt.config.UpscalerType;
 import net.cr512.modernopt.compat.IrisCompat;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.ShaderInstance;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.player.LocalPlayer;
+import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.server.packs.resources.ResourceProvider;
 import net.minecraft.world.level.Level;
 import org.joml.Matrix4f;
@@ -151,6 +155,50 @@ public final class RenderPipeline {
     private static int cachedMsrScaleStep = 5;
     private static int cachedMsrMinScale = 50;
 
+    /** TEMPORARY DIAGNOSTIC counter for per-frame GL logging. */
+    private static int dbgFrameCounter;
+
+    /**
+     * True while the world is being rendered into the scaled target. While set, {@code Window}
+     * reports the scaled size, so every subsystem that sizes its own buffers from the window
+     * (Iris' post-processing chain, vanilla post effects, helper targets) allocates and draws at
+     * the internal resolution instead of the native one. The HUD and the hand stay native.
+     */
+    private static boolean windowScaled;
+
+    /**
+     * Real framebuffer size, captured right before {@link #windowScaled} becomes {@code true}.
+     * Once the override is active {@code Window#getWidth()} reports the internal size, so the
+     * original values have to be remembered for the stale-viewport check.
+     */
+    private static int realWindowWidth;
+    private static int realWindowHeight;
+
+    /**
+     * Set when the world was upscaled and Iris owns the hand pass. Iris draws the first-person
+     * hand inside the world pipeline (it cancels vanilla's call), where it ends up in the gbuffer
+     * that is then composited at the internal resolution, so at render scales below 100% the hand
+     * never reaches the upscaled image. Instead the hand is drawn once more, at native
+     * resolution, right where vanilla would have drawn it: after the reconstruction and after the
+     * depth buffer of the main target has been cleared.
+     */
+    private static boolean deferredHandThisFrame;
+
+    /** Whether the deferred native-resolution hand pass should run this frame. */
+    public static boolean shouldRenderDeferredHand() {
+        return deferredHandThisFrame;
+    }
+
+    /** Returns the width {@code Window#getWidth} should report, or {@code -1} for the real one. */
+    public static int windowWidthOverride() {
+        return windowScaled && scaled != null ? scaled.viewWidth : -1;
+    }
+
+    /** Returns the height {@code Window#getHeight} should report, or {@code -1} for the real one. */
+    public static int windowHeightOverride() {
+        return windowScaled && scaled != null ? scaled.viewHeight : -1;
+    }
+
     // DRS state
     private static int drsCurrentPercent = -1;
     private static long drsLastAdjustNanos = 0;
@@ -226,6 +274,8 @@ public final class RenderPipeline {
         msrThisFrame = false;
         msrActiveThisFrame = false;
         poseCaptured = false;
+
+        GpuProfiler.maybeLog();
 
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null || minecraft.noRender) {
@@ -376,8 +426,22 @@ public final class RenderPipeline {
         fsr2ThisFrame = fsr2Wanted;
         int outputWidth = minecraft.getMainRenderTarget().width;
         int outputHeight = minecraft.getMainRenderTarget().height;
+        if (fsr2Wanted && !fsr2Unsupported) {
+            // The temporal history lives in output resolution. Allocate it here: switching to
+            // FSR 2 at runtime used to reach reconstructFsr2() with null history targets and
+            // silently fall back to FSR 1 for the rest of the session.
+            ensureHistoryTargets(outputWidth, outputHeight);
+        }
         worldActive = true;
         scaled.bindWrite(true);
+        realWindowWidth = minecraft.getWindow().getWidth();
+        realWindowHeight = minecraft.getWindow().getHeight();
+        windowScaled = true;
+        GpuProfiler.beginCpuWorld();
+        GpuProfiler.begin(GpuProfiler.WORLD);
+        if ((++dbgFrameCounter % 240) == 0) {
+            ModernOPT.LOG.info("[BENCH][GL] begin {}", debugGlState());
+        }
 
         if (fsr2ThisFrame && !loggedFsr2Active) {
             loggedFsr2Active = true;
@@ -563,9 +627,10 @@ public final class RenderPipeline {
         if (!worldActive || scaled == null) {
             return;
         }
-        if (!fsr2ThisFrame && !msrThisFrame) {
-            return;
-        }
+        // Finish for every upscaler, not just the temporal ones. The hand is rendered into
+        // whatever target is bound right after this point; letting it run before the
+        // reconstruction would draw it into the scaled target and then overwrite it with the
+        // upscaled world (the hand simply disappeared in FSR 1 / bilinear / off modes).
         finishWorldFrame();
     }
 
@@ -574,15 +639,71 @@ public final class RenderPipeline {
         finishWorldFrame();
     }
 
+    /**
+     * Re-draws the first-person hand at native resolution after the world has been upscaled.
+     *
+     * <p>Called from {@code GameRenderer#renderItemInHand} right where vanilla submits the hand,
+     * i.e. with the hand projection, the bobbing pose and the light texture already set up and
+     * with the main target bound and its depth buffer freshly cleared. Iris cancels vanilla's own
+     * call when a shader pack is active, so this does not draw the hand twice.</p>
+     */
+    public static void renderDeferredHand(GameRenderer gameRenderer, Camera camera, float partialTick,
+            PoseStack poseStack) {
+        if (!deferredHandThisFrame) {
+            return;
+        }
+        deferredHandThisFrame = false;
+        Minecraft minecraft = Minecraft.getInstance();
+        LocalPlayer player = minecraft.player;
+        if (player == null || camera.getEntity() == null) {
+            return;
+        }
+        com.mojang.blaze3d.vertex.ByteBufferBuilder builder =
+                new com.mojang.blaze3d.vertex.ByteBufferBuilder(8192);
+        MultiBufferSource.BufferSource buffers = MultiBufferSource.immediate(builder);
+        // Iris throws away every vanilla shader while a pack is active, and its hand mixin also
+        // cancels the draw unless HandRenderer's solid flag matches the item type. Outside of
+        // Iris' own hand pass that test rejects everything, so ModernOPT claims the hand pass
+        // here and draws it exactly the way Iris does: solid items first, translucent items next.
+        Boolean previousShaders = IrisCompat.setAllowUnknownShaders(true);
+        Boolean previousSolid = IrisCompat.setRenderingHandSolid(true);
+        try {
+            int light = minecraft.getEntityRenderDispatcher().getPackedLightCoords(camera.getEntity(), partialTick);
+            gameRenderer.itemInHandRenderer.renderHandsWithItems(partialTick, poseStack, buffers, player, light);
+            buffers.endBatch();
+            // Second pass: Iris' skip test now accepts only translucent items (glass, ice, ...).
+            IrisCompat.setRenderingHandSolid(false);
+            gameRenderer.itemInHandRenderer.renderHandsWithItems(partialTick, poseStack, buffers, player, light);
+            buffers.endBatch();
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.warn("[ModernOPT] deferred first-person hand failed", throwable);
+        } finally {
+            builder.close();
+            if (previousSolid != null) {
+                IrisCompat.setRenderingHandSolid(previousSolid);
+            }
+            if (previousShaders != null) {
+                IrisCompat.setAllowUnknownShaders(previousShaders);
+            }
+        }
+    }
+
     private static void finishWorldFrame() {
         if (!worldActive || scaled == null) {
             return;
+        }
+        GpuProfiler.end(GpuProfiler.WORLD);
+        GpuProfiler.endCpuWorld();
+        GpuProfiler.begin(GpuProfiler.UPSCALE);
+        if ((dbgFrameCounter % 240) == 0) {
+            ModernOPT.LOG.info("[BENCH][GL] end {}", debugGlState());
         }
 
         boolean temporal = fsr2ThisFrame && poseCaptured && !fsr2Unsupported;
         boolean jittered = poseCaptured;
         fsr2ActiveThisFrame = temporal;
         worldActive = false;
+        windowScaled = false;
         fsr2ThisFrame = false;
         poseCaptured = false;
 
@@ -600,6 +721,7 @@ public final class RenderPipeline {
         if (!ensureShaders(minecraft)) {
             restoreProjection(jittered);
             main.bindWrite(true);
+            GpuProfiler.end(GpuProfiler.UPSCALE);
             return;
         }
 
@@ -652,6 +774,19 @@ public final class RenderPipeline {
         } finally {
             restoreProjection(jittered);
             main.bindWrite(true);
+            // The real main target is only used for the final composite now, so vanilla never
+            // clears its depth buffer (its frame-start clear goes to the scaled target). A stale
+            // all-zero depth buffer then fails the hand and HUD depth tests: the first-person
+            // hand and the entire HUD simply do not appear. Clear it here, after the last
+            // reconstruction pass and before the hand/GUI passes run.
+            GlStateManager._depthMask(true);
+            org.lwjgl.opengl.GL11C.glClearDepth(1.0D);
+            org.lwjgl.opengl.GL11C.glClear(org.lwjgl.opengl.GL11C.GL_DEPTH_BUFFER_BIT);
+            // Iris cancels vanilla's hand pass while a pack is active and draws it inside the
+            // world pipeline instead. That copy never survives the composite at a reduced render
+            // scale, so the hand is redrawn natively right after this frame is upscaled.
+            deferredHandThisFrame = irisThisFrame;
+            GpuProfiler.end(GpuProfiler.UPSCALE);
         }
     }
 
@@ -1055,6 +1190,34 @@ public final class RenderPipeline {
     }
 
     /**
+     * TEMPORARY DIAGNOSTIC: one-line snapshot of the GL viewport and the framebuffers involved in
+     * the scaled path. Remove once the scaled-path slowdown is understood.
+     */
+    public static String debugGlState() {
+        int drawFbo = GL11C.glGetInteger(GL30C.GL_DRAW_FRAMEBUFFER_BINDING);
+        int[] vp = new int[4];
+        GL11C.glGetIntegerv(GL11C.GL_VIEWPORT, vp);
+        Minecraft minecraft = Minecraft.getInstance();
+        String main = "?";
+        String window = "?";
+        if (minecraft != null) {
+            main = minecraft.getMainRenderTarget().width + "x" + minecraft.getMainRenderTarget().height;
+            if (minecraft.getWindow() != null) {
+                window = minecraft.getWindow().getWidth() + "x" + minecraft.getWindow().getHeight();
+            }
+        }
+        return "window=" + window + " realWindow=" + realWindowWidth + "x" + realWindowHeight
+                + " override=" + windowWidthOverride() + "x" + windowHeightOverride()
+                + " main=" + main
+                + " scaled=" + (scaled == null ? "null" : scaled.width + "x" + scaled.height)
+                + " scaledFbo=" + (scaled == null ? -1 : scaled.fboId())
+                + " drawFbo=" + drawFbo
+                + " viewport=" + vp[0] + "," + vp[1] + " " + vp[2] + "x" + vp[3]
+                + " active=" + worldActive;
+    }
+
+
+    /**
      * Keeps the GL viewport matched to the scaled target.
      *
      * <p>Vanilla passes occasionally bind a window sized render target in the middle of the world
@@ -1084,11 +1247,7 @@ public final class RenderPipeline {
             return false;
         }
 
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null || minecraft.getWindow() == null) {
-            return false;
-        }
-        if (width != minecraft.getWindow().getWidth() || height != minecraft.getWindow().getHeight()) {
+        if (width != realWindowWidth || height != realWindowHeight) {
             return false;
         }
 

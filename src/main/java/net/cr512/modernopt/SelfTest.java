@@ -29,12 +29,16 @@ import java.util.List;
 public final class SelfTest {
 
     private static final String[] STATES = {
-            "00-current"
+            "BILINEAR-50",
+            "FSR2-50",
+            "MSR2-50",
+            "BILINEAR-50-B",
+            "OFF-100"
     };
 
-    private static final int START_TICK = 400;
+    private static final int START_TICK = 160;
     private static final int WARMUP_TICKS = 100;
-    private static final int SAMPLE_TICKS = 200;
+    private static final int SAMPLE_TICKS = 160;
     private static final int STATE_TICKS = WARMUP_TICKS + SAMPLE_TICKS;
 
     private static int ticks;
@@ -44,14 +48,27 @@ public final class SelfTest {
     private static boolean sampling;
     private static boolean windowWarned;
     private static boolean finished;
+    private static int finishedTick;
     private static long lastFrameNanos;
     private static final List<Long> frameTimes = new ArrayList<>(4096);
+    /** Screenshot deferred to the end of the frame: at tick time the main target can still hold a
+     *  partially composed image (the previous frame is presented, but the current one has not been
+     *  finished), which made HUD-less screenshots. */
+    private static String pendingShotState;
+    private static String pendingShotPhase;
 
     private SelfTest() {
     }
 
     @SubscribeEvent
     public static void onFrame(RenderFrameEvent.Post event) {
+        if (pendingShotState != null) {
+            String stateName = pendingShotState;
+            String phase = pendingShotPhase;
+            pendingShotState = null;
+            pendingShotPhase = null;
+            saveScreenshot(Minecraft.getInstance(), stateName, phase);
+        }
         long now = System.nanoTime();
         long previous = lastFrameNanos;
         lastFrameNanos = now;
@@ -84,6 +101,7 @@ public final class SelfTest {
             worldLogged = true;
             ticks = 0;
             ModernOPT.LOG.info("[BENCH] world loaded, player at {}", minecraft.player.position());
+            diagEntityScan(minecraft);
             steerOnce(minecraft);
             logIrisTargets();
         }
@@ -96,11 +114,15 @@ public final class SelfTest {
 
         int index = elapsed / STATE_TICKS;
         if (index >= STATES.length) {
-            // Benchmark is done - hand the client back to the player instead of shutting it down.
+            // Benchmark is done: hand back control briefly, then close the game automatically.
             sampling = false;
             if (!finished) {
                 finished = true;
-                ModernOPT.LOG.info("[BENCH] complete, client stays under player control");
+                finishedTick = ticks;
+                ModernOPT.LOG.info("[BENCH] complete, closing the game automatically");
+            } else if (ticks - finishedTick >= 60) {
+                ModernOPT.LOG.info("[BENCH] shutdown");
+                minecraft.stop();
             }
             return;
         }
@@ -126,26 +148,52 @@ public final class SelfTest {
                     client.getWindow().getWidth(), client.getWindow().getHeight(),
                     RenderPipeline.internalWidth(), RenderPipeline.internalHeight(),
                     RenderPipeline.activeUpscalerLabel());
+            ModernOPT.LOG.info("[BENCH] conditions {} | fpsLimit={} loadedChunks={} playerY={} ground={}",
+                    STATES[state], client.options.framerateLimit().get(),
+                    client.level.getChunkSource().getLoadedChunksCount(),
+                    String.format("%.1f", client.player.getY()),
+                    client.level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING,
+                            client.player.getBlockX(), client.player.getBlockZ()));
             logIrisTargets();
+            ModernOPT.LOG.info("[BENCH] gl {}", RenderPipeline.debugGlState());
+            pendingShotState = STATES[state];
+            pendingShotPhase = "start";
         } else if (offset == STATE_TICKS - 1) {
             sampling = false;
             logStats(STATES[state]);
+            pendingShotState = STATES[state];
+            pendingShotPhase = "end";
         }
     }
 
     /**
-     * One-time startup steering: puts the player on the benchmark spot and points the camera
-     * at it exactly once. After this call the player owns the camera, movement and UI entirely.
+     * Puts the player on the world spawn point once per session, standing on the ground and
+     * facing a fixed direction. Never in the air (heightmap-snapped), so the benchmark view is
+     * the same on every run and both upscalers are measured under identical conditions.
      */
     private static void steerOnce(Minecraft minecraft) {
         try {
             minecraft.level.setDayTime(1000L);
-            minecraft.player.setPos(300.5, 320.0, 300.5);
+            minecraft.level.setRainLevel(0.0F);
+            minecraft.level.setThunderLevel(0.0F);
+            // The client-side setDayTime above only affects the integrated server once it syncs;
+            // set time/weather authoritatively on the server so both states are measured in daylight.
+            if (minecraft.player.connection != null) {
+                minecraft.player.connection.sendCommand("time set 1000");
+                minecraft.player.connection.sendCommand("weather clear");
+            }
+            net.minecraft.core.BlockPos spawn = minecraft.level.getSharedSpawnPos();
+            int bx = spawn.getX();
+            int bz = spawn.getZ();
+            int surface = minecraft.level.getHeight(
+                    net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, bx, bz);
+            double y = Math.max(surface + 1.0, spawn.getY());
+            minecraft.player.setPos(bx + 0.5, y, bz + 0.5);
             minecraft.player.setYRot(90.0F);
             minecraft.player.setXRot(0.0F);
             minecraft.player.setDeltaMovement(0.0, 0.0, 0.0);
-            ModernOPT.LOG.info("[BENCH] startup steering done at {} - player now has full control",
-                    minecraft.player.position());
+            ModernOPT.LOG.info("[BENCH] startup steering done at {} (spawn {}, surface {}) - player now has full control",
+                    minecraft.player.position(), spawn, surface);
         } catch (Throwable throwable) {
             ModernOPT.LOG.warn("[BENCH] startup steering skipped: {}", throwable.toString());
         }
@@ -193,6 +241,68 @@ public final class SelfTest {
         }
     }
 
+    /** Saves a benchmark screenshot for visual inspection (two per state: start and end). */
+    private static void saveScreenshot(Minecraft minecraft, String stateName, String phase) {
+        try {
+            java.nio.file.Path dir = minecraft.gameDirectory.toPath().resolve("screenshots");
+            java.nio.file.Files.createDirectories(dir);
+            com.mojang.blaze3d.pipeline.RenderTarget target = minecraft.getMainRenderTarget();
+            com.mojang.blaze3d.platform.NativeImage image =
+                    net.minecraft.client.Screenshot.takeScreenshot(target);
+            try {
+                int sampleX = image.getWidth() / 2;
+                int sampleY = image.getHeight() - 24;
+                int argb = image.getPixelRGBA(sampleX, sampleY);
+                ModernOPT.LOG.info("[BENCH] screenshot {}x{} hotbarPixel={} (args {})",
+                        image.getWidth(), image.getHeight(),
+                        String.format("%08x", argb), sampleX + "," + sampleY);
+                String name = "bench-" + stateName + "-" + phase + ".png";
+                java.nio.file.Path out = dir.resolve(name);
+                image.writeToFile(out);
+                ModernOPT.LOG.info("[BENCH] saved {}", name);
+            } finally {
+                image.close();
+            }
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.warn("[BENCH] benchmark screenshot failed: {}", throwable.toString());
+        }
+    }
+
+    /**
+     * TEMPORARY DIAGNOSTIC for the "visually flying entities" report: dumps every loaded
+     * entity's server-truth position and the terrain height beneath it. Remove once the
+     * cause (world data vs render pipeline) is confirmed.
+     */
+    private static void diagEntityScan(Minecraft minecraft) {
+        try {
+            int counted = 0;
+            for (net.minecraft.world.entity.Entity entity : minecraft.level.entitiesForRendering()) {
+                double x = entity.getX();
+                double y = entity.getY();
+                double z = entity.getZ();
+                int bx = (int) Math.floor(x);
+                int bz = (int) Math.floor(z);
+                int surfaceY = minecraft.level.getHeight(
+                        net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, bx, bz);
+                double airGap = y - surfaceY;
+                ModernOPT.LOG.info("[BENCH][ENTDIAG] {} id={} at ({}, {}, {}), ground={}, airGap={}{}, camera at {}",
+                        entity.getType().toShortString(), entity.getId(),
+                        String.format("%.1f", x), String.format("%.1f", y), String.format("%.1f", z),
+                        surfaceY, String.format("%.1f", airGap),
+                        airGap > 1.5 ? "  <-- in the air" : "",
+                        minecraft.gameRenderer.getMainCamera().getPosition().toString());
+                counted++;
+                if (counted > 40) {
+                    ModernOPT.LOG.info("[BENCH][ENTDIAG] ...more entities omitted");
+                    break;
+                }
+            }
+            ModernOPT.LOG.info("[BENCH][ENTDIAG] scanned {} loaded entities", counted);
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.warn("[BENCH][ENTDIAG] scan failed: {}", throwable.toString());
+        }
+    }
+
     private static void logStats(String name) {
         if (frameTimes.isEmpty()) {
             ModernOPT.LOG.info("[BENCH] {}: no frames sampled", name);
@@ -215,19 +325,41 @@ public final class SelfTest {
     }
 
     private static void applyState(int index) {
-        // Single-state run: measure exactly what the config file requested.
+        String name = STATES[index];
+        int dash = name.indexOf('-');
+        String mode = dash < 0 ? name : name.substring(0, dash);
+        int percent = 100;
+        if (dash >= 0) {
+            int end = dash + 1;
+            while (end < name.length() && Character.isDigit(name.charAt(end))) {
+                end++;
+            }
+            percent = Integer.parseInt(name.substring(dash + 1, end));
+        }
+        switch (mode) {
+            case "OFF" -> {
+                ModernOptConfig.ENABLED.set(false);
+                ModernOptConfig.SHOW_OVERLAY.set(false);
+            }
+            case "MSR", "MSR2" -> configure(percent, UpscalerType.MSR, true);
+            case "FSR2" -> configure(percent, UpscalerType.FSR2, false);
+            case "FSR1" -> configure(percent, UpscalerType.FSR1, false);
+            default -> configure(percent, UpscalerType.BILINEAR, false);
+        }
         ModernOptSettings.refresh();
     }
 
-    private static void configure(boolean enabled, int percent, UpscalerType upscaler, MsaaLevel msaa) {
-        ModernOptConfig.ENABLED.set(enabled);
+    private static void configure(int percent, UpscalerType upscaler, boolean msrEnabled) {
+        ModernOptConfig.ENABLED.set(true);
         ModernOptConfig.RENDER_SCALE_PERCENT.set(percent);
         ModernOptConfig.UPSCALER.set(upscaler);
+        ModernOptConfig.MSR_ENABLED.set(msrEnabled);
+        ModernOptConfig.MSR_DYNAMIC_RES.set(false);
         ModernOptConfig.FSR_EASU_SHARPNESS.set(0);
         ModernOptConfig.FSR_RCAS_SHARPNESS.set(25);
         ModernOptConfig.SSAA.set(false);
-        ModernOptConfig.MSAA.set(msaa);
+        ModernOptConfig.MSAA.set(MsaaLevel.OFF);
         ModernOptConfig.FXAA.set(false);
-        ModernOptConfig.SHOW_OVERLAY.set(false);
+        ModernOptConfig.SHOW_OVERLAY.set(true);
     }
 }
