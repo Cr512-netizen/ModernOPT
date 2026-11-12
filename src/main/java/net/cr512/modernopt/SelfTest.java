@@ -28,6 +28,13 @@ import java.util.List;
 @EventBusSubscriber(modid = ModernOPT.MOD_ID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
 public final class SelfTest {
 
+    /**
+     * The harness teleports the player, changes world rules, writes screenshots and shuts the
+     * game down, so it must never run in a normal installation. Development runs enable it with
+     * {@code -Dmodernopt.bench=true} (already set by the Gradle {@code runClient} task).
+     */
+    private static final boolean ENABLED = Boolean.getBoolean("modernopt.bench");
+
     private static final String[] STATES = {
             "BILINEAR-50",
             "FSR2-50",
@@ -62,6 +69,9 @@ public final class SelfTest {
 
     @SubscribeEvent
     public static void onFrame(RenderFrameEvent.Post event) {
+        if (!ENABLED) {
+            return;
+        }
         if (pendingShotState != null) {
             String stateName = pendingShotState;
             String phase = pendingShotPhase;
@@ -83,6 +93,9 @@ public final class SelfTest {
 
     @SubscribeEvent
     public static void onTick(ClientTickEvent.Post event) {
+        if (!ENABLED) {
+            return;
+        }
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null || minecraft.player == null) {
             return;
@@ -179,7 +192,8 @@ public final class SelfTest {
             // The client-side setDayTime above only affects the integrated server once it syncs;
             // set time/weather authoritatively on the server so both states are measured in daylight.
             if (minecraft.player.connection != null) {
-                minecraft.player.connection.sendCommand("time set 1000");
+                minecraft.player.connection.sendCommand("gamerule doDaylightCycle false");
+                minecraft.player.connection.sendCommand("time set 6000");
                 minecraft.player.connection.sendCommand("weather clear");
             }
             net.minecraft.core.BlockPos spawn = minecraft.level.getSharedSpawnPos();

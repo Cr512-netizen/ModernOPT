@@ -87,6 +87,9 @@ neoForge {
         client {
             client()
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            // The benchmark harness only runs in development; without this property the mod
+            // behaves like a normal client and SelfTest observes nothing.
+            systemProperty 'modernopt.bench', 'true'
             programArgument '--quickPlaySingleplayer'
             programArgument 'ModernOPTTest'
         }
