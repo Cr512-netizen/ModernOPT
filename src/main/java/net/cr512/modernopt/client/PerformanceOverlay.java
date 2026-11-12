@@ -54,8 +54,13 @@ public final class PerformanceOverlay {
         // The caller runs after the HUD has been submitted, so a flush here is cheap and makes
         // the line independent of whatever the HUD left in the shared buffer source.
         String text = builder.toString();
+        int maxWidth = Math.max(16, windowWidth - 8);
+        if (minecraft.font.width(text) > maxWidth) {
+            text = minecraft.font.plainSubstrByWidth(text, maxWidth - minecraft.font.width("...")) + "...";
+        }
+        int right = Math.min(6 + minecraft.font.width(text), windowWidth - 2);
         graphics.flush();
-        graphics.fill(2, 2, 6 + minecraft.font.width(text), 16, 0x8F000000);
+        graphics.fill(2, 2, right, 16, 0x8F000000);
         graphics.drawString(minecraft.font, text, 4, 4, 0xFFFFFFFF, true);
         graphics.flush();
     }

@@ -19,6 +19,14 @@ public final class IrisCompat {
     private static boolean probed;
     private static Method isShaderPackInUse;
 
+    private static boolean configProbed;
+    private static Object irisConfig;
+    private static Field allowUnknownShadersField;
+
+    private static boolean handRendererProbed;
+    private static Object handRenderer;
+    private static Field renderingSolidField;
+
     private static boolean managerProbed;
     private static Object pipelineManager;
     private static Method getPipelineNullable;
@@ -77,10 +85,6 @@ public final class IrisCompat {
      */
     public static int depthTextureId() {
         probePipeline();
-        if (pipelineManager == null || getPipelineNullable == null
-                || renderTargetsField == null || getDepthTexture == null) {
-            return -1;
-        }
         try {
             Object pipeline = getPipelineNullable.invoke(pipelineManager);
             if (pipeline == null) {
@@ -94,6 +98,70 @@ public final class IrisCompat {
             return result instanceof Integer id && id > 0 ? id : -1;
         } catch (Throwable ignored) {
             return -1;
+        }
+    }
+
+
+    /**
+     * Iris skips every vanilla shader while a pack is active. The first-person hand is the one
+     * piece of vanilla rendering ModernOPT needs back after upscaling, so this toggles Iris'
+     * "allow unknown shaders" switch for the duration of that single draw and returns the previous
+     * value ({@code null} when Iris is not reachable).
+     */
+    public static Boolean setAllowUnknownShaders(boolean value) {
+        try {
+            if (!configProbed) {
+                configProbed = true;
+                Class<?> iris = Class.forName("net.irisshaders.iris.Iris");
+                Method getConfig = iris.getMethod("getIrisConfig");
+                getConfig.setAccessible(true);
+                irisConfig = getConfig.invoke(null);
+                if (irisConfig != null) {
+                    allowUnknownShadersField = irisConfig.getClass().getDeclaredField("allowUnknownShaders");
+                    allowUnknownShadersField.setAccessible(true);
+                }
+            }
+            if (allowUnknownShadersField == null) {
+                return null;
+            }
+            boolean previous = allowUnknownShadersField.getBoolean(irisConfig);
+            allowUnknownShadersField.setBoolean(irisConfig, value);
+            return previous;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * Marks Iris' hand renderer as being in its solid pass.
+     *
+     * <p>Iris' {@code MixinItemInHandRenderer} cancels every {@code renderArmWithItem} call when
+     * {@code HandRenderer.renderingSolid == HandRenderer.isHandTranslucent(item)}. Outside of Iris'
+     * own hand pass that expression is {@code false == false} for an empty hand, so Iris silently
+     * discards the whole hand. ModernOPT draws the hand after the upscale, so it has to claim the
+     * hand pass itself for the duration of that one draw.</p>
+     *
+     * @return the previous value, or {@code null} when Iris is not reachable
+     */
+    public static Boolean setRenderingHandSolid(boolean value) {
+        try {
+            if (!handRendererProbed) {
+                handRendererProbed = true;
+                Class<?> handClass = Class.forName("net.irisshaders.iris.pathways.HandRenderer");
+                handRenderer = handClass.getField("INSTANCE").get(null);
+                if (handRenderer != null) {
+                    renderingSolidField = handClass.getDeclaredField("renderingSolid");
+                    renderingSolidField.setAccessible(true);
+                }
+            }
+            if (renderingSolidField == null) {
+                return null;
+            }
+            boolean previous = renderingSolidField.getBoolean(handRenderer);
+            renderingSolidField.setBoolean(handRenderer, value);
+            return previous;
+        } catch (Throwable ignored) {
+            return null;
         }
     }
 

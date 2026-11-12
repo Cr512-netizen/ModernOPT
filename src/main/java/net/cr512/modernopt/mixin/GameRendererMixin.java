@@ -6,6 +6,8 @@ import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.Camera;
 import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -73,6 +75,39 @@ public abstract class GameRendererMixin {
     )
     private void modernopt$endWorldFrame(DeltaTracker deltaTracker, boolean renderLevel, CallbackInfo callbackInfo) {
         RenderPipeline.endWorldFrame();
+        Minecraft minecraft = Minecraft.getInstance();
+        // Vanilla built the HUD orthographic projection from Window#getWidth/Height a few lines
+        // earlier. While the world is being rendered those report the internal (scaled) size, so
+        // the projection ended up describing 320x180 GUI units instead of 640x360: the whole HUD
+        // was drawn twice as large in the top-left corner and the hotbar/health fell off screen.
+        // The real GUI size is cached separately (setGuiScale uses the framebuffer), so rebuild
+        // the projection from it right before the HUD is submitted.
+        if (minecraft.getWindow() != null && minecraft.getWindow().getGuiScale() > 0.0D) {
+            int guiWidth = minecraft.getWindow().getGuiScaledWidth();
+            int guiHeight = minecraft.getWindow().getGuiScaledHeight();
+            if (guiWidth > 0 && guiHeight > 0) {
+                Matrix4f ortho = new Matrix4f().setOrtho(0.0F, (float) guiWidth, (float) guiHeight, 0.0F,
+                        1000.0F, net.neoforged.neoforge.client.ClientHooks.getGuiFarPlane());
+                com.mojang.blaze3d.systems.RenderSystem.setProjectionMatrix(
+                        ortho, com.mojang.blaze3d.vertex.VertexSorting.ORTHOGRAPHIC_Z);
+            }
+        }
+    }
+
+    @Inject(
+            method = "renderItemInHand(Lnet/minecraft/client/Camera;FLorg/joml/Matrix4f;)V",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/client/renderer/ItemInHandRenderer;"
+                            + "renderHandsWithItems(FLcom/mojang/blaze3d/vertex/PoseStack;"
+                            + "Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;"
+                            + "Lnet/minecraft/client/player/LocalPlayer;I)V"
+            )
+    )
+    private void modernopt$renderDeferredHand(Camera camera, float partialTick, Matrix4f pose,
+            CallbackInfo callbackInfo,
+            @com.llamalad7.mixinextras.sugar.Local PoseStack poseStack) {
+        RenderPipeline.renderDeferredHand((GameRenderer) (Object) this, camera, partialTick, poseStack);
     }
 
     /**

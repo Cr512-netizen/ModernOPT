@@ -322,6 +322,11 @@ public final class ShaderLibrary {
     public static void endPassState() {
         GlStateManager._depthMask(true);
         GlStateManager._colorMask(true, true, true, true);
+        // Iris/Sodium leave their own depth compare behind (often GL_GREATER for the reversed
+        // depth setup they use internally). Vanilla's GUI assumes the default GL_LEQUAL, so
+        // without this reset the hand and every HUD layer fail the depth test against the
+        // main target and the screen ends up world-only.
+        GlStateManager._depthFunc(org.lwjgl.opengl.GL11C.GL_LEQUAL);
         GlStateManager._enableDepthTest();
         GlStateManager._enableBlend();
     }
