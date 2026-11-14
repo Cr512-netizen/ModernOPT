@@ -43,9 +43,17 @@ public final class ScaledRenderTarget extends RenderTarget {
     private MsaaFramebuffer msaa;
     private int requestedSamples = 1;
 
-    // Cached viewport dimensions to avoid GL viewport queries on the render thread
+    // Last viewport that was actually requested through GlStateManager, tracked even when the
+    // call targeted another framebuffer. Lets us notice a window sized viewport leaking onto the
+    // scaled target without querying GL on the render thread.
     private static int cachedViewportWidth = -1;
     private static int cachedViewportHeight = -1;
+
+    /** Records the viewport OpenGL is about to use (called from the GlStateManager mixin). */
+    public static void noteViewport(int width, int height) {
+        cachedViewportWidth = width;
+        cachedViewportHeight = height;
+    }
 
     public ScaledRenderTarget(int width, int height, int samples) {
         super(true);
@@ -164,10 +172,16 @@ public final class ScaledRenderTarget extends RenderTarget {
             return;
         }
 
+        // The cached value only mirrors viewport requests made through GlStateManager. Sodium and
+        // Iris also call glViewport directly, so trust the real GL state instead: the question is
+        // whether this framebuffer is currently addressed with a window sized viewport.
+        int[] viewport = new int[4];
+        GL11C.glGetIntegerv(GL11C.GL_VIEWPORT, viewport);
+
         // Only repair when the window-sized viewport leaked in; deliberately smaller viewports
         // (Iris composite passes) are left alone.
-        if (cachedViewportWidth != minecraft.getWindow().getWidth()
-                || cachedViewportHeight != minecraft.getWindow().getHeight()) {
+        if (viewport[2] != minecraft.getWindow().getWidth()
+                || viewport[3] != minecraft.getWindow().getHeight()) {
             return;
         }
 
@@ -193,6 +207,11 @@ public final class ScaledRenderTarget extends RenderTarget {
     /** Raw GL id of this target's single sampled framebuffer (diagnostics). */
     public int fboId() {
         return this.frameBufferId;
+    }
+
+    /** GL id the world is currently drawn into (the MSAA attachment when MSAA is active). */
+    public int activeFramebufferId() {
+        return this.msaa != null ? this.msaa.id() : this.frameBufferId;
     }
 
     /** Resolves multisampled colour into {@link #getColorTextureId()} when MSAA is active. */

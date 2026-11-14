@@ -20,6 +20,13 @@ public abstract class MinecraftMixin {
 
     @Inject(method = "getMainRenderTarget()Lcom/mojang/blaze3d/pipeline/RenderTarget;", at = @At("RETURN"), cancellable = true)
     private void modernopt$scaledWorldTarget(CallbackInfoReturnable<RenderTarget> callbackInfo) {
+        // Iris and Sodium ask for "the main target" while rendering the shadow map too (Sodium's
+        // shader reset rebinds it after every chunk layer). Answering with the scaled colour target
+        // there would pull shadow-pass geometry back into the visible image, so keep the real main
+        // target for the duration of the shadow pass.
+        if (RenderPipeline.shadowPassActive()) {
+            return;
+        }
         RenderTarget override = RenderPipeline.currentWorldTarget();
         if (override != null) {
             callbackInfo.setReturnValue(override);

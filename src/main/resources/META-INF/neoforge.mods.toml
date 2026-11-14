@@ -13,6 +13,11 @@ description = '''${mod_description}'''
 [[mixins]]
 config = "modernopt.mixins.json"
 
+# Profiling-only hooks into Iris (shadow/composite GPU timers). The config is optional and is
+# skipped by its plugin when Iris is not installed.
+[[mixins]]
+config = "modernopt.iris.mixins.json"
+
 [[dependencies.${mod_id}]]
 modId = "neoforge"
 type = "required"

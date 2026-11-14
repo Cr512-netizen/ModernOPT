@@ -4,22 +4,41 @@ import net.cr512.modernopt.ModernOPT;
 import org.lwjgl.opengl.GL33C;
 
 /**
- * Lightweight GPU timer for the two phases of a ModernOPT frame: the Iris/vanilla world
- * render at the internal resolution and ModernOPT's own upscale passes. Uses
- * {@code GL_TIME_ELAPSED} queries with a two-deep ring so polling never stalls the GPU.
- * Diagnostic only; costs a couple of query objects and no synchronisation.
+ * Lightweight GPU timer for the phases of a ModernOPT frame: the Iris/vanilla world render at
+ * the internal resolution, the shader pack's shadow and composite chains, and ModernOPT's own
+ * upscale passes.
+ *
+ * <p>Uses {@code GL_TIMESTAMP} counters rather than a single {@code GL_TIME_ELAPSED} query
+ * because OpenGL only allows one elapsed-time query of each target at a time, while these
+ * sections nest (shadow and composite render inside the world pass). Counters just record a
+ * point on the GPU timeline, so they can overlap freely.</p>
+ *
+ * <p>Diagnostic only; costs a few query objects and no synchronisation.</p>
  */
 public final class GpuProfiler {
 
     public static final int WORLD = 0;
     public static final int UPSCALE = 1;
-    private static final int SECTIONS = 2;
+    public static final int SHADOW = 2;
+    public static final int COMPOSITE = 3;
+    public static final int FINAL = 4;
+    public static final int TERRAIN = 5;
+    public static final int SKY = 6;
+    private static final int SECTIONS = 7;
     private static final int RING = 3;
 
-    private static final int[][] queries = new int[SECTIONS][RING];
+    /**
+     * Timers are a development aid: they cost GL queries every frame, so they are only created
+     * when the benchmark harness is enabled with {@code -Dmodernopt.bench=true}.
+     */
+    private static final boolean ENABLED = Boolean.getBoolean("modernopt.bench");
+
+    private static final int[][] beginQueries = new int[SECTIONS][RING];
+    private static final int[][] endQueries = new int[SECTIONS][RING];
     private static final int[] pending = new int[SECTIONS];
     private static final double[] accumMs = new double[SECTIONS];
     private static final int[] samples = new int[SECTIONS];
+    private static final int[] depth = new int[SECTIONS];
     private static boolean active;
     private static long lastLogNanos = System.nanoTime();
 
@@ -37,29 +56,48 @@ public final class GpuProfiler {
         }
         for (int section = 0; section < SECTIONS; section++) {
             for (int i = 0; i < RING; i++) {
-                queries[section][i] = GL33C.glGenQueries();
+                beginQueries[section][i] = GL33C.glGenQueries();
+                endQueries[section][i] = GL33C.glGenQueries();
             }
         }
         active = true;
     }
 
+    /** Records the start of a section on the GPU timeline. Nested calls only start one counter. */
     public static void begin(int section) {
+        if (!ENABLED) {
+            return;
+        }
+        if (depth[section]++ != 0) {
+            return;
+        }
         ensureQueries();
-        int slot = pending[section] % RING;
-        GL33C.glBeginQuery(GL33C.GL_TIME_ELAPSED, queries[section][slot]);
+        GL33C.glQueryCounter(beginQueries[section][pending[section] % RING], GL33C.GL_TIMESTAMP);
     }
 
+    /** Records the end of a section and folds a finished frame into the running average. */
     public static void end(int section) {
+        if (!ENABLED || depth[section] == 0) {
+            return;
+        }
+        if (--depth[section] != 0) {
+            return;
+        }
         if (!active) {
             return;
         }
-        GL33C.glEndQuery(GL33C.GL_TIME_ELAPSED);
+        int slot = pending[section] % RING;
+        GL33C.glQueryCounter(endQueries[section][slot], GL33C.GL_TIMESTAMP);
+
         if (pending[section] >= RING - 1) {
-            // Poll the query started two frames ago: it has surely finished, so this never blocks.
+            // Two frames of latency: the counters below are surely resolved, so this never blocks.
             int poll = (pending[section] - (RING - 1) + RING) % RING;
-            long nanos = GL33C.glGetQueryObjectui64(queries[section][poll], GL33C.GL_QUERY_RESULT);
-            accumMs[section] += nanos / 1_000_000.0;
-            samples[section]++;
+            long start = GL33C.glGetQueryObjectui64(beginQueries[section][poll], GL33C.GL_QUERY_RESULT);
+            long stop = GL33C.glGetQueryObjectui64(endQueries[section][poll], GL33C.GL_QUERY_RESULT);
+            if (stop > start) {
+                accumMs[section] += (stop - start) / 1_000_000.0;
+                samples[section]++;
+            }
         }
         pending[section]++;
     }
@@ -80,6 +118,9 @@ public final class GpuProfiler {
 
     /** Logs averaged phase timings roughly every 2 seconds. */
     public static void maybeLog() {
+        if (!ENABLED) {
+            return;
+        }
         long now = System.nanoTime();
         if (now - lastLogNanos < 2_000_000_000L) {
             return;
@@ -88,27 +129,34 @@ public final class GpuProfiler {
         if (!active) {
             return;
         }
-        double world = samples[WORLD] == 0 ? 0 : accumMs[WORLD] / samples[WORLD];
-        double upscale = samples[UPSCALE] == 0 ? 0 : accumMs[UPSCALE] / samples[UPSCALE];
-        ModernOPT.LOG.info("[BENCH][GPU] world {} ms ({}), upscale {} ms ({}), samples {}",
-                String.format("%.2f", world), samples[WORLD],
-                String.format("%.2f", upscale), samples[UPSCALE], samples[UPSCALE]);
+        ModernOPT.LOG.info("[BENCH][GPU] world {} ms ({}), terrain {} ms ({}), sky {} ms ({}), shadow {} ms ({}), composite {} ms ({}), final {} ms ({}), upscale {} ms ({}), samples {}",
+                average(WORLD), samples[WORLD],
+                average(TERRAIN), samples[TERRAIN],
+                average(SKY), samples[SKY],
+                average(SHADOW), samples[SHADOW],
+                average(COMPOSITE), samples[COMPOSITE],
+                average(FINAL), samples[FINAL],
+                average(UPSCALE), samples[UPSCALE], samples[UPSCALE]);
         ModernOPT.LOG.info("[BENCH][CPU] worldCpu {} ms ({})",
                 String.format("%.2f", cpuWorldSamples == 0 ? 0 : cpuWorldAccumMs / cpuWorldSamples),
                 cpuWorldSamples);
         cpuWorldAccumMs = 0;
         cpuWorldSamples = 0;
-        accumMs[WORLD] = 0;
-        accumMs[UPSCALE] = 0;
-        samples[WORLD] = 0;
-        samples[UPSCALE] = 0;
+        for (int section = 0; section < SECTIONS; section++) {
+            accumMs[section] = 0;
+            samples[section] = 0;
+        }
+    }
+
+    private static String average(int section) {
+        return String.format("%.2f", samples[section] == 0 ? 0 : accumMs[section] / samples[section]);
     }
 
     public static void reset() {
-        accumMs[WORLD] = 0;
-        accumMs[UPSCALE] = 0;
-        samples[WORLD] = 0;
-        samples[UPSCALE] = 0;
+        for (int section = 0; section < SECTIONS; section++) {
+            accumMs[section] = 0;
+            samples[section] = 0;
+        }
         lastLogNanos = System.nanoTime();
     }
 }

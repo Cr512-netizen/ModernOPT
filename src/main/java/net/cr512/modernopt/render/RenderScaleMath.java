@@ -12,6 +12,13 @@ public final class RenderScaleMath {
     /** Colour attachment width alignment, in pixels (32 * 4 bytes = 128-byte rows). */
     private static final int TARGET_ALIGNMENT = 32;
 
+    /**
+     * Benchmark-only override of the internal size, in pixels. Set by the local harness
+     * ({@code SelfTest}) to probe the renderer at exact resolutions; always {@code null} in
+     * normal play.
+     */
+    public static volatile int[] benchOverride;
+
     private RenderScaleMath() {
     }
 
@@ -36,6 +43,10 @@ public final class RenderScaleMath {
      *         than {@code maxTextureSize}
      */
     public static int[] targetSize(int windowWidth, int windowHeight, int percent, boolean ssaa, int maxTextureSize) {
+        int[] override = benchOverride;
+        if (override != null) {
+            return new int[]{Math.max(1, override[0]), Math.max(1, override[1])};
+        }
         double f = factor(percent, ssaa);
         int windowW = Math.max(1, windowWidth);
         int windowH = Math.max(1, windowHeight);
