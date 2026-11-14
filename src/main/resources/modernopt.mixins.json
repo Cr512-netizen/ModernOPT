@@ -4,7 +4,9 @@
   "package": "net.cr512.modernopt.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "EntityRenderDispatcherMixin",
     "GameRendererMixin",
+    "LevelRendererTimingMixin",
     "GlStateManagerMixin",
     "MinecraftMixin",
     "ScreenshotMixin",

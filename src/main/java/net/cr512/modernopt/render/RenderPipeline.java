@@ -57,6 +57,25 @@ public final class RenderPipeline {
     private static ShaderLibrary shaders;
     private static boolean shaderFailure;
     private static boolean worldActive;
+
+    /** Bench diagnostics helper: true while the world is being rendered into the scaled target. */
+    public static boolean worldActive() {
+        return worldActive;
+    }
+
+    /**
+     * True while Iris' shadow pass runs. Used to keep the "main render target" redirect from
+     * confusing Iris' own main-bound/phase tracking during shadow rendering.
+     */
+    private static volatile boolean shadowPassActive;
+
+    public static void setShadowPassActive(boolean active) {
+        shadowPassActive = active;
+    }
+
+    public static boolean shadowPassActive() {
+        return shadowPassActive;
+    }
     private static boolean loggedIrisSkip;
     private static boolean irisThisFrame;
     private static boolean loggedIrisDepth;
@@ -276,6 +295,7 @@ public final class RenderPipeline {
         poseCaptured = false;
 
         GpuProfiler.maybeLog();
+        RenderStageProfiler.maybeLog();
 
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null || minecraft.noRender) {
@@ -1253,6 +1273,40 @@ public final class RenderPipeline {
 
         GlStateManager._viewport(0, 0, target.viewWidth, target.viewHeight);
         return true;
+    }
+
+    /**
+     * Called right after a framebuffer binding. When the scaled world target becomes the draw
+     * buffer while OpenGL still carries a window sized viewport (left behind by a full resolution
+     * helper target that was bound with {@code setViewport = false} afterwards), the viewport is
+     * corrected to the scaled size.
+     *
+     * <p>Without this, entities, clouds and the sky are rasterised as if the framebuffer were the
+     * full window: their screen centre maps to the target's corner, which is exactly the giant
+     * player sliver in the top-right corner and the floating entity fragments in the sky.</p>
+     */
+    public static void onFramebufferBound(int target, int framebuffer) {
+        ScaledRenderTarget scaledTarget = scaled;
+        if (!worldActive || scaledTarget == null || shadowPassActive()) {
+            return;
+        }
+        if (target != org.lwjgl.opengl.GL30C.GL_FRAMEBUFFER
+                && target != org.lwjgl.opengl.GL30C.GL_DRAW_FRAMEBUFFER) {
+            return;
+        }
+        if (framebuffer != scaledTarget.fboId() && framebuffer != scaledTarget.activeFramebufferId()) {
+            return;
+        }
+        if (realWindowWidth <= 0 || realWindowHeight <= 0) {
+            return;
+        }
+
+        int[] viewport = new int[4];
+        org.lwjgl.opengl.GL11C.glGetIntegerv(org.lwjgl.opengl.GL11C.GL_VIEWPORT, viewport);
+        if (viewport[2] != realWindowWidth || viewport[3] != realWindowHeight) {
+            return;
+        }
+        GlStateManager._viewport(0, 0, scaledTarget.viewWidth, scaledTarget.viewHeight);
     }
 
     /**

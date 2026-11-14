@@ -1,0 +1,15 @@
+{
+  "required": false,
+  "minVersion": "0.8.5",
+  "package": "net.cr512.modernopt.mixin.iris",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "net.cr512.modernopt.mixin.iris.ModernOptIrisMixinPlugin",
+  "client": [
+    "IrisCompositeRendererMixin",
+    "IrisFinalPassRendererMixin",
+    "IrisShadowRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

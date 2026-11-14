@@ -24,6 +24,22 @@ public abstract class GlStateManagerMixin {
     private static void modernopt$clampWorldViewport(int x, int y, int width, int height, CallbackInfo callbackInfo) {
         if (RenderPipeline.clampViewport(x, y, width, height)) {
             callbackInfo.cancel();
+            return;
         }
+        // Remember what OpenGL is really being asked for, whichever framebuffer is bound right
+        // now. The scaled target uses this to detect a window sized viewport leaking onto it
+        // through a bindWrite(false) that intentionally does not touch the viewport.
+        net.cr512.modernopt.render.ScaledRenderTarget.noteViewport(width, height);
+    }
+
+    /**
+     * Repairs the viewport when the scaled target becomes the draw buffer after a window sized
+     * pass (vanilla's item entity / weather helper targets, Iris composites) left a full
+     * resolution viewport behind. Those passes bind with {@code setViewport = false}, so the only
+     * reliable place to catch every route is the framebuffer binding itself.
+     */
+    @Inject(method = "_glBindFramebuffer", at = @At("TAIL"))
+    private static void modernopt$repairViewportOnBind(int target, int framebuffer, CallbackInfo callbackInfo) {
+        RenderPipeline.onFramebufferBound(target, framebuffer);
     }
 }

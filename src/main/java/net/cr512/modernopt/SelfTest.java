@@ -5,6 +5,7 @@ import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.config.UpscalerType;
 import net.cr512.modernopt.render.RenderPipeline;
+import net.cr512.modernopt.render.RenderScaleMath;
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -51,6 +52,8 @@ public final class SelfTest {
     private static int ticks;
     private static int smallWindowTicks;
     private static int state = -1;
+    /** Benchmark-only camera pitch ({@code NaN} keeps the default view). */
+    private static float benchPitch = Float.NaN;
     private static boolean worldLogged;
     private static boolean sampling;
     private static boolean windowWarned;
@@ -141,6 +144,9 @@ public final class SelfTest {
         }
 
         int offset = elapsed % STATE_TICKS;
+        if (!Float.isNaN(benchPitch) && minecraft.player != null) {
+            minecraft.player.setXRot(benchPitch);
+        }
         if (index != state) {
             state = index;
             applyState(state);
@@ -350,6 +356,31 @@ public final class SelfTest {
             }
             percent = Integer.parseInt(name.substring(dash + 1, end));
         }
+        // "BILINEAR@960x522" pins the internal size instead of deriving it from a percentage.
+        int at = name.indexOf('@');
+        RenderScaleMath.benchOverride = null;
+        if (at >= 0) {
+            String size = name.substring(at + 1);
+            int bang = size.indexOf('!');
+            if (bang >= 0) {
+                size = size.substring(0, bang);
+            }
+            int x = size.indexOf('x');
+            RenderScaleMath.benchOverride = new int[]{
+                    Integer.parseInt(size.substring(0, x)),
+                    Integer.parseInt(size.substring(x + 1))
+            };
+        }
+        // "!up" points the camera at the sky: separates terrain fill from full-screen passes.
+        benchPitch = name.endsWith("!up") ? -88.0F : Float.NaN;
+        // "!f5" / "!f5f" switch to third person back / front for visual checks.
+        net.minecraft.client.CameraType cameraType = net.minecraft.client.CameraType.FIRST_PERSON;
+        if (name.endsWith("!f5")) {
+            cameraType = net.minecraft.client.CameraType.THIRD_PERSON_BACK;
+        } else if (name.endsWith("!f5f")) {
+            cameraType = net.minecraft.client.CameraType.THIRD_PERSON_FRONT;
+        }
+        Minecraft.getInstance().options.setCameraType(cameraType);
         switch (mode) {
             case "OFF" -> {
                 ModernOptConfig.ENABLED.set(false);
