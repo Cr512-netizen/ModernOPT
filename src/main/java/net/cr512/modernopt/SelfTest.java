@@ -224,12 +224,17 @@ public final class SelfTest {
             int surface = minecraft.level.getHeight(
                     net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, bx, bz);
             double y = Math.max(surface + 1.0, spawn.getY());
-            minecraft.player.setPos(bx + 0.5, y, bz + 0.5);
-            minecraft.player.setYRot(90.0F);
-            minecraft.player.setXRot(0.0F);
-            minecraft.player.setDeltaMovement(0.0, 0.0, 0.0);
-            ModernOPT.LOG.info("[BENCH] startup steering done at {} (spawn {}, surface {}) - player now has full control",
-                    minecraft.player.position(), spawn, surface);
+            if (Boolean.getBoolean("modernopt.bench.teleport")) {
+                minecraft.player.setPos(bx + 0.5, y, bz + 0.5);
+                minecraft.player.setYRot(90.0F);
+                minecraft.player.setXRot(0.0F);
+                minecraft.player.setDeltaMovement(0.0, 0.0, 0.0);
+                ModernOPT.LOG.info("[BENCH] startup steering done at {} (spawn {}, surface {}) - player now has full control",
+                        minecraft.player.position(), spawn, surface);
+            } else {
+                ModernOPT.LOG.info("[BENCH] keeping the player where the world saved them: {}",
+                        minecraft.player.position());
+            }
         } catch (Throwable throwable) {
             ModernOPT.LOG.warn("[BENCH] startup steering skipped: {}", throwable.toString());
         }
@@ -405,8 +410,14 @@ public final class SelfTest {
         // "!up" points the camera at the sky: separates terrain fill from full-screen passes.
         benchPitch = name.endsWith("!up") ? -88.0F : Float.NaN;
         // "!f5" / "!f5f" switch to third person back / front for visual checks.
-        // "!ldr" forces the pre-upscale target to 8-bit RGBA instead of RGBA16F.
-        ModernOptConfig.FP16_WORLD.set(!name.contains("!ldr"));
+        // "!ldr" forces the pre-upscale target to 8-bit RGBA, "!hdr" forces RGBA16F. Without a
+        // suffix the configured value is left alone (FP16 is off by default because the Iris
+        // composite chain writes into this target and doubles its bandwidth cost).
+        if (name.contains("!ldr")) {
+            ModernOptConfig.FP16_WORLD.set(false);
+        } else if (name.contains("!hdr")) {
+            ModernOptConfig.FP16_WORLD.set(true);
+        }
         int hudIndex = name.indexOf("!hud");
         if (hudIndex >= 0) {
             int hudPercent = digits(name.substring(hudIndex + 4));

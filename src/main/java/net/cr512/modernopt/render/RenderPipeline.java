@@ -212,10 +212,19 @@ public final class RenderPipeline {
     public static int windowWidthOverride() {
         return windowScaled && scaled != null ? scaled.viewWidth : -1;
     }
-
     /** Returns the height {@code Window#getHeight} should report, or {@code -1} for the real one. */
     public static int windowHeightOverride() {
         return windowScaled && scaled != null ? scaled.viewHeight : -1;
+    }
+
+    /** Real framebuffer width, captured when the world frame starts. */
+    public static int realWindowWidth() {
+        return realWindowWidth;
+    }
+
+    /** Real framebuffer height, captured when the world frame starts. */
+    public static int realWindowHeight() {
+        return realWindowHeight;
     }
 
     // DRS state
@@ -1388,9 +1397,12 @@ public final class RenderPipeline {
             return;
         }
 
-        int[] viewport = new int[4];
-        org.lwjgl.opengl.GL11C.glGetIntegerv(org.lwjgl.opengl.GL11C.GL_VIEWPORT, viewport);
-        if (viewport[2] != realWindowWidth || viewport[3] != realWindowHeight) {
+        // Only the "window sized viewport leaked onto the scaled target" case needs repair, and
+        // every viewport request made through GlStateManager is tracked, so no GL round trip is
+        // needed here. This runs on every framebuffer bind (Sodium rebinds after each chunk layer
+        // and Iris binds its own targets), where glGetIntegerv used to cost real milliseconds.
+        if (ScaledRenderTarget.viewportWidth() != realWindowWidth
+                || ScaledRenderTarget.viewportHeight() != realWindowHeight) {
             return;
         }
         GlStateManager._viewport(0, 0, scaledTarget.viewWidth, scaledTarget.viewHeight);
