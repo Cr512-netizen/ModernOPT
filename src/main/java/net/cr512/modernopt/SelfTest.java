@@ -205,6 +205,9 @@ public final class SelfTest {
                 minecraft.options.save();
                 ModernOPT.LOG.info("[BENCH] render distance forced to {} chunks (client option)", BENCH_RENDER_DISTANCE);
             }
+            if (minecraft.level != null) {
+                minecraft.options.pauseOnLostFocus = false;
+            }
             minecraft.level.setDayTime(1000L);
             minecraft.level.setRainLevel(0.0F);
             minecraft.level.setThunderLevel(0.0F);
@@ -418,6 +421,7 @@ public final class SelfTest {
         } else if (name.contains("!hdr")) {
             ModernOptConfig.FP16_WORLD.set(true);
         }
+        ModernOptConfig.SCALE_WHOLE_WINDOW.set(name.contains("!wws"));
         int hudIndex = name.indexOf("!hud");
         if (hudIndex >= 0) {
             int hudPercent = digits(name.substring(hudIndex + 4));

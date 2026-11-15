@@ -20,6 +20,7 @@ public final class ModernOptSettings {
     private static volatile int shadowMapResolution = 2048;
     private static volatile boolean fp16World = false;
     private static volatile int hudScalePercent = 100;
+    private static volatile boolean scaleWholeWindow;
 
     // MSR 2.0 settings
     private static volatile boolean msrEnabled = false;
@@ -56,6 +57,7 @@ public final class ModernOptSettings {
         shadowMapResolution = ModernOptConfig.SHADOW_MAP_RESOLUTION.get();
         fp16World = ModernOptConfig.FP16_WORLD.get();
         hudScalePercent = ModernOptConfig.HUD_SCALE_PERCENT.get();
+        scaleWholeWindow = ModernOptConfig.SCALE_WHOLE_WINDOW.get();
 
         // MSR 2.0
         msrEnabled = ModernOptConfig.MSR_ENABLED.get();
@@ -135,6 +137,11 @@ public final class ModernOptSettings {
     /** Resolution the HUD is rendered at, in percent of the window (50-100). */
     public static int hudScalePercent() {
         return hudScalePercent;
+    }
+
+    /** Scale the whole frame (world + HUD + presentation) instead of only the world target. */
+    public static boolean scaleWholeWindow() {
+        return scaleWholeWindow;
     }
 
     // MSR 2.0 getters

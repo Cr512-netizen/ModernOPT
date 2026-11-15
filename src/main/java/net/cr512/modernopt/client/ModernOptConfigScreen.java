@@ -71,6 +71,14 @@ public class ModernOptConfigScreen extends Screen {
                 value -> value + "%"));
 
         y += step;
+        this.addRenderableWidget(CycleButton.onOffBuilder(ModernOptSettings.scaleWholeWindow())
+                .create(left, y, width, 20, Component.translatable("modernopt.option.scaleWholeWindow"),
+                        (button, value) -> {
+                            ModernOptConfig.SCALE_WHOLE_WINDOW.set(value);
+                            ModernOptSettings.refresh();
+                        }));
+
+        y += step;
         this.addRenderableWidget(CycleButton.<Integer>builder(size -> Component.literal(size + " x " + size))
                 .withValues(java.util.Arrays.stream(ShadowMapResolution.allowedValues()).boxed().toList())
                 .withInitialValue(ShadowMapResolution.desired())

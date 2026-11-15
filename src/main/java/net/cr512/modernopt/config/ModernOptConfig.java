@@ -26,6 +26,7 @@ public final class ModernOptConfig {
     // Shader pack shadow map
     public static final ModConfigSpec.IntValue SHADOW_MAP_RESOLUTION;
     public static final ModConfigSpec.IntValue HUD_SCALE_PERCENT;
+    public static final ModConfigSpec.BooleanValue SCALE_WHOLE_WINDOW;
 
     // MSR 2.0 config
     public static final ModConfigSpec.BooleanValue MSR_ENABLED;
@@ -66,6 +67,14 @@ public final class ModernOptConfig {
                         "resolution as the world and upscale it together with the final image, which saves the",
                         "fill rate of the whole GUI pass (the text becomes softer).")
                 .defineInRange("hudScalePercent", 100, 50, 100);
+        SCALE_WHOLE_WINDOW = b.comment(
+                        "Scale the entire frame instead of only the world render target.",
+                        "The world, HUD, Iris composites and the final presentation all run at the internal",
+                        "resolution and one blit puts the frame on the window (this is how the RenderScale mod",
+                        "works). It is the fastest mode and matches RenderScale, at the cost of a softer HUD",
+                        "and lower resolution screenshots. Off by default: the world-only mode keeps the",
+                        "interface pixel sharp.")
+                .define("scaleWholeWindow", false);
         b.pop();
 
         b.comment("Shader pack shadow map.").push("shadows");
