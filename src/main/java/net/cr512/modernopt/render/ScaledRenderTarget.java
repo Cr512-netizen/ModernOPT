@@ -57,6 +57,16 @@ public final class ScaledRenderTarget extends RenderTarget {
         cachedViewportHeight = height;
     }
 
+    /** Width of the last viewport requested through GlStateManager. */
+    public static int viewportWidth() {
+        return cachedViewportWidth;
+    }
+
+    /** Height of the last viewport requested through GlStateManager. */
+    public static int viewportHeight() {
+        return cachedViewportHeight;
+    }
+
     public ScaledRenderTarget(int width, int height, int samples, boolean fp16) {
         super(true);
         this.requestedSamples = Math.max(1, samples);
@@ -208,16 +218,12 @@ public final class ScaledRenderTarget extends RenderTarget {
             return;
         }
 
-        // The cached value only mirrors viewport requests made through GlStateManager. Sodium and
-        // Iris also call glViewport directly, so trust the real GL state instead: the question is
-        // whether this framebuffer is currently addressed with a window sized viewport.
-        int[] viewport = new int[4];
-        GL11C.glGetIntegerv(GL11C.GL_VIEWPORT, viewport);
-
-        // Only repair when the window-sized viewport leaked in; deliberately smaller viewports
-        // (Iris composite passes) are left alone.
-        if (viewport[2] != minecraft.getWindow().getWidth()
-                || viewport[3] != minecraft.getWindow().getHeight()) {
+        // The cached value mirrors every viewport request made through GlStateManager, which is
+        // where vanilla's full resolution helper targets set one. Sodium and Iris also call
+        // glViewport directly, but only with their own (smaller) sizes, so a window sized cached
+        // viewport is exactly the leak that needs repairing - no GL query on the hot path.
+        if (cachedViewportWidth != net.cr512.modernopt.render.RenderPipeline.realWindowWidth()
+                || cachedViewportHeight != net.cr512.modernopt.render.RenderPipeline.realWindowHeight()) {
             return;
         }
 
