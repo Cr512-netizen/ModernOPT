@@ -92,6 +92,10 @@ public abstract class GameRendererMixin {
                         ortho, com.mojang.blaze3d.vertex.VertexSorting.ORTHOGRAPHIC_Z);
             }
         }
+        // Bind the downscaled GUI target (if enabled) after the ortho rebuild: vanilla already
+        // bound and cleared the main target, so everything the GUI draws from here on lands in
+        // the smaller buffer and is composited over the world at the end of the frame.
+        RenderPipeline.beginHudFrame(minecraft);
     }
 
     @Inject(
@@ -128,9 +132,11 @@ public abstract class GameRendererMixin {
     )
     private void modernopt$statusOverlay(DeltaTracker deltaTracker, boolean renderLevel, CallbackInfo callbackInfo) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.level == null) {
-            return;
+        if (minecraft.level != null) {
+            PerformanceOverlay.render(new GuiGraphics(minecraft, minecraft.renderBuffers().bufferSource()));
         }
-        PerformanceOverlay.render(new GuiGraphics(minecraft, minecraft.renderBuffers().bufferSource()));
+        // Everything (HUD, screens, toasts) has been submitted; composite the downscaled GUI
+        // over the world in the real main target.
+        RenderPipeline.endHudFrame(minecraft);
     }
 }

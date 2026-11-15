@@ -293,6 +293,9 @@ public final class RenderPipeline {
         msrThisFrame = false;
         msrActiveThisFrame = false;
         poseCaptured = false;
+        // Never let the window-size override leak from a frame that was skipped or aborted:
+        // otherwise the next frame reads the *scaled* width back and halves the target again.
+        windowScaled = false;
 
         GpuProfiler.maybeLog();
         RenderStageProfiler.maybeLog();
@@ -657,6 +660,88 @@ public final class RenderPipeline {
     /** Called right before {@code Gui#render}, i.e. after the world and before the HUD. */
     public static void endWorldFrame() {
         finishWorldFrame();
+    }
+
+    // ------------------------------------------------------------------
+    // Downscaled HUD pass
+    // ------------------------------------------------------------------
+
+    private static RenderTarget hudTarget;
+    private static boolean hudActive;
+
+    /** True while the HUD is being rendered into the downscaled GUI target. */
+    public static boolean hudActive() {
+        return hudActive;
+    }
+
+    /** The downscaled GUI target while the HUD is being rendered, otherwise {@code null}. */
+    public static RenderTarget activeHudTarget() {
+        return hudActive ? hudTarget : null;
+    }
+
+    /**
+     * Redirects the GUI pass into a downscaled target when {@code hudScalePercent} is below 100.
+     *
+     * <p>RenderScale does the same by making the window report the scaled size for the whole
+     * frame. ModernOPT keeps the window native (so the game window and mouse stay untouched) and
+     * instead binds a dedicated GUI target of {@code hudScalePercent} of the window; the HUD is
+     * laid out in the same GUI units as before and upscaled with the rest of the frame, so it looks
+     * identical in size, only softer. Costs one extra textured blit at the end of the frame.</p>
+     */
+    public static void beginHudFrame(Minecraft minecraft) {
+        hudActive = false;
+        if (!ModernOptSettings.enabled()) {
+            return;
+        }
+        int percent = Math.max(50, Math.min(100, ModernOptSettings.hudScalePercent()));
+        if (percent >= 100) {
+            return;
+        }
+        RenderTarget main = minecraft.getMainRenderTarget();
+        if (main == null || main.width <= 0 || main.height <= 0) {
+            return;
+        }
+        int width = Math.max(1, (int) Math.round(main.width * (percent / 100.0)));
+        int height = Math.max(1, (int) Math.round(main.height * (percent / 100.0)));
+        try {
+            if (hudTarget == null) {
+                hudTarget = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+            }
+            if (hudTarget.width != width || hudTarget.height != height) {
+                hudTarget.resize(width, height, Minecraft.ON_OSX);
+            }
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.warn("[ModernOPT] cannot allocate the {}x{} HUD target, HUD scaling disabled",
+                    width, height, throwable);
+            hudTarget = null;
+            return;
+        }
+        hudTarget.bindWrite(true);
+        // Transparent clear: the HUD is composited over the already upscaled world.
+        GlStateManager._clearColor(0.0F, 0.0F, 0.0F, 0.0F);
+        GlStateManager._clear(GL11C.GL_COLOR_BUFFER_BIT | GL11C.GL_DEPTH_BUFFER_BIT, true);
+        hudActive = true;
+        GpuProfiler.begin(GpuProfiler.HUD);
+    }
+
+    /** Composites the downscaled HUD over the world in the real main target. */
+    public static void endHudFrame(Minecraft minecraft) {
+        if (!hudActive) {
+            return;
+        }
+        hudActive = false;
+        GpuProfiler.end(GpuProfiler.HUD);
+        RenderTarget hud = hudTarget;
+        RenderTarget main = minecraft.getMainRenderTarget();
+        if (hud == null || main == null) {
+            return;
+        }
+        main.bindWrite(true);
+        GlStateManager._enableBlend();
+        GlStateManager._blendFuncSeparate(GL11C.GL_SRC_ALPHA, GL11C.GL_ONE_MINUS_SRC_ALPHA,
+                GL11C.GL_ONE, GL11C.GL_ONE_MINUS_SRC_ALPHA);
+        hud.blitToScreen(main.width, main.height, false);
+        GlStateManager._disableBlend();
     }
 
     /**

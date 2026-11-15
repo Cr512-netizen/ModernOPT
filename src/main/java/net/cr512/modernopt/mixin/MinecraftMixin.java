@@ -30,6 +30,12 @@ public abstract class MinecraftMixin {
         RenderTarget override = RenderPipeline.currentWorldTarget();
         if (override != null) {
             callbackInfo.setReturnValue(override);
+            return;
+        }
+        // During the GUI pass the HUD may be drawn into its own smaller target (hudScalePercent).
+        override = RenderPipeline.activeHudTarget();
+        if (override != null) {
+            callbackInfo.setReturnValue(override);
         }
     }
 }

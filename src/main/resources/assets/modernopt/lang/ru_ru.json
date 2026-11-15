@@ -3,6 +3,7 @@
   "modernopt.option.enabled": "Масштаб рендера",
   "modernopt.option.renderScale": "Внутреннее разрешение",
   "modernopt.option.upscaler": "Апскейлер",
+  "modernopt.option.hudScale": "Разрешение интерфейса",
   "modernopt.option.shadowMapResolution": "Разрешение карты теней",
   "modernopt.option.softness": "Мягкость SoftScale",
   "modernopt.option.fsrEasuSharpness": "Резкость FSR EASU",

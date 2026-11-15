@@ -25,6 +25,7 @@ public final class ModernOptConfig {
 
     // Shader pack shadow map
     public static final ModConfigSpec.IntValue SHADOW_MAP_RESOLUTION;
+    public static final ModConfigSpec.IntValue HUD_SCALE_PERCENT;
 
     // MSR 2.0 config
     public static final ModConfigSpec.BooleanValue MSR_ENABLED;
@@ -59,6 +60,12 @@ public final class ModernOptConfig {
                 .defineInRange("fsrEasuSharpness", 0, 0, 100);
         FSR_RCAS_SHARPNESS = b.comment("FSR 1 / FSR 2 RCAS sharpening, 0 = off, 100 = strong.")
                 .defineInRange("fsrRcasSharpness", 25, 0, 100);
+        HUD_SCALE_PERCENT = b.comment(
+                        "Resolution the HUD and other GUI elements are rendered at, as a percentage of the window.",
+                        "100 keeps the interface pixel sharp. Lower values render the HUD at the same reduced",
+                        "resolution as the world and upscale it together with the final image, which saves the",
+                        "fill rate of the whole GUI pass (the text becomes softer).")
+                .defineInRange("hudScalePercent", 100, 50, 100);
         b.pop();
 
         b.comment("Shader pack shadow map.").push("shadows");
@@ -81,10 +88,10 @@ public final class ModernOptConfig {
         FXAA = b.comment("Post-process edge smoothing on the final image.").define("fxaa", false);
         FP16_WORLD = b.comment(
                         "Render the internal (before-upscale) world image into a 16-bit float (RGBA16F) buffer.",
-                        "Shader packs produce HDR colours; with an 8-bit buffer the image is quantised before the",
-                        "upscaler sees it, which shows up as banding in sky gradients and dark areas.",
-                        "FP16 doubles the bandwidth of that buffer (it is still the small, scaled one).")
-                .define("fp16ColorTarget", true);
+                        "Shader packs produce HDR colours, so this avoids quantising the image before the upscaler",
+                        "sees it (less banding in gradients). It doubles the bandwidth of that buffer: measured",
+                        "about 1.3 ms per frame at 960x540 with Complementary, so it is off by default.")
+                .define("fp16ColorTarget", false);
         b.pop();
 
         b.comment("MSR 2.0 (Minecraft Super Resolution) - experimental upscaler.").push("msr");

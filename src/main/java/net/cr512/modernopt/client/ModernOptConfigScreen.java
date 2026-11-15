@@ -61,6 +61,16 @@ public class ModernOptConfigScreen extends Screen {
                 }));
 
         y += step;
+        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+                Component.translatable("modernopt.option.hudScale"), 50, 100,
+                ModernOptSettings.hudScalePercent(),
+                value -> {
+                    ModernOptConfig.HUD_SCALE_PERCENT.set(value);
+                    ModernOptSettings.refresh();
+                },
+                value -> value + "%"));
+
+        y += step;
         this.addRenderableWidget(CycleButton.<Integer>builder(size -> Component.literal(size + " x " + size))
                 .withValues(java.util.Arrays.stream(ShadowMapResolution.allowedValues()).boxed().toList())
                 .withInitialValue(ShadowMapResolution.desired())

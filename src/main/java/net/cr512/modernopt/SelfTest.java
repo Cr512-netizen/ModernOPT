@@ -406,7 +406,14 @@ public final class SelfTest {
         benchPitch = name.endsWith("!up") ? -88.0F : Float.NaN;
         // "!f5" / "!f5f" switch to third person back / front for visual checks.
         // "!ldr" forces the pre-upscale target to 8-bit RGBA instead of RGBA16F.
-        ModernOptConfig.FP16_WORLD.set(!name.endsWith("!ldr"));
+        ModernOptConfig.FP16_WORLD.set(!name.contains("!ldr"));
+        int hudIndex = name.indexOf("!hud");
+        if (hudIndex >= 0) {
+            int hudPercent = digits(name.substring(hudIndex + 4));
+            if (hudPercent >= 50 && hudPercent <= 100) {
+                ModernOptConfig.HUD_SCALE_PERCENT.set(hudPercent);
+            }
+        }
         net.minecraft.client.CameraType cameraType = net.minecraft.client.CameraType.FIRST_PERSON;
         if (name.endsWith("!f5")) {
             cameraType = net.minecraft.client.CameraType.THIRD_PERSON_BACK;

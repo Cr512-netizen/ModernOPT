@@ -24,7 +24,8 @@ public final class GpuProfiler {
     public static final int FINAL = 4;
     public static final int TERRAIN = 5;
     public static final int SKY = 6;
-    private static final int SECTIONS = 7;
+    public static final int HUD = 7;
+    private static final int SECTIONS = 8;
     private static final int RING = 3;
 
     /**
@@ -129,14 +130,15 @@ public final class GpuProfiler {
         if (!active) {
             return;
         }
-        ModernOPT.LOG.info("[BENCH][GPU] world {} ms ({}), terrain {} ms ({}), sky {} ms ({}), shadow {} ms ({}) @{}, composite {} ms ({}), final {} ms ({}), upscale {} ms ({}), samples {}",
+        ModernOPT.LOG.info("[BENCH][GPU] world {} ms ({}), terrain {} ms ({}), sky {} ms ({}), shadow {} ms ({}) @{}, composite {} ms ({}), final {} ms ({}), upscale {} ms ({}), hud {} ms ({}), samples {}",
                 average(WORLD), samples[WORLD],
                 average(TERRAIN), samples[TERRAIN],
                 average(SKY), samples[SKY],
                 average(SHADOW), samples[SHADOW], net.cr512.modernopt.compat.ShadowMapResolution.describe(),
                 average(COMPOSITE), samples[COMPOSITE],
                 average(FINAL), samples[FINAL],
-                average(UPSCALE), samples[UPSCALE], samples[UPSCALE]);
+                average(UPSCALE), samples[UPSCALE],
+                average(HUD), samples[HUD], samples[UPSCALE]);
         ModernOPT.LOG.info("[BENCH][CPU] worldCpu {} ms ({})",
                 String.format("%.2f", cpuWorldSamples == 0 ? 0 : cpuWorldAccumMs / cpuWorldSamples),
                 cpuWorldSamples);
