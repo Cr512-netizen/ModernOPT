@@ -182,6 +182,10 @@ public final class SelfTest {
             logStats(STATES[state]);
             pendingShotState = STATES[state];
             pendingShotPhase = "end";
+        } else if (offset == WARMUP_TICKS + SAMPLE_TICKS / 2) {
+            // Mid-sample screenshot: proves what the measured frames actually showed.
+            pendingShotState = STATES[state];
+            pendingShotPhase = "mid";
         }
     }
 
@@ -201,6 +205,9 @@ public final class SelfTest {
                 minecraft.player.connection.sendCommand("gamerule doDaylightCycle false");
                 minecraft.player.connection.sendCommand("time set 6000");
                 minecraft.player.connection.sendCommand("weather clear");
+                // Freeze the world: entities stop wandering and no chunk section is rebuilt while
+                // a state is sampled, which removes the largest source of run-to-run variance.
+                minecraft.player.connection.sendCommand("tick freeze");
             }
             net.minecraft.core.BlockPos spawn = minecraft.level.getSharedSpawnPos();
             int bx = spawn.getX();
@@ -273,9 +280,15 @@ public final class SelfTest {
                 int sampleX = image.getWidth() / 2;
                 int sampleY = image.getHeight() - 24;
                 int argb = image.getPixelRGBA(sampleX, sampleY);
-                ModernOPT.LOG.info("[BENCH] screenshot {}x{} hotbarPixel={} (args {})",
+                int center = image.getPixelRGBA(image.getWidth() / 2, image.getHeight() / 2);
+                ModernOPT.LOG.info("[BENCH] screenshot {}x{} hotbarPixel={} centerPixel={} (args {},{})",
                         image.getWidth(), image.getHeight(),
-                        String.format("%08x", argb), sampleX + "," + sampleY);
+                        String.format("%08x", argb), String.format("%08x", center),
+                        sampleX, sampleY);
+                if ((center & 0x00FFFFFF) == 0 && (argb & 0x00FFFFFF) == 0) {
+                    ModernOPT.LOG.warn("[BENCH][WARN] {} ({}) is completely black - pack error screen or no world render",
+                            stateName, phase);
+                }
                 String name = "bench-" + stateName + "-" + phase + ".png";
                 java.nio.file.Path out = dir.resolve(name);
                 image.writeToFile(out);
@@ -374,6 +387,8 @@ public final class SelfTest {
         // "!up" points the camera at the sky: separates terrain fill from full-screen passes.
         benchPitch = name.endsWith("!up") ? -88.0F : Float.NaN;
         // "!f5" / "!f5f" switch to third person back / front for visual checks.
+        // "!ldr" forces the pre-upscale target to 8-bit RGBA instead of RGBA16F.
+        ModernOptConfig.FP16_WORLD.set(!name.endsWith("!ldr"));
         net.minecraft.client.CameraType cameraType = net.minecraft.client.CameraType.FIRST_PERSON;
         if (name.endsWith("!f5")) {
             cameraType = net.minecraft.client.CameraType.THIRD_PERSON_BACK;
