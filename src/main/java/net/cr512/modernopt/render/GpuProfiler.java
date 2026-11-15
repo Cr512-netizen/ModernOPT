@@ -129,11 +129,11 @@ public final class GpuProfiler {
         if (!active) {
             return;
         }
-        ModernOPT.LOG.info("[BENCH][GPU] world {} ms ({}), terrain {} ms ({}), sky {} ms ({}), shadow {} ms ({}), composite {} ms ({}), final {} ms ({}), upscale {} ms ({}), samples {}",
+        ModernOPT.LOG.info("[BENCH][GPU] world {} ms ({}), terrain {} ms ({}), sky {} ms ({}), shadow {} ms ({}) @{}, composite {} ms ({}), final {} ms ({}), upscale {} ms ({}), samples {}",
                 average(WORLD), samples[WORLD],
                 average(TERRAIN), samples[TERRAIN],
                 average(SKY), samples[SKY],
-                average(SHADOW), samples[SHADOW],
+                average(SHADOW), samples[SHADOW], net.cr512.modernopt.compat.ShadowMapResolution.describe(),
                 average(COMPOSITE), samples[COMPOSITE],
                 average(FINAL), samples[FINAL],
                 average(UPSCALE), samples[UPSCALE], samples[UPSCALE]);

@@ -22,6 +22,9 @@ public final class ModernOptConfig {
     public static final ModConfigSpec.BooleanValue SHOW_OVERLAY;
     public static final ModConfigSpec.BooleanValue LOG_FPS;
 
+    // Shader pack shadow map
+    public static final ModConfigSpec.IntValue SHADOW_MAP_RESOLUTION;
+
     // MSR 2.0 config
     public static final ModConfigSpec.BooleanValue MSR_ENABLED;
     public static final ModConfigSpec.DoubleValue MSR_VARIANCE_SCALE;
@@ -55,6 +58,16 @@ public final class ModernOptConfig {
                 .defineInRange("fsrEasuSharpness", 0, 0, 100);
         FSR_RCAS_SHARPNESS = b.comment("FSR 1 / FSR 2 RCAS sharpening, 0 = off, 100 = strong.")
                 .defineInRange("fsrRcasSharpness", 25, 0, 100);
+        b.pop();
+
+        b.comment("Shader pack shadow map.").push("shadows");
+        SHADOW_MAP_RESOLUTION = b.comment(
+                        "Absolute shadow map resolution used by Iris shader packs: 512, 1024, 2048 or 4096.",
+                        "The shadow map is independent of the render scale: 50% scale with a 2048 map is valid.",
+                        "Lower values cost noticeably less GPU time and VRAM and produce softer, blockier",
+                        "shadow edges. Values between the steps are snapped to the nearest one.",
+                        "Applied when a world loads or when this value changes (the shader pack is reloaded).")
+                .defineInRange("shadowMapResolution", 2048, 512, 4096);
         b.pop();
 
         b.comment("Anti-aliasing.").push("antialiasing");
