@@ -18,6 +18,7 @@ resolution.
 | MSAA | Off, 2x, 4x, 8x, 16x | Multisampling for the world pass (hardware, resolved before the upscale). |
 | SSAA | On / Off | Renders the world at 2x resolution and downsamples with a 2x2 box filter. |
 | FXAA | On / Off | Post-process edge smoothing on the final native-resolution image. |
+| Shadow map resolution | 512, 1024, 2048, 4096 | Absolute size of the Iris shader pack's shadow map, independent of the render scale. |
 | Status overlay | On / Off | FPS, internal resolution, active filter, MSAA level. |
 
 Anti-aliasing order is always *world -> SSAA downsample -> reconstruction filter -> FXAA*, so the
@@ -181,6 +182,27 @@ sky and HUD were clean, and an idle camera test measured no visible frame-to-fra
 * `Options -> ModernOPT` on NeoForge's mod list, or
 * `Video Settings -> ModernOPT` in Sodium (the full screen or the native `Settings` page), or
 * the `F10` keybind (in game).
+
+### Shadow map resolution
+
+Iris shader packs hardcode their shadow map size (`const int shadowMapResolution = 2048;` in
+Complementary), and that size is independent of the render scale: a 50 % world still pays for a
+2048x2048 shadow pass. `shadows.shadowMapResolution` overrides it with 512, 1024, 2048 or 4096.
+
+The override is applied in two places so the buffer and the shader math never disagree:
+
+* `ShadowRenderTargets` is constructed with the configured resolution (`@Pseudo` Iris mixin), which
+  sizes the depth texture, the colour buffers and the shadow viewport;
+* the `shadowMapResolution` constant in the pack source is rewritten while Iris preprocesses it,
+  so texel offsets, PCF taps and blur radii match the real map.
+
+Both run once per pack load. Changing the value reloads the shader pack once (in the options screen
+or by editing the config); nothing is ever recreated per frame. Packs that derive the size from
+`textureSize(shadowtex0, 0)` need no rewrite and are left untouched.
+
+Lower resolutions reduce VRAM (a 2048 depth map is 16 MB, 512 is 1 MB) and shadow quality, but on
+this GPU the shadow pass is draw-call bound, so expect ~0.1-0.4 ms rather than a large frame-time
+win - see the benchmark notes below.
 
 ## Building
 

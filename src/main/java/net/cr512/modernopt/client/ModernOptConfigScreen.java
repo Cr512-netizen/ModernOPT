@@ -3,6 +3,7 @@ package net.cr512.modernopt.client;
 import java.util.function.IntConsumer;
 import java.util.function.IntFunction;
 
+import net.cr512.modernopt.compat.ShadowMapResolution;
 import net.cr512.modernopt.config.MsaaLevel;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.config.ModernOptSettings;
@@ -58,6 +59,17 @@ public class ModernOptConfigScreen extends Screen {
                     ModernOptConfig.UPSCALER.set(value);
                     ModernOptSettings.refresh();
                 }));
+
+        y += step;
+        this.addRenderableWidget(CycleButton.<Integer>builder(size -> Component.literal(size + " x " + size))
+                .withValues(java.util.Arrays.stream(ShadowMapResolution.allowedValues()).boxed().toList())
+                .withInitialValue(ShadowMapResolution.desired())
+                .create(left, y, width, 20, Component.translatable("modernopt.option.shadowMapResolution"),
+                        (button, value) -> {
+                            ModernOptConfig.SHADOW_MAP_RESOLUTION.set(value);
+                            ModernOptSettings.refresh();
+                            ShadowMapResolution.requestReload();
+                        }));
 
         y += step;
         this.addRenderableWidget(new IntSlider(left, y, width, 20,

@@ -17,6 +17,7 @@ public final class ModernOptSettings {
     private static volatile int fsrRcasSharpness = 25;
     private static volatile UpscalerType upscaler = UpscalerType.FSR1;
     private static volatile MsaaLevel msaa = MsaaLevel.OFF;
+    private static volatile int shadowMapResolution = 2048;
 
     // MSR 2.0 settings
     private static volatile boolean msrEnabled = false;
@@ -50,6 +51,7 @@ public final class ModernOptSettings {
         msaa = ModernOptConfig.MSAA.get();
         ssaa = ModernOptConfig.SSAA.get();
         fxaa = ModernOptConfig.FXAA.get();
+        shadowMapResolution = ModernOptConfig.SHADOW_MAP_RESOLUTION.get();
 
         // MSR 2.0
         msrEnabled = ModernOptConfig.MSR_ENABLED.get();
@@ -114,6 +116,11 @@ public final class ModernOptSettings {
 
     public static MsaaLevel msaa() {
         return msaa;
+    }
+
+    /** Requested shadow map resolution in pixels (512, 1024, 2048 or 4096). */
+    public static int shadowMapResolution() {
+        return shadowMapResolution;
     }
 
     // MSR 2.0 getters
