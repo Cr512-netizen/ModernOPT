@@ -91,6 +91,7 @@ neoForge {
             // behaves like a normal client and SelfTest observes nothing.
             systemProperty 'modernopt.bench', 'true'
 
+
             programArgument '--quickPlaySingleplayer'
             programArgument 'ModernOPTTest'
         }
