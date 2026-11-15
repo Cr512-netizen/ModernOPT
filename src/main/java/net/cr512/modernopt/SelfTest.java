@@ -47,6 +47,10 @@ public final class SelfTest {
     private static final int START_TICK = 160;
     private static final int WARMUP_TICKS = 100;
     private static final int SAMPLE_TICKS = 160;
+
+    /** Benchmark-only render distance override; 0 keeps the player's setting. */
+    private static final int BENCH_RENDER_DISTANCE =
+            Integer.getInteger("modernopt.bench.renderDistance", 0);
     private static final int STATE_TICKS = WARMUP_TICKS + SAMPLE_TICKS;
 
     private static int ticks;
@@ -196,6 +200,11 @@ public final class SelfTest {
      */
     private static void steerOnce(Minecraft minecraft) {
         try {
+            if (BENCH_RENDER_DISTANCE > 0) {
+                minecraft.options.renderDistance().set(BENCH_RENDER_DISTANCE);
+                minecraft.options.save();
+                ModernOPT.LOG.info("[BENCH] render distance forced to {} chunks (client option)", BENCH_RENDER_DISTANCE);
+            }
             minecraft.level.setDayTime(1000L);
             minecraft.level.setRainLevel(0.0F);
             minecraft.level.setThunderLevel(0.0F);
