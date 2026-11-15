@@ -92,6 +92,7 @@ neoForge {
             systemProperty 'modernopt.bench', 'true'
 
 
+
             programArgument '--quickPlaySingleplayer'
             programArgument 'ModernOPTTest'
         }
