@@ -19,6 +19,7 @@ resolution.
 | SSAA | On / Off | Renders the world at 2x resolution and downsamples with a 2x2 box filter. |
 | FXAA | On / Off | Post-process edge smoothing on the final native-resolution image. |
 | FP16 world target | On / Off | Render the pre-upscale image into RGBA16F (HDR) instead of RGBA8. |
+| Scale whole window | On / Off | Render the whole frame (world, HUD, presentation) at the internal resolution, like the RenderScale mod. |
 | Shadow map resolution | 512, 1024, 2048, 4096 | Absolute size of the Iris shader pack's shadow map, independent of the render scale. |
 | Status overlay | On / Off | FPS, internal resolution, active filter, MSAA level. |
 
@@ -194,6 +195,27 @@ sky and HUD were clean, and an idle camera test measured no visible frame-to-fra
 * `Options -> ModernOPT` on NeoForge's mod list, or
 * `Video Settings -> ModernOPT` in Sodium (the full screen or the native `Settings` page), or
 * the `F10` keybind (in game).
+
+### Scale whole window
+
+`renderScale.scaleWholeWindow` (off by default) renders the entire frame at the internal
+resolution: the world, the hand, the HUD and Iris' composite chain all run at the scaled size, and
+the finished frame is copied into the real main target with one bilinear blit before vanilla
+presents it. This is how the RenderScale mod works and it removes the per-pass overhead that the
+world-only mode pays (Iris composites writing into a full-size window target).
+
+Measured in the same world, pack and shader options (Complementary Unbound, `SHADOW_QUALITY=0`,
+render distance 16, simulation 5, RTX 5060 Ti):
+
+| mode | FPS |
+|---|---|
+| world-only (default) | 123 |
+| scale whole window | 130-132 |
+| RenderScale 1.4, same settings | 150 |
+
+The remaining difference is the final copy into the main target (RenderScale lets vanilla blit its
+scaled target directly to the window) and the fact that it resizes the window before the first
+frame. World-only mode keeps the HUD pixel sharp, so it stays the default.
 
 ### Shadow map resolution
 

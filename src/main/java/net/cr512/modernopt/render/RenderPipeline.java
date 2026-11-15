@@ -159,6 +159,8 @@ public final class RenderPipeline {
     private static int cachedFsrEasuSharpness = 0;
     private static int cachedFsrRcasSharpness = 25;
     private static int cachedSoftness = 35;
+    private static boolean cachedScaleWholeWindow;
+    private static boolean wholeWindowActive;
 
     // MSR 2.0 cached settings
     private static boolean cachedMsrEnabled = false;
@@ -469,6 +471,13 @@ public final class RenderPipeline {
         realWindowWidth = minecraft.getWindow().getWidth();
         realWindowHeight = minecraft.getWindow().getHeight();
         windowScaled = true;
+        wholeWindowActive = cachedScaleWholeWindow
+                && (scaled.width < realWindowWidth || scaled.height < realWindowHeight);
+        if (wholeWindowActive) {
+            // The scaled target *is* this frame's target; one blit at the end of Minecraft#run
+            // puts it on the window. Linear filtering keeps the upscale smooth.
+            scaled.setLinearFilter(true);
+        }
         GpuProfiler.beginCpuWorld();
         GpuProfiler.begin(GpuProfiler.WORLD);
         if ((++dbgFrameCounter % 240) == 0) {
@@ -553,6 +562,7 @@ public final class RenderPipeline {
         cachedFsrEasuSharpness = ModernOptSettings.fsrEasuSharpness();
         cachedFsrRcasSharpness = ModernOptSettings.fsrRcasSharpness();
         cachedSoftness = ModernOptSettings.softness();
+        cachedScaleWholeWindow = ModernOptSettings.scaleWholeWindow();
 
         // MSR 2.0
         cachedMsrEnabled = ModernOptSettings.msrEnabled() || (cachedUpscaler == UpscalerType.MSR);
@@ -699,6 +709,10 @@ public final class RenderPipeline {
      */
     public static void beginHudFrame(Minecraft minecraft) {
         hudActive = false;
+        if (wholeWindowActive) {
+            // The HUD is already rendered at the internal resolution in this mode.
+            return;
+        }
         if (!ModernOptSettings.enabled()) {
             return;
         }
@@ -751,6 +765,42 @@ public final class RenderPipeline {
                 GL11C.GL_ONE, GL11C.GL_ONE_MINUS_SRC_ALPHA);
         hud.blitToScreen(main.width, main.height, false);
         GlStateManager._disableBlend();
+    }
+
+    /** True while the whole frame (world + HUD) is being rendered into the scaled target. */
+    public static boolean wholeWindowActive() {
+        return wholeWindowActive;
+    }
+
+    /** The scaled world target, or {@code null} while scaling is inactive. */
+    public static RenderTarget scaledTarget() {
+        return scaled;
+    }
+
+    /**
+     * Presents a whole-window-scaled frame and disarms the mode.
+     *
+     * <p>Called at the very end of the GUI pass: the scaled target holds the complete frame
+     * (world, hand, HUD), so it is blitted into the real main target with linear filtering, and
+     * vanilla's own blit to the window runs unchanged afterwards. Doing it here instead of taking
+     * over {@code Minecraft#run} keeps the main loop untouched.</p>
+     */
+    public static void presentWholeWindow(Minecraft minecraft) {
+        if (!wholeWindowActive) {
+            return;
+        }
+        wholeWindowActive = false;
+        windowScaled = false;
+        ScaledRenderTarget frame = scaled;
+        if (frame == null) {
+            return;
+        }
+        RenderTarget main = minecraft.getMainRenderTarget();
+        if (main == null) {
+            return;
+        }
+        main.bindWrite(true);
+        frame.blitToScreen(main.width, main.height, false);
     }
 
     /**
@@ -816,6 +866,19 @@ public final class RenderPipeline {
         boolean temporal = fsr2ThisFrame && poseCaptured && !fsr2Unsupported;
         boolean jittered = poseCaptured;
         fsr2ActiveThisFrame = temporal;
+
+        if (wholeWindowActive) {
+            // Nothing to reconstruct into the window target: the scaled target already holds the
+            // whole frame and Minecraft#run's final blit upscales it. Keep the window size
+            // override alive so the HUD lays out in the same GUI units as the world.
+            worldActive = false;
+            fsr2ThisFrame = false;
+            poseCaptured = false;
+            msrThisFrame = false;
+            GpuProfiler.end(GpuProfiler.UPSCALE);
+            return;
+        }
+
         worldActive = false;
         windowScaled = false;
         fsr2ThisFrame = false;
