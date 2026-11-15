@@ -366,6 +366,15 @@ public final class SelfTest {
                 String.format("%.2f", p1Ms), sorted.size());
     }
 
+    /** First run of decimal digits in the string, or 0. */
+    private static int digits(String value) {
+        int end = 0;
+        while (end < value.length() && Character.isDigit(value.charAt(end))) {
+            end++;
+        }
+        return end == 0 ? 0 : Integer.parseInt(value.substring(0, end));
+    }
+
     private static void applyState(int index) {
         String name = STATES[index];
         int dash = name.indexOf('-');
