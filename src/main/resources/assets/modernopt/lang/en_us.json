@@ -3,6 +3,7 @@
   "modernopt.option.enabled": "Render scaling",
   "modernopt.option.renderScale": "Internal resolution",
   "modernopt.option.upscaler": "Upscaler",
+  "modernopt.option.hudScale": "HUD resolution",
   "modernopt.option.shadowMapResolution": "Shadow map resolution",
   "modernopt.option.softness": "SoftScale softness",
   "modernopt.option.fsrEasuSharpness": "FSR EASU sharpness",

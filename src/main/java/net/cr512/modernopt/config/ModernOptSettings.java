@@ -18,7 +18,8 @@ public final class ModernOptSettings {
     private static volatile UpscalerType upscaler = UpscalerType.FSR1;
     private static volatile MsaaLevel msaa = MsaaLevel.OFF;
     private static volatile int shadowMapResolution = 2048;
-    private static volatile boolean fp16World = true;
+    private static volatile boolean fp16World = false;
+    private static volatile int hudScalePercent = 100;
 
     // MSR 2.0 settings
     private static volatile boolean msrEnabled = false;
@@ -54,6 +55,7 @@ public final class ModernOptSettings {
         fxaa = ModernOptConfig.FXAA.get();
         shadowMapResolution = ModernOptConfig.SHADOW_MAP_RESOLUTION.get();
         fp16World = ModernOptConfig.FP16_WORLD.get();
+        hudScalePercent = ModernOptConfig.HUD_SCALE_PERCENT.get();
 
         // MSR 2.0
         msrEnabled = ModernOptConfig.MSR_ENABLED.get();
@@ -128,6 +130,11 @@ public final class ModernOptSettings {
     /** Render the pre-upscale image into an RGBA16F buffer instead of RGBA8. */
     public static boolean fp16World() {
         return fp16World;
+    }
+
+    /** Resolution the HUD is rendered at, in percent of the window (50-100). */
+    public static int hudScalePercent() {
+        return hudScalePercent;
     }
 
     // MSR 2.0 getters
