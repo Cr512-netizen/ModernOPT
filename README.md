@@ -18,6 +18,7 @@ resolution.
 | MSAA | Off, 2x, 4x, 8x, 16x | Multisampling for the world pass (hardware, resolved before the upscale). |
 | SSAA | On / Off | Renders the world at 2x resolution and downsamples with a 2x2 box filter. |
 | FXAA | On / Off | Post-process edge smoothing on the final native-resolution image. |
+| FP16 world target | On / Off | Render the pre-upscale image into RGBA16F (HDR) instead of RGBA8. |
 | Shadow map resolution | 512, 1024, 2048, 4096 | Absolute size of the Iris shader pack's shadow map, independent of the render scale. |
 | Status overlay | On / Off | FPS, internal resolution, active filter, MSAA level. |
 
@@ -72,6 +73,17 @@ Key properties:
 
 MSR 50 % is faster and smoother than FSR 2 at the same render scale, and leaves no trails
 behind entities (camera-reconstructed motion + variance clipping reject disoccluded history).
+
+### FP16 world target
+
+`renderScale.fp16ColorTarget` (default on) allocates the pre-upscale colour attachment as
+`RGBA16F` instead of `RGBA8`. Shader packs produce HDR values and tonemap at the end of their own
+chain, so with an 8-bit buffer the image is quantised *before* the upscaler sees it - visible as
+banding in sky gradients and dark scenes, and as slightly harsher sharpening in FSR/MSR.
+
+Measured cost on a 5060 Ti at 960x540: within run-to-run noise (98.6 fps vs 98.9 fps with the full
+Complementary config, 275.8 vs 273.2 fps with shadows off), because the buffer is the small,
+scaled one. The win is image quality: the upscaler now reads the same HDR range the pack rendered.
 
 ## How it works
 

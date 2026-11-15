@@ -1106,8 +1106,10 @@ public final class RenderPipeline {
     }
 
     private static void ensureScaledTarget(int width, int height, int samples) {
+        boolean fp16 = ModernOptSettings.fp16World();
         if (scaled != null && scaled.width == width && scaled.height == height
-                && scaled.requestedSamples() == Math.max(1, samples) && scaled.isMultisampled() == (samples > 1)) {
+                && scaled.requestedSamples() == Math.max(1, samples)
+                && scaled.isMultisampled() == (samples > 1) && scaled.isFp16() == fp16) {
             return;
         }
         if (scaled != null) {
@@ -1116,7 +1118,7 @@ public final class RenderPipeline {
         }
         resetHistory();
         try {
-            scaled = new ScaledRenderTarget(width, height, samples);
+            scaled = new ScaledRenderTarget(width, height, samples, fp16);
         } catch (Throwable throwable) {
             ModernOPT.LOG.error("[ModernOPT] cannot allocate a {}x{} render target, render scaling disabled until restart",
                     width, height, throwable);

@@ -19,6 +19,7 @@ public final class ModernOptConfig {
     public static final ModConfigSpec.EnumValue<MsaaLevel> MSAA;
     public static final ModConfigSpec.BooleanValue SSAA;
     public static final ModConfigSpec.BooleanValue FXAA;
+    public static final ModConfigSpec.BooleanValue FP16_WORLD;
     public static final ModConfigSpec.BooleanValue SHOW_OVERLAY;
     public static final ModConfigSpec.BooleanValue LOG_FPS;
 
@@ -78,6 +79,12 @@ public final class ModernOptConfig {
                         "Takes priority over render scale and MSAA.")
                 .define("ssaa", false);
         FXAA = b.comment("Post-process edge smoothing on the final image.").define("fxaa", false);
+        FP16_WORLD = b.comment(
+                        "Render the internal (before-upscale) world image into a 16-bit float (RGBA16F) buffer.",
+                        "Shader packs produce HDR colours; with an 8-bit buffer the image is quantised before the",
+                        "upscaler sees it, which shows up as banding in sky gradients and dark areas.",
+                        "FP16 doubles the bandwidth of that buffer (it is still the small, scaled one).")
+                .define("fp16ColorTarget", true);
         b.pop();
 
         b.comment("MSR 2.0 (Minecraft Super Resolution) - experimental upscaler.").push("msr");

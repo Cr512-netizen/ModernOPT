@@ -42,12 +42,14 @@ public final class ScaledRenderTarget extends RenderTarget {
 
     private MsaaFramebuffer msaa;
     private int requestedSamples = 1;
+    private final boolean fp16;
 
     // Last viewport that was actually requested through GlStateManager, tracked even when the
     // call targeted another framebuffer. Lets us notice a window sized viewport leaking onto the
     // scaled target without querying GL on the render thread.
     private static int cachedViewportWidth = -1;
     private static int cachedViewportHeight = -1;
+    private static boolean loggedFp16;
 
     /** Records the viewport OpenGL is about to use (called from the GlStateManager mixin). */
     public static void noteViewport(int width, int height) {
@@ -55,10 +57,16 @@ public final class ScaledRenderTarget extends RenderTarget {
         cachedViewportHeight = height;
     }
 
-    public ScaledRenderTarget(int width, int height, int samples) {
+    public ScaledRenderTarget(int width, int height, int samples, boolean fp16) {
         super(true);
         this.requestedSamples = Math.max(1, samples);
+        this.fp16 = fp16;
         this.resize(width, height, Minecraft.ON_OSX);
+    }
+
+    /** True when the colour attachment is 16-bit float instead of 8-bit RGBA. */
+    public boolean isFp16() {
+        return this.fp16;
     }
 
     public int requestedSamples() {
@@ -82,6 +90,10 @@ public final class ScaledRenderTarget extends RenderTarget {
         this.irisDepthBufferVersion = nextIrisVersion();
         this.irisColorBufferVersion = nextIrisVersion();
 
+        if (this.fp16) {
+            allocateFp16Color(width, height);
+        }
+
         if (this.msaa != null) {
             this.msaa.delete();
             this.msaa = null;
@@ -92,6 +104,30 @@ public final class ScaledRenderTarget extends RenderTarget {
             if (this.msaa != null) {
                 this.msaa.clear(1.0F, 1.0F, 1.0F, 0.0F);
             }
+        }
+    }
+
+    /**
+     * Re-specifies the colour attachment as RGBA16F.
+     *
+     * <p>{@code RenderTarget#createBuffers} allocates the colour texture as RGBA8 and attaches it
+     * to the framebuffer. Re-specifying the storage of the same texture keeps its GL name, so the
+     * attachment, Iris' framebuffer bindings and every sampler keep working while the buffer
+     * becomes HDR (shader packs output values above 1.0 before tonemapping).</p>
+     */
+    private void allocateFp16Color(int width, int height) {
+        GlStateManager._bindTexture(this.colorTextureId);
+        GlStateManager._texImage2D(GL11C.GL_TEXTURE_2D, 0, GL30C.GL_RGBA16F, width, height, 0,
+                GL11C.GL_RGBA, GL11C.GL_FLOAT, (java.nio.IntBuffer) null);
+        GlStateManager._texParameter(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_MIN_FILTER, GL11C.GL_LINEAR);
+        GlStateManager._texParameter(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_MAG_FILTER, GL11C.GL_LINEAR);
+        GlStateManager._texParameter(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_WRAP_S, GL30C.GL_CLAMP_TO_EDGE);
+        GlStateManager._texParameter(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_WRAP_T, GL30C.GL_CLAMP_TO_EDGE);
+        GlStateManager._bindTexture(0);
+        if (!loggedFp16) {
+            loggedFp16 = true;
+            net.cr512.modernopt.ModernOPT.LOG.info(
+                    "[ModernOPT] world target is RGBA16F ({}x{}), upscalers read HDR input", width, height);
         }
     }
 
