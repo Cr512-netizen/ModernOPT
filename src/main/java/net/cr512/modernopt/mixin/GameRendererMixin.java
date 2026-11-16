@@ -95,6 +95,7 @@ public abstract class GameRendererMixin {
         // Bind the downscaled GUI target (if enabled) after the ortho rebuild: vanilla already
         // bound and cleared the main target, so everything the GUI draws from here on lands in
         // the smaller buffer and is composited over the world at the end of the frame.
+        RenderPipeline.beginHudPass(minecraft);
         RenderPipeline.beginHudFrame(minecraft);
     }
 
@@ -138,8 +139,8 @@ public abstract class GameRendererMixin {
         // Everything (HUD, screens, toasts) has been submitted; composite the downscaled GUI
         // over the world in the real main target.
         RenderPipeline.endHudFrame(minecraft);
-        // Whole-window mode: copy the complete scaled frame into the real main target, so
-        // vanilla's blit to the window stays exactly as it is.
-        RenderPipeline.presentWholeWindow(minecraft);
+        // Whole-window mode: drop the window-size override so vanilla's present blit upscales
+        // the small main target to the real window.
+        RenderPipeline.endWholeWindowFrame();
     }
 }

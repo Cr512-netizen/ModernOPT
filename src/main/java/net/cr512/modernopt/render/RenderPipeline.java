@@ -323,9 +323,15 @@ public final class RenderPipeline {
             resetHistory();
             return;
         }
-        
+
         // Fast settings cache - only refresh when actually changed
         cacheSettings();
+
+        if (cachedScaleWholeWindow) {
+            beginWholeWindowFrame(minecraft);
+            return;
+        }
+        restoreWindowSizedMainTarget(minecraft);
         
         // Dynamic Resolution Scaling (DRS) for MSR
         if (cachedMsrEnabled && cachedMsrDynamicRes) {
@@ -1262,6 +1268,78 @@ public final class RenderPipeline {
         return result;
     }
 
+    /**
+     * Whole-window mode: the frame renders straight into the real main target, resized to the
+     * internal resolution, and vanilla's present blit upscales it to the window. No extra copy.
+     */
+    private static void beginWholeWindowFrame(Minecraft minecraft) {
+        int windowWidth = minecraft.getWindow().getWidth();
+        int windowHeight = minecraft.getWindow().getHeight();
+        if (windowWidth <= 0 || windowHeight <= 0) {
+            return;
+        }
+        RenderTarget main = minecraft.getMainRenderTarget();
+        if (main == null) {
+            return;
+        }
+        int[] size = RenderScaleMath.targetSize(windowWidth, windowHeight, cachedRenderScale,
+                cachedSsaa, RenderSystem.maxSupportedTextureSize());
+        if (size[0] >= windowWidth || size[1] >= windowHeight) {
+            restoreWindowSizedMainTarget(minecraft);
+            return;
+        }
+        if (main.width != size[0] || main.height != size[1]) {
+            main.resize(size[0], size[1], Minecraft.ON_OSX);
+            resetHistory();
+            ModernOPT.LOG.info("[ModernOPT] whole-window scaling: main target {}x{} -> {}x{}",
+                    windowWidth, windowHeight, size[0], size[1]);
+        }
+        realWindowWidth = windowWidth;
+        realWindowHeight = windowHeight;
+        windowScaled = true;
+        wholeWindowActive = true;
+        // Iris cancels vanilla's hand pass; draw it ourselves like in the scaled mode.
+        deferredHandThisFrame = true;
+        resetHistory();
+    }
+
+    /** Puts the main target back to the real window size when whole-window scaling is off. */
+    private static void restoreWindowSizedMainTarget(Minecraft minecraft) {
+        if (!wholeWindowActive) {
+            RenderTarget main = minecraft.getMainRenderTarget();
+            int windowWidth = minecraft.getWindow().getWidth();
+            int windowHeight = minecraft.getWindow().getHeight();
+            if (main != null && windowWidth > 0 && windowHeight > 0
+                    && (main.width != windowWidth || main.height != windowHeight)) {
+                main.resize(windowWidth, windowHeight, Minecraft.ON_OSX);
+                ModernOPT.LOG.info("[ModernOPT] restored the main target to {}x{}",
+                        windowWidth, windowHeight);
+            }
+        }
+        wholeWindowActive = false;
+        windowScaled = false;
+    }
+
+    /** Ends a whole-window frame so vanilla's present blit uses the real window size. */
+    public static void endWholeWindowFrame() {
+        if (!wholeWindowActive) {
+            return;
+        }
+        wholeWindowActive = false;
+        windowScaled = false;
+    }
+
+    /** Points the viewport at the small main target before the GUI pass in whole-window mode. */
+    public static void beginHudPass(Minecraft minecraft) {
+        if (!wholeWindowActive) {
+            return;
+        }
+        RenderTarget main = minecraft.getMainRenderTarget();
+        if (main != null && main.width > 0 && main.height > 0) {
+            GlStateManager._viewport(0, 0, main.width, main.height);
+        }
+    }
+
     private static void ensureScaledTarget(int width, int height, int samples) {
         boolean fp16 = ModernOptSettings.fp16World();
         if (scaled != null && scaled.width == width && scaled.height == height
@@ -1415,6 +1493,22 @@ public final class RenderPipeline {
      * @return {@code true} when this call already applied the corrected viewport
      */
     public static boolean clampViewport(int x, int y, int width, int height) {
+        if (wholeWindowActive) {
+            RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
+            if (main == null || (width == main.width && height == main.height)) {
+                return false;
+            }
+            if (width != realWindowWidth || height != realWindowHeight) {
+                return false;
+            }
+            int current = org.lwjgl.opengl.GL11C.glGetInteger(
+                    org.lwjgl.opengl.GL30C.GL_DRAW_FRAMEBUFFER_BINDING);
+            if (current != main.frameBufferId) {
+                return false;
+            }
+            GlStateManager._viewport(0, 0, main.width, main.height);
+            return true;
+        }
         ScaledRenderTarget target = scaled;
         if (!worldActive || target == null) {
             return false;
@@ -1446,21 +1540,39 @@ public final class RenderPipeline {
      */
     public static void onFramebufferBound(int target, int framebuffer) {
         ScaledRenderTarget scaledTarget = scaled;
-        if (!worldActive || scaledTarget == null || shadowPassActive()) {
+        if (shadowPassActive()) {
+            return;
+        }
+        if (!worldActive && !wholeWindowActive) {
             return;
         }
         if (target != org.lwjgl.opengl.GL30C.GL_FRAMEBUFFER
                 && target != org.lwjgl.opengl.GL30C.GL_DRAW_FRAMEBUFFER) {
             return;
         }
-        if (framebuffer != scaledTarget.fboId() && framebuffer != scaledTarget.activeFramebufferId()) {
-            return;
+        int frameWidth;
+        int frameHeight;
+        if (wholeWindowActive) {
+            RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
+            if (main == null || framebuffer != main.frameBufferId) {
+                return;
+            }
+            frameWidth = main.width;
+            frameHeight = main.height;
+        } else {
+            if (scaledTarget == null
+                    || (framebuffer != scaledTarget.fboId()
+                    && framebuffer != scaledTarget.activeFramebufferId())) {
+                return;
+            }
+            frameWidth = scaledTarget.viewWidth;
+            frameHeight = scaledTarget.viewHeight;
         }
         if (realWindowWidth <= 0 || realWindowHeight <= 0) {
             return;
         }
 
-        // Only the "window sized viewport leaked onto the scaled target" case needs repair, and
+        // Only the "window sized viewport leaked onto the small target" case needs repair, and
         // every viewport request made through GlStateManager is tracked, so no GL round trip is
         // needed here. This runs on every framebuffer bind (Sodium rebinds after each chunk layer
         // and Iris binds its own targets), where glGetIntegerv used to cost real milliseconds.
@@ -1468,7 +1580,7 @@ public final class RenderPipeline {
                 || ScaledRenderTarget.viewportHeight() != realWindowHeight) {
             return;
         }
-        GlStateManager._viewport(0, 0, scaledTarget.viewWidth, scaledTarget.viewHeight);
+        GlStateManager._viewport(0, 0, frameWidth, frameHeight);
     }
 
     /**

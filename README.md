@@ -199,23 +199,24 @@ sky and HUD were clean, and an idle camera test measured no visible frame-to-fra
 ### Scale whole window
 
 `renderScale.scaleWholeWindow` (off by default) renders the entire frame at the internal
-resolution: the world, the hand, the HUD and Iris' composite chain all run at the scaled size, and
-the finished frame is copied into the real main target with one bilinear blit before vanilla
-presents it. This is how the RenderScale mod works and it removes the per-pass overhead that the
-world-only mode pays (Iris composites writing into a full-size window target).
+resolution: the world, the hand, the HUD and Iris' composite chain all run at the scaled size. The
+real main render target is resized to the internal resolution, so vanilla's own present blit
+stretches it to the window - no extra copy pass. This is how the RenderScale mod works.
 
 Measured in the same world, pack and shader options (Complementary Unbound, `SHADOW_QUALITY=0`,
 render distance 16, simulation 5, RTX 5060 Ti):
 
 | mode | FPS |
 |---|---|
-| world-only (default) | 123 |
-| scale whole window | 130-132 |
+| world-only (default) | 123 - 140 |
+| scale whole window | 138 - 140 |
 | RenderScale 1.4, same settings | 150 |
 
-The remaining difference is the final copy into the main target (RenderScale lets vanilla blit its
-scaled target directly to the window) and the fact that it resizes the window before the first
-frame. World-only mode keeps the HUD pixel sharp, so it stays the default.
+Two things had to be handled for this mode: Iris cancels vanilla's hand pass, so the hand is drawn
+by ModernOPT (as in the scaled mode), and the viewport repair now also covers the small main
+target (a window-sized viewport leaking onto it produced floating geometry fragments).
+
+World-only mode keeps the HUD pixel sharp and stays the default.
 
 ### Shadow map resolution
 
