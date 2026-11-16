@@ -63,7 +63,7 @@ Key properties:
 - Dynamic resolution scaling (DRS) is available: render scale is lowered when FPS drops below
   the configured threshold and raised again when stable.
 
-### Benchmarks (shader pack, 1920x1080, fixed scene)
+### Benchmarks (Complementary Unbound r5.9.3, 1920x1080, fixed scene)
 
 | Mode | Render scale | Avg FPS | 1% Low (ms) |
 | --- | --- | --- | --- |
@@ -83,7 +83,7 @@ chain, so with an 8-bit buffer the image is quantised *before* the upscaler sees
 banding in sky gradients and dark scenes, and as slightly harsher sharpening in FSR/MSR.
 
 Measured cost on a 5060 Ti at 960x540: within run-to-run noise (98.6 fps vs 98.9 fps with the full
-full shader-pack config, 275.8 vs 273.2 fps with shadows off), because the buffer is the small,
+Complementary config, 275.8 vs 273.2 fps with shadows off), because the buffer is the small,
 scaled one. The win is image quality: the upscaler now reads the same HDR range the pack rendered.
 
 ## How it works
@@ -158,7 +158,7 @@ Key points:
   cannot be read, FSR 2 falls back to rotation-only reprojection for that frame and logs a
   warning once.
 * Under a heavy shader pack, FSR 2 cannot make the pack's fixed full-resolution passes cheaper.
-  The shader pack's shadow map, composite and post chain keep the GPU busy even at 25 % render
+  Complementary's shadow map, composite and post chain keep the GPU busy even at 25 % render
   scale; the upscaler only scales the gbuffer/world pass. Reaching a much higher frame rate can
   therefore require lowering the pack's shadow or post settings, not just the render scale.
 * The status overlay is hidden while the F3 debug screen is open, because both use the top-left
@@ -167,13 +167,13 @@ Key points:
 ## Testing
 
 Verified in a NeoForge dev client with only **Sodium 0.8.13**, **Iris 1.8.14-beta.1** and
-a shader pack installed: render scale 50-75 %, bilinear, FSR 1 and FSR 2,
+**Complementary Unbound r5.9.3** installed: render scale 50-75 %, bilinear, FSR 1 and FSR 2,
 correct depth (no holes or LODs over the world), HUD at native resolution, first person hand and
 nearby entities visible in place under an active shader pack, and no OpenGL errors when the window
 is resized or the shader pipeline is rebuilt.
 
 FSR 2 was also checked with shaders off, at 100 % (temporal AA + RCAS at native resolution) and
-with the shader pack active. With the pack active and the world loaded, the test scene at `300,63,300`
+under Complementary. With the pack active and the world loaded, the test scene at `300,63,300`
 measured on an RTX 5060 Ti 16 GB / Ryzen 7 7800X3D at 1920x1080, render distance 12:
 
 | Mode | Frame rate | GPU |
@@ -203,7 +203,7 @@ resolution: the world, the hand, the HUD and Iris' composite chain all run at th
 real main render target is resized to the internal resolution, so vanilla's own present blit
 stretches it to the window - no extra copy pass. This is the standard full-frame approach.
 
-Measured in the same world, pack and shader options (shader pack, `SHADOW_QUALITY=0`,
+Measured in the same world, pack and shader options (Complementary Unbound, `SHADOW_QUALITY=0`,
 render distance 16, simulation 5, RTX 5060 Ti):
 
 | mode | FPS |
@@ -220,7 +220,7 @@ World-only mode keeps the HUD pixel sharp and stays the default.
 ### Shadow map resolution
 
 Iris shader packs hardcode their shadow map size (`const int shadowMapResolution = 2048;` in
-shader pack), and that size is independent of the render scale: a 50 % world still pays for a
+Complementary), and that size is independent of the render scale: a 50 % world still pays for a
 2048x2048 shadow pass. `shadows.shadowMapResolution` overrides it with 512, 1024, 2048 or 4096.
 
 The override is applied in two places so the buffer and the shader math never disagree:
