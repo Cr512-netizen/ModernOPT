@@ -20,8 +20,8 @@ public final class ModernOptIrisMixinPlugin implements IMixinConfigPlugin {
     @Override
     public void onLoad(String mixinPackage) {
         // Do NOT Class.forName here: loading net.irisshaders.iris.Iris at this point makes other
-        // mods' Iris mixins fail with MixinTargetAlreadyLoadedException (RenderScale hits exactly
-        // that). Looking the class file up as a resource is enough to know whether Iris exists.
+        // mods' Iris mixins fail with MixinTargetAlreadyLoadedException. Looking the class file up
+        // as a resource is enough to know whether Iris exists.
         irisPresent = ModernOptIrisMixinPlugin.class.getClassLoader()
                 .getResource("net/irisshaders/iris/Iris.class") != null;
     }

@@ -707,9 +707,9 @@ public final class RenderPipeline {
     /**
      * Redirects the GUI pass into a downscaled target when {@code hudScalePercent} is below 100.
      *
-     * <p>RenderScale does the same by making the window report the scaled size for the whole
-     * frame. ModernOPT keeps the window native (so the game window and mouse stay untouched) and
-     * instead binds a dedicated GUI target of {@code hudScalePercent} of the window; the HUD is
+     * <p>A full-frame scaler does the same by making the window report the scaled size for the
+     * whole frame. ModernOPT keeps the window native (so the game window and mouse stay untouched)
+     * and instead binds a dedicated GUI target of {@code hudScalePercent} of the window; the HUD is
      * laid out in the same GUI units as before and upscaled with the rest of the frame, so it looks
      * identical in size, only softer. Costs one extra textured blit at the end of the frame.</p>
      */
