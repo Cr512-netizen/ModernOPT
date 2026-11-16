@@ -2,7 +2,7 @@
 
 Render scale, upscalers and anti-aliasing for **Minecraft 1.21.1 / NeoForge**.
 
-A small, self-contained alternative to OptiFine-style render scaling: the world is rendered into
+A small, self-contained render-scaling implementation: the world is rendered into
 an off-screen target at a lower (or higher) internal resolution, and a reconstruction filter
 brings it back to the window resolution. The HUD, chat and every screen stay at native
 resolution.
@@ -19,7 +19,7 @@ resolution.
 | SSAA | On / Off | Renders the world at 2x resolution and downsamples with a 2x2 box filter. |
 | FXAA | On / Off | Post-process edge smoothing on the final native-resolution image. |
 | FP16 world target | On / Off | Render the pre-upscale image into RGBA16F (HDR) instead of RGBA8. |
-| Scale whole window | On / Off | Render the whole frame (world, HUD, presentation) at the internal resolution, like the RenderScale mod. |
+| Scale whole window | On / Off | Render the whole frame (world, HUD, presentation) at the internal resolution, including the HUD and the presentation. |
 | Shadow map resolution | 512, 1024, 2048, 4096 | Absolute size of the Iris shader pack's shadow map, independent of the render scale. |
 | Status overlay | On / Off | FPS, internal resolution, active filter, MSAA level. |
 
@@ -63,7 +63,7 @@ Key properties:
 - Dynamic resolution scaling (DRS) is available: render scale is lowered when FPS drops below
   the configured threshold and raised again when stable.
 
-### Benchmarks (Complementary Unbound r5.9.3, 1920x1080, fixed scene)
+### Benchmarks (shader pack, 1920x1080, fixed scene)
 
 | Mode | Render scale | Avg FPS | 1% Low (ms) |
 | --- | --- | --- | --- |
@@ -83,7 +83,7 @@ chain, so with an 8-bit buffer the image is quantised *before* the upscaler sees
 banding in sky gradients and dark scenes, and as slightly harsher sharpening in FSR/MSR.
 
 Measured cost on a 5060 Ti at 960x540: within run-to-run noise (98.6 fps vs 98.9 fps with the full
-Complementary config, 275.8 vs 273.2 fps with shadows off), because the buffer is the small,
+full shader-pack config, 275.8 vs 273.2 fps with shadows off), because the buffer is the small,
 scaled one. The win is image quality: the upscaler now reads the same HDR range the pack rendered.
 
 ## How it works
@@ -158,7 +158,7 @@ Key points:
   cannot be read, FSR 2 falls back to rotation-only reprojection for that frame and logs a
   warning once.
 * Under a heavy shader pack, FSR 2 cannot make the pack's fixed full-resolution passes cheaper.
-  Complementary's shadow map, composite and post chain keep the GPU busy even at 25 % render
+  The shader pack's shadow map, composite and post chain keep the GPU busy even at 25 % render
   scale; the upscaler only scales the gbuffer/world pass. Reaching a much higher frame rate can
   therefore require lowering the pack's shadow or post settings, not just the render scale.
 * The status overlay is hidden while the F3 debug screen is open, because both use the top-left
@@ -167,13 +167,13 @@ Key points:
 ## Testing
 
 Verified in a NeoForge dev client with only **Sodium 0.8.13**, **Iris 1.8.14-beta.1** and
-**Complementary Unbound r5.9.3** installed: render scale 50-75 %, bilinear, FSR 1 and FSR 2,
+a shader pack installed: render scale 50-75 %, bilinear, FSR 1 and FSR 2,
 correct depth (no holes or LODs over the world), HUD at native resolution, first person hand and
 nearby entities visible in place under an active shader pack, and no OpenGL errors when the window
 is resized or the shader pipeline is rebuilt.
 
 FSR 2 was also checked with shaders off, at 100 % (temporal AA + RCAS at native resolution) and
-under Complementary. With the pack active and the world loaded, the test scene at `300,63,300`
+with the shader pack active. With the pack active and the world loaded, the test scene at `300,63,300`
 measured on an RTX 5060 Ti 16 GB / Ryzen 7 7800X3D at 1920x1080, render distance 12:
 
 | Mode | Frame rate | GPU |
@@ -201,16 +201,15 @@ sky and HUD were clean, and an idle camera test measured no visible frame-to-fra
 `renderScale.scaleWholeWindow` (off by default) renders the entire frame at the internal
 resolution: the world, the hand, the HUD and Iris' composite chain all run at the scaled size. The
 real main render target is resized to the internal resolution, so vanilla's own present blit
-stretches it to the window - no extra copy pass. This is how the RenderScale mod works.
+stretches it to the window - no extra copy pass. This is the standard full-frame approach.
 
-Measured in the same world, pack and shader options (Complementary Unbound, `SHADOW_QUALITY=0`,
+Measured in the same world, pack and shader options (shader pack, `SHADOW_QUALITY=0`,
 render distance 16, simulation 5, RTX 5060 Ti):
 
 | mode | FPS |
 |---|---|
 | world-only (default) | 123 - 140 |
 | scale whole window | 138 - 140 |
-| RenderScale 1.4, same settings | 150 |
 
 Two things had to be handled for this mode: Iris cancels vanilla's hand pass, so the hand is drawn
 by ModernOPT (as in the scaled mode), and the viewport repair now also covers the small main
@@ -221,7 +220,7 @@ World-only mode keeps the HUD pixel sharp and stays the default.
 ### Shadow map resolution
 
 Iris shader packs hardcode their shadow map size (`const int shadowMapResolution = 2048;` in
-Complementary), and that size is independent of the render scale: a 50 % world still pays for a
+shader pack), and that size is independent of the render scale: a 50 % world still pays for a
 2048x2048 shadow pass. `shadows.shadowMapResolution` overrides it with 512, 1024, 2048 or 4096.
 
 The override is applied in two places so the buffer and the shader math never disagree:

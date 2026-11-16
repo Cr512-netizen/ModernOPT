@@ -70,10 +70,9 @@ public final class ModernOptConfig {
         SCALE_WHOLE_WINDOW = b.comment(
                         "Scale the entire frame instead of only the world render target.",
                         "The world, HUD, Iris composites and the final presentation all run at the internal",
-                        "resolution and one blit puts the frame on the window (this is how the RenderScale mod",
-                        "works). It is the fastest mode and matches RenderScale, at the cost of a softer HUD",
-                        "and lower resolution screenshots. Off by default: the world-only mode keeps the",
-                        "interface pixel sharp.")
+                        "resolution and one blit puts the frame on the window. It is the fastest mode, at",
+                        "the cost of a softer HUD and lower resolution screenshots. Off by default: the",
+                        "world-only mode keeps the interface pixel sharp.")
                 .define("scaleWholeWindow", false);
         b.pop();
 
@@ -99,7 +98,7 @@ public final class ModernOptConfig {
                         "Render the internal (before-upscale) world image into a 16-bit float (RGBA16F) buffer.",
                         "Shader packs produce HDR colours, so this avoids quantising the image before the upscaler",
                         "sees it (less banding in gradients). It doubles the bandwidth of that buffer: measured",
-                        "about 1.3 ms per frame at 960x540 with Complementary, so it is off by default.")
+                        "about 1.3 ms per frame at 960x540 with a typical shader pack, so it is off by default.")
                 .define("fp16ColorTarget", false);
         b.pop();
 

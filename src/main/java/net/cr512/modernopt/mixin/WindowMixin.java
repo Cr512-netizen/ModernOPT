@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * <p>Redirecting {@code Minecraft#getMainRenderTarget()} alone is not enough: subsystems that size
  * their own buffers from the window (Iris' post-processing chain, vanilla helper targets, weather
  * and entity buffers, Sodium's per-frame allocations) keep allocating at the native resolution and
- * then draw full-resolution passes over a scaled image. The reference RenderScale mod solves this
+ * then draw full-resolution passes over a scaled image. A full-frame render-scale pipeline solves this
  * by making {@code Window} answer with the scaled size; this mixin does the same, but only for the
  * duration of the world pass, so the GUI, mouse handling and screenshots stay native.</p>
  */

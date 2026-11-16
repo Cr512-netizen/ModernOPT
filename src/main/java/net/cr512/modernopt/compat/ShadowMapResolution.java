@@ -9,7 +9,7 @@ import net.neoforged.fml.ModList;
 /**
  * Absolute shadow map resolution for Iris shader packs.
  *
- * <p>Packs usually hardcode the shadow map size (Complementary ships
+ * <p>Packs usually hardcode the shadow map size (for example
  * {@code const int shadowMapResolution = 2048;} and Iris derives the size of the shadow
  * framebuffer from it). That size is completely independent of the render scale, so a 50% render
  * scale still pays for a 2048x2048 shadow pass — often several milliseconds per frame.</p>
