@@ -36,15 +36,6 @@ public abstract class MinecraftMixin {
         override = RenderPipeline.activeHudTarget();
         if (override != null) {
             callbackInfo.setReturnValue(override);
-            return;
-        }
-        // Whole-window scaling: every pass of the frame, including the HUD, uses the scaled
-        // target; the final blit in Minecraft#run presents it.
-        if (RenderPipeline.wholeWindowActive()) {
-            override = RenderPipeline.scaledTarget();
-            if (override != null) {
-                callbackInfo.setReturnValue(override);
-            }
         }
     }
 }
