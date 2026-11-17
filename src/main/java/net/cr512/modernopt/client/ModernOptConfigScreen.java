@@ -1,7 +1,7 @@
 package net.cr512.modernopt.client;
 
-import java.util.function.IntConsumer;
-import java.util.function.IntFunction;
+import java.util.ArrayList;
+import java.util.List;
 
 import net.cr512.modernopt.compat.ShadowMapResolution;
 import net.cr512.modernopt.config.MsaaLevel;
@@ -10,16 +10,35 @@ import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.config.UpscalerType;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 
-/** ModernOPT options screen, reachable from the keybind and from the Sodium options page. */
+/**
+ * ModernOPT options screen, reachable from the keybind and from the Sodium options page.
+ *
+ * <p>Options are laid out in two columns and the content scrolls when it does not fit, so every
+ * setting stays reachable on small GUI scales. Values are read from the live config after a
+ * refresh, so changes made from the Sodium page are reflected here and vice versa.</p>
+ */
 public class ModernOptConfigScreen extends Screen {
 
+    private static final int COLUMN_WIDTH = 172;
+    private static final int COLUMN_GAP = 8;
+    private static final int ROW_HEIGHT = 24;
+
     private final Screen parent;
+    private final List<AbstractWidget> leftColumn = new ArrayList<>();
+    private final List<AbstractWidget> rightColumn = new ArrayList<>();
+    private int scroll;
+    private int contentHeight;
+    private int viewportTop;
+    private int viewportBottom;
+    private Button disableButton;
 
     public ModernOptConfigScreen(Screen parent) {
         super(Component.translatable("modernopt.config.title"));
@@ -29,20 +48,35 @@ public class ModernOptConfigScreen extends Screen {
     @Override
     protected void init() {
         this.clearWidgets();
+        this.leftColumn.clear();
+        this.rightColumn.clear();
+        ModernOptSettings.refresh();
 
-        int width = 310;
-        int left = this.width / 2 - width / 2;
-        int y = 34;
-        int step = 24;
+        this.viewportTop = 58;
+        this.viewportBottom = this.height - 34;
 
-        this.addRenderableWidget(CycleButton.onOffBuilder(ModernOptSettings.enabled())
-                .create(left, y, width, 20, Component.translatable("modernopt.option.enabled"), (button, value) -> {
-                    ModernOptConfig.ENABLED.set(value);
-                    ModernOptSettings.refresh();
-                }));
+        // Master switch, always visible: one click fully disables the mod.
+        this.disableButton = this.addRenderableWidget(Button.builder(disableLabel(),
+                        button -> {
+                            boolean enabled = !ModernOptSettings.enabled();
+                            ModernOptConfig.ENABLED.set(enabled);
+                            ModernOptSettings.refresh();
+                            // Rebuild so every control reflects the new state immediately.
+                            this.rebuildWidgets();
+                        })
+                .bounds(this.width / 2 - COLUMN_WIDTH - COLUMN_GAP / 2, 30, COLUMN_WIDTH * 2 + COLUMN_GAP, 20)
+                .build());
 
-        y += step;
-        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+        // --- left column: resolution and reconstruction ---
+        addLeft(CycleButton.onOffBuilder(ModernOptSettings.enabled())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.enabled"),
+                        (button, value) -> {
+                            ModernOptConfig.ENABLED.set(value);
+                            ModernOptSettings.refresh();
+                            disableButton.setMessage(disableLabel());
+                        }));
+
+        addLeft(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.renderScale"), 25, 100,
                 ModernOptSettings.renderScalePercent(),
                 value -> {
@@ -51,17 +85,16 @@ public class ModernOptConfigScreen extends Screen {
                 },
                 value -> value + "%"));
 
-        y += step;
-        this.addRenderableWidget(CycleButton.<UpscalerType>builder(type -> Component.literal(type.label()))
+        addLeft(CycleButton.<UpscalerType>builder(type -> Component.literal(type.label()))
                 .withValues(UpscalerType.values())
                 .withInitialValue(ModernOptSettings.upscaler())
-                .create(left, y, width, 20, Component.translatable("modernopt.option.upscaler"), (button, value) -> {
-                    ModernOptConfig.UPSCALER.set(value);
-                    ModernOptSettings.refresh();
-                }));
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.upscaler"),
+                        (button, value) -> {
+                            ModernOptConfig.UPSCALER.set(value);
+                            ModernOptSettings.refresh();
+                        }));
 
-        y += step;
-        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+        addLeft(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.hudScale"), 50, 100,
                 ModernOptSettings.hudScalePercent(),
                 value -> {
@@ -70,27 +103,14 @@ public class ModernOptConfigScreen extends Screen {
                 },
                 value -> value + "%"));
 
-        y += step;
-        this.addRenderableWidget(CycleButton.onOffBuilder(ModernOptSettings.scaleWholeWindow())
-                .create(left, y, width, 20, Component.translatable("modernopt.option.scaleWholeWindow"),
+        addLeft(CycleButton.onOffBuilder(ModernOptSettings.scaleWholeWindow())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.scaleWholeWindow"),
                         (button, value) -> {
                             ModernOptConfig.SCALE_WHOLE_WINDOW.set(value);
                             ModernOptSettings.refresh();
                         }));
 
-        y += step;
-        this.addRenderableWidget(CycleButton.<Integer>builder(size -> Component.literal(size + " x " + size))
-                .withValues(java.util.Arrays.stream(ShadowMapResolution.allowedValues()).boxed().toList())
-                .withInitialValue(ShadowMapResolution.desired())
-                .create(left, y, width, 20, Component.translatable("modernopt.option.shadowMapResolution"),
-                        (button, value) -> {
-                            ModernOptConfig.SHADOW_MAP_RESOLUTION.set(value);
-                            ModernOptSettings.refresh();
-                            ShadowMapResolution.requestReload();
-                        }));
-
-        y += step;
-        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+        addLeft(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.softness"), 0, 100,
                 ModernOptSettings.softness(),
                 value -> {
@@ -99,8 +119,7 @@ public class ModernOptConfigScreen extends Screen {
                 },
                 value -> value + "%"));
 
-        y += step;
-        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+        addLeft(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.fsrEasuSharpness"), 0, 100,
                 ModernOptSettings.fsrEasuSharpness(),
                 value -> {
@@ -109,8 +128,7 @@ public class ModernOptConfigScreen extends Screen {
                 },
                 value -> value + "%"));
 
-        y += step;
-        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+        addLeft(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.fsrRcasSharpness"), 0, 100,
                 ModernOptSettings.fsrRcasSharpness(),
                 value -> {
@@ -119,46 +137,64 @@ public class ModernOptConfigScreen extends Screen {
                 },
                 value -> value + "%"));
 
-        y += step;
-        this.addRenderableWidget(CycleButton.<MsaaLevel>builder(level -> Component.literal(level.label()))
+        addLeft(CycleButton.<MsaaLevel>builder(level -> Component.literal(level.label()))
                 .withValues(MsaaLevel.values())
                 .withInitialValue(ModernOptSettings.msaa())
-                .create(left, y, width, 20, Component.translatable("modernopt.option.msaa"), (button, value) -> {
-                    ModernOptConfig.MSAA.set(value);
-                    ModernOptSettings.refresh();
-                }));
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.msaa"),
+                        (button, value) -> {
+                            ModernOptConfig.MSAA.set(value);
+                            ModernOptSettings.refresh();
+                        }));
 
-        y += step;
-        this.addRenderableWidget(CycleButton.onOffBuilder(ModernOptSettings.ssaa())
-                .create(left, y, width, 20, Component.translatable("modernopt.option.ssaa"), (button, value) -> {
-                    ModernOptConfig.SSAA.set(value);
-                    ModernOptSettings.refresh();
-                }));
+        addLeft(CycleButton.onOffBuilder(ModernOptSettings.ssaa())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.ssaa"),
+                        (button, value) -> {
+                            ModernOptConfig.SSAA.set(value);
+                            ModernOptSettings.refresh();
+                        }));
 
-        y += step;
-        this.addRenderableWidget(CycleButton.onOffBuilder(ModernOptSettings.fxaa())
-                .create(left, y, width, 20, Component.translatable("modernopt.option.fxaa"), (button, value) -> {
-                    ModernOptConfig.FXAA.set(value);
-                    ModernOptSettings.refresh();
-                }));
+        addLeft(CycleButton.onOffBuilder(ModernOptSettings.fxaa())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.fxaa"),
+                        (button, value) -> {
+                            ModernOptConfig.FXAA.set(value);
+                            ModernOptSettings.refresh();
+                        }));
 
-        y += step;
-        this.addRenderableWidget(CycleButton.onOffBuilder(ModernOptSettings.overlay())
-                .create(left, y, width, 20, Component.translatable("modernopt.option.overlay"), (button, value) -> {
-                    ModernOptConfig.SHOW_OVERLAY.set(value);
-                    ModernOptSettings.refresh();
-                }));
+        addLeft(CycleButton.onOffBuilder(ModernOptSettings.overlay())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.overlay"),
+                        (button, value) -> {
+                            ModernOptConfig.SHOW_OVERLAY.set(value);
+                            ModernOptSettings.refresh();
+                        }));
 
-        // MSR2 section
-        y += step;
-        this.addRenderableWidget(CycleButton.onOffBuilder(ModernOptSettings.msr2Enabled())
-                .create(left, y, width, 20, Component.translatable("modernopt.option.msrEnabled"), (button, value) -> {
-                    ModernOptConfig.MSR2_ENABLED.set(value);
-                    ModernOptSettings.refresh();
-                }));
+        // --- right column: shadows and MSR2 ---
+        addRight(CycleButton.<Integer>builder(size -> Component.literal(size + " x " + size))
+                .withValues(java.util.Arrays.stream(ShadowMapResolution.allowedValues()).boxed().toList())
+                .withInitialValue(ShadowMapResolution.desired())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.shadowMapResolution"),
+                        (button, value) -> {
+                            ModernOptConfig.SHADOW_MAP_RESOLUTION.set(value);
+                            ModernOptSettings.refresh();
+                            ShadowMapResolution.requestReload();
+                        }));
 
-        y += step;
-        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+        addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
+                Component.translatable("modernopt.option.shadowUpdateInterval"), 1, 4,
+                ModernOptSettings.shadowUpdateInterval(),
+                value -> {
+                    ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(value);
+                    ModernOptSettings.refresh();
+                },
+                value -> value <= 1 ? "every frame" : "every " + value + " frames"));
+
+        addRight(CycleButton.onOffBuilder(ModernOptSettings.msr2Enabled())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.msrEnabled"),
+                        (button, value) -> {
+                            ModernOptConfig.MSR2_ENABLED.set(value);
+                            ModernOptSettings.refresh();
+                        }));
+
+        addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.msrVarianceScale"), 5, 40,
                 (int) (ModernOptSettings.msr2VarianceScale() * 10),
                 value -> {
@@ -167,15 +203,14 @@ public class ModernOptConfigScreen extends Screen {
                 },
                 value -> (value / 10.0) + "x"));
 
-        y += step;
-        this.addRenderableWidget(CycleButton.onOffBuilder(ModernOptSettings.msr2EdgeAware())
-                .create(left, y, width, 20, Component.translatable("modernopt.option.msrEdgeAware"), (button, value) -> {
-                    ModernOptConfig.MSR2_EDGE_AWARE.set(value);
-                    ModernOptSettings.refresh();
-                }));
+        addRight(CycleButton.onOffBuilder(ModernOptSettings.msr2EdgeAware())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.msrEdgeAware"),
+                        (button, value) -> {
+                            ModernOptConfig.MSR2_EDGE_AWARE.set(value);
+                            ModernOptSettings.refresh();
+                        }));
 
-        y += step;
-        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+        addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.msrSharpness"), 0, 100,
                 ModernOptSettings.msr2Sharpness(),
                 value -> {
@@ -184,8 +219,7 @@ public class ModernOptConfigScreen extends Screen {
                 },
                 value -> value + "%"));
 
-        y += step;
-        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+        addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.msrDepthThreshold"), 5, 100,
                 (int) (ModernOptSettings.msr2DepthThreshold() * 1000),
                 value -> {
@@ -194,8 +228,7 @@ public class ModernOptConfigScreen extends Screen {
                 },
                 value -> (value / 1000.0) + ""));
 
-        y += step;
-        this.addRenderableWidget(new IntSlider(left, y, width, 20,
+        addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.msrHistoryWeight"), 50, 95,
                 (int) (ModernOptSettings.msr2HistoryWeight() * 100),
                 value -> {
@@ -204,22 +237,94 @@ public class ModernOptConfigScreen extends Screen {
                 },
                 value -> (value / 100.0) + ""));
 
-        y += step;
-        this.addRenderableWidget(CycleButton.onOffBuilder(ModernOptSettings.overlay())
-                .create(left, y, width, 20, Component.translatable("modernopt.option.overlay"), (button, value) -> {
-                    ModernOptConfig.SHOW_OVERLAY.set(value);
+        addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
+                Component.translatable("modernopt.option.fp16"), 0, 1,
+                ModernOptSettings.fp16World() ? 1 : 0,
+                value -> {
+                    ModernOptConfig.FP16_WORLD.set(value == 1);
                     ModernOptSettings.refresh();
-                }));
+                },
+                value -> value == 1 ? "on" : "off"));
+
+        addRight(CycleButton.onOffBuilder(ModernOptConfig.LOG_FPS.get())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.logFps"),
+                        (button, value) -> {
+                            ModernOptConfig.LOG_FPS.set(value);
+                            ModernOptSettings.refresh();
+                        }));
 
         this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
-                .bounds(left, this.height - 30, width, 20)
+                .bounds(this.width / 2 - COLUMN_WIDTH - COLUMN_GAP / 2, this.height - 28,
+                        COLUMN_WIDTH * 2 + COLUMN_GAP, 20)
                 .build());
+
+        this.scroll = 0;
+        layoutColumns();
+    }
+
+    private Component disableLabel() {
+        return Component.translatable(ModernOptSettings.enabled()
+                ? "modernopt.option.disable" : "modernopt.option.enable");
+    }
+
+    private void addLeft(AbstractWidget widget) {
+        this.leftColumn.add(this.addRenderableWidget(widget));
+    }
+
+    private void addRight(AbstractWidget widget) {
+        this.rightColumn.add(this.addRenderableWidget(widget));
+    }
+
+    private void layoutColumns() {
+        int rows = Math.max(this.leftColumn.size(), this.rightColumn.size());
+        this.contentHeight = rows * ROW_HEIGHT;
+        int visible = Math.max(0, this.viewportBottom - this.viewportTop);
+        int maxScroll = Math.max(0, this.contentHeight - visible);
+        this.scroll = Math.max(0, Math.min(this.scroll, maxScroll));
+
+        int totalWidth = COLUMN_WIDTH * 2 + COLUMN_GAP;
+        int leftX = this.width / 2 - totalWidth / 2;
+        int rightX = leftX + COLUMN_WIDTH + COLUMN_GAP;
+
+        for (int i = 0; i < this.leftColumn.size(); i++) {
+            position(this.leftColumn.get(i), leftX, this.viewportTop + i * ROW_HEIGHT - this.scroll);
+        }
+        for (int i = 0; i < this.rightColumn.size(); i++) {
+            position(this.rightColumn.get(i), rightX, this.viewportTop + i * ROW_HEIGHT - this.scroll);
+        }
+    }
+
+    private void position(AbstractWidget widget, int x, int y) {
+        widget.setX(x);
+        widget.setY(y);
+        widget.visible = y >= this.viewportTop - 1 && y + widget.getHeight() <= this.viewportBottom + 1;
+        widget.active = widget.visible;
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (this.contentHeight > this.viewportBottom - this.viewportTop) {
+            this.scroll -= (int) Math.round(scrollY * ROW_HEIGHT);
+            layoutColumns();
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
-        graphics.drawCenteredString(this.font, this.title, this.width / 2, 14, 0xFFFFFF);
+        graphics.drawCenteredString(this.font, this.title, this.width / 2, 12, 0xFFFFFF);
+
+        int visible = this.viewportBottom - this.viewportTop;
+        if (this.contentHeight > visible) {
+            int barX = this.width / 2 + COLUMN_WIDTH + COLUMN_GAP / 2 + 3;
+            int barHeight = Math.max(16, visible * visible / this.contentHeight);
+            int barY = this.viewportTop + (visible - barHeight) * this.scroll
+                    / Math.max(1, this.contentHeight - visible);
+            graphics.fill(barX, this.viewportTop, barX + 3, this.viewportBottom, 0x40000000);
+            graphics.fill(barX, barY, barX + 3, barY + barHeight, 0xFF9E9E9E);
+        }
     }
 
     @Override
