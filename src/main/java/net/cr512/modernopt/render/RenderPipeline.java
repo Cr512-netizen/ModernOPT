@@ -212,10 +212,21 @@ public final class RenderPipeline {
 
     /** Returns the width {@code Window#getWidth} should report, or {@code -1} for the real one. */
     public static int windowWidthOverride() {
+        // In whole-window mode the real main target is the small frame, so Window must describe
+        // that frame (not a leftover world target of a different size) or the GUI is laid out for
+        // the wrong resolution and the final blit only fills a corner of the window.
+        if (wholeWindowActive) {
+            RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
+            return main != null ? main.width : -1;
+        }
         return windowScaled && scaled != null ? scaled.viewWidth : -1;
     }
     /** Returns the height {@code Window#getHeight} should report, or {@code -1} for the real one. */
     public static int windowHeightOverride() {
+        if (wholeWindowActive) {
+            RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
+            return main != null ? main.height : -1;
+        }
         return windowScaled && scaled != null ? scaled.viewHeight : -1;
     }
 
@@ -1353,13 +1364,39 @@ public final class RenderPipeline {
         windowScaled = false;
     }
 
-    /** Ends a whole-window frame so vanilla's present blit uses the real window size. */
+    /**
+     * Ends a whole-window frame and presents the complete small frame into the real window just
+     * before the back buffer is swapped. Using our own blit keeps the result independent of the
+     * window-size override and of vanilla's final blit.
+     */
     public static void endWholeWindowFrame() {
         if (!wholeWindowActive) {
             return;
         }
         wholeWindowActive = false;
         windowScaled = false;
+        Minecraft minecraft = Minecraft.getInstance();
+        RenderTarget main = minecraft.getMainRenderTarget();
+        if (main != null && realWindowWidth > 0 && realWindowHeight > 0
+                && (main.width != realWindowWidth || main.height != realWindowHeight)) {
+            main.unbindWrite();
+            org.lwjgl.opengl.GL30C.glBindFramebuffer(org.lwjgl.opengl.GL30C.GL_FRAMEBUFFER, 0);
+            // Raw GL here: RenderTarget#blitToScreen's GlStateManager viewport call is intercepted
+            // by other mods and can end up leaving the small size behind, which presents the frame
+            // into a corner of the window with the rest black.
+            org.lwjgl.opengl.GL11C.glViewport(0, 0, realWindowWidth, realWindowHeight);
+            org.lwjgl.opengl.GL11C.glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
+            org.lwjgl.opengl.GL11C.glClear(org.lwjgl.opengl.GL11C.GL_COLOR_BUFFER_BIT
+                    | org.lwjgl.opengl.GL11C.GL_DEPTH_BUFFER_BIT);
+            if (ensureShaders(minecraft) && shaders != null && shaders.isValid()) {
+                ShaderLibrary.beginPassState();
+                ShaderLibrary.drawBlit(shaders.blit, main.getColorTextureId(), main.width, main.height,
+                        realWindowWidth, realWindowHeight);
+                ShaderLibrary.endPassState();
+            } else {
+                main.blitToScreen(realWindowWidth, realWindowHeight, true);
+            }
+        }
     }
 
     /** Points the viewport at the small main target before the GUI pass in whole-window mode. */

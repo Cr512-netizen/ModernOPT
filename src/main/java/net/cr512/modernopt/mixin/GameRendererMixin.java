@@ -139,8 +139,7 @@ public abstract class GameRendererMixin {
         // Everything (HUD, screens, toasts) has been submitted; composite the downscaled GUI
         // over the world in the real main target.
         RenderPipeline.endHudFrame(minecraft);
-        // Whole-window mode: drop the window-size override so vanilla's present blit upscales
-        // the small main target to the real window.
-        RenderPipeline.endWholeWindowFrame();
+        // Whole-window mode is presented at the very end of Minecraft#run (after vanilla's own
+        // present blit), so the scaled frame is the last thing written to the window.
     }
 }

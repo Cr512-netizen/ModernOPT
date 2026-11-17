@@ -1,6 +1,7 @@
 package net.cr512.modernopt.mixin;
 
 import com.mojang.blaze3d.platform.GlStateManager;
+import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.render.RenderPipeline;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -30,6 +31,34 @@ public abstract class GlStateManagerMixin {
         // now. The scaled target uses this to detect a window sized viewport leaking onto it
         // through a bindWrite(false) that intentionally does not touch the viewport.
         net.cr512.modernopt.render.ScaledRenderTarget.noteViewport(width, height);
+    }
+
+    /**
+     * Keeps the held shadow depth map from being cleared.
+     *
+     * <p>Iris binds the shadow depth-source framebuffer and clears its depth buffer directly at
+     * the start of every level frame, before the shadow renderer runs. Skipping the clear passes
+     * alone therefore still wiped the depth map on every reused frame. This checks the bound
+     * draw framebuffer and suppresses the depth clear only for the shadow map; every other clear
+     * (main target, GUI, helper buffers) is untouched.</p>
+     */
+    @Inject(method = "_clear", at = @At("HEAD"), cancellable = true)
+    private static void modernopt$holdShadowDepthClear(int mask, boolean onMac, CallbackInfo callbackInfo) {
+        if ((mask & org.lwjgl.opengl.GL11C.GL_DEPTH_BUFFER_BIT) == 0) {
+            return;
+        }
+        int interval = Math.max(1, ModernOptSettings.shadowUpdateInterval());
+        if (RenderPipeline.shadowHoldShouldDraw(interval)) {
+            return;
+        }
+        int shadowFramebuffer = RenderPipeline.shadowHoldFramebuffer();
+        if (shadowFramebuffer <= 0) {
+            return;
+        }
+        int bound = org.lwjgl.opengl.GL11C.glGetInteger(org.lwjgl.opengl.GL30C.GL_DRAW_FRAMEBUFFER_BINDING);
+        if (bound == shadowFramebuffer) {
+            callbackInfo.cancel();
+        }
     }
 
     /**
