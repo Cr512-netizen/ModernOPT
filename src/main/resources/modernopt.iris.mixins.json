@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_21",
   "plugin": "net.cr512.modernopt.mixin.iris.ModernOptIrisMixinPlugin",
   "client": [
+    "IrisClearPassCreatorMixin",
     "IrisClearPassMixin",
     "IrisCompositeRendererMixin",
     "IrisFinalPassRendererMixin",
