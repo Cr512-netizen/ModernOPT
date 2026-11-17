@@ -44,6 +44,9 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
     private static final ResourceLocation SSAA = id("ssaa");
     private static final ResourceLocation FXAA = id("fxaa");
     private static final ResourceLocation OVERLAY = id("overlay");
+    private static final ResourceLocation HUD_SCALE = id("hud_scale");
+    private static final ResourceLocation WHOLE_WINDOW = id("whole_window");
+    private static final ResourceLocation SHADOW_INTERVAL = id("shadow_interval");
     private static final ResourceLocation OPEN_SETTINGS = id("open_settings");
 
     /** Sodium runs this once after an option was changed and the screen is applied. */
@@ -70,11 +73,11 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
                 .setName(Component.translatable("modernopt.sodium.group.general"))
                 .addOption(booleanOption(builder, ENABLED, "modernopt.option.enabled",
                         ModernOptConfig.ENABLED.getDefault(),
-                        value -> ModernOptConfig.ENABLED.set(value),
+                        value -> { ModernOptConfig.ENABLED.set(value); ModernOptSettings.refresh(); },
                         () -> ModernOptConfig.ENABLED.get()))
                 .addOption(booleanOption(builder, OVERLAY, "modernopt.option.overlay",
                         ModernOptConfig.SHOW_OVERLAY.getDefault(),
-                        value -> ModernOptConfig.SHOW_OVERLAY.set(value),
+                        value -> { ModernOptConfig.SHOW_OVERLAY.set(value); ModernOptSettings.refresh(); },
                         () -> ModernOptConfig.SHOW_OVERLAY.get()));
         page.addOptionGroup(general);
 
@@ -82,39 +85,52 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
                 .setName(Component.translatable("modernopt.sodium.group.scaling"))
                 .addOption(integerOption(builder, RENDER_SCALE, "modernopt.option.renderScale",
                         ModernOptConfig.RENDER_SCALE_PERCENT.getDefault(), 25, 100,
-                        value -> ModernOptConfig.RENDER_SCALE_PERCENT.set(value),
+                        value -> { ModernOptConfig.RENDER_SCALE_PERCENT.set(value); ModernOptSettings.refresh(); },
                         () -> ModernOptConfig.RENDER_SCALE_PERCENT.get()))
                 .addOption(enumOption(builder, UPSCALER, "modernopt.option.upscaler", UpscalerType.class,
                         ModernOptConfig.UPSCALER.getDefault(),
-                        value -> ModernOptConfig.UPSCALER.set(value),
+                        value -> { ModernOptConfig.UPSCALER.set(value); ModernOptSettings.refresh(); },
                         () -> ModernOptConfig.UPSCALER.get()))
                 .addOption(integerOption(builder, SOFTNESS, "modernopt.option.softness",
                         ModernOptConfig.SOFTNESS.getDefault(), 0, 100,
-                        value -> ModernOptConfig.SOFTNESS.set(value),
+                        value -> { ModernOptConfig.SOFTNESS.set(value); ModernOptSettings.refresh(); },
                         () -> ModernOptConfig.SOFTNESS.get()))
                 .addOption(integerOption(builder, FSR_EASU_SHARPNESS, "modernopt.option.fsrEasuSharpness",
                         ModernOptConfig.FSR_EASU_SHARPNESS.getDefault(), 0, 100,
-                        value -> ModernOptConfig.FSR_EASU_SHARPNESS.set(value),
+                        value -> { ModernOptConfig.FSR_EASU_SHARPNESS.set(value); ModernOptSettings.refresh(); },
                         () -> ModernOptConfig.FSR_EASU_SHARPNESS.get()))
                 .addOption(integerOption(builder, FSR_RCAS_SHARPNESS, "modernopt.option.fsrRcasSharpness",
                         ModernOptConfig.FSR_RCAS_SHARPNESS.getDefault(), 0, 100,
-                        value -> ModernOptConfig.FSR_RCAS_SHARPNESS.set(value),
-                        () -> ModernOptConfig.FSR_RCAS_SHARPNESS.get()));
+                        value -> { ModernOptConfig.FSR_RCAS_SHARPNESS.set(value); ModernOptSettings.refresh(); },
+                        () -> ModernOptConfig.FSR_RCAS_SHARPNESS.get()))
+                .addOption(integerOption(builder, HUD_SCALE, "modernopt.option.hudScale",
+                        ModernOptConfig.HUD_SCALE_PERCENT.getDefault(), 50, 100,
+                        value -> { ModernOptConfig.HUD_SCALE_PERCENT.set(value); ModernOptSettings.refresh(); },
+                        () -> ModernOptConfig.HUD_SCALE_PERCENT.get()))
+                .addOption(booleanOption(builder, WHOLE_WINDOW, "modernopt.option.scaleWholeWindow",
+                        ModernOptConfig.SCALE_WHOLE_WINDOW.getDefault(),
+                        value -> { ModernOptConfig.SCALE_WHOLE_WINDOW.set(value); ModernOptSettings.refresh(); },
+                        () -> ModernOptConfig.SCALE_WHOLE_WINDOW.get()))
+                .addOption(integerOption(builder, SHADOW_INTERVAL, "modernopt.option.shadowUpdateInterval",
+                        ModernOptConfig.SHADOW_UPDATE_INTERVAL.getDefault(), 1, 4,
+                        value -> { ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(value); ModernOptSettings.refresh(); },
+                        () -> ModernOptConfig.SHADOW_UPDATE_INTERVAL.get(),
+                        value -> Component.literal(value <= 1 ? "every frame" : "every " + value + " frames")));
         page.addOptionGroup(scaling);
 
         OptionGroupBuilder antialiasing = builder.createOptionGroup()
                 .setName(Component.translatable("modernopt.sodium.group.antialiasing"))
                 .addOption(enumOption(builder, MSAA, "modernopt.option.msaa", MsaaLevel.class,
                         ModernOptConfig.MSAA.getDefault(),
-                        value -> ModernOptConfig.MSAA.set(value),
+                        value -> { ModernOptConfig.MSAA.set(value); ModernOptSettings.refresh(); },
                         () -> ModernOptConfig.MSAA.get()))
                 .addOption(booleanOption(builder, SSAA, "modernopt.option.ssaa",
                         ModernOptConfig.SSAA.getDefault(),
-                        value -> ModernOptConfig.SSAA.set(value),
+                        value -> { ModernOptConfig.SSAA.set(value); ModernOptSettings.refresh(); },
                         () -> ModernOptConfig.SSAA.get()))
                 .addOption(booleanOption(builder, FXAA, "modernopt.option.fxaa",
                         ModernOptConfig.FXAA.getDefault(),
-                        value -> ModernOptConfig.FXAA.set(value),
+                        value -> { ModernOptConfig.FXAA.set(value); ModernOptSettings.refresh(); },
                         () -> ModernOptConfig.FXAA.get()));
         page.addOptionGroup(antialiasing);
 
@@ -143,12 +159,19 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
     private static IntegerOptionBuilder integerOption(ConfigBuilder builder, ResourceLocation id, String nameKey,
             int defaultValue, int min, int max, java.util.function.Consumer<Integer> setter,
             java.util.function.Supplier<Integer> getter) {
+        return integerOption(builder, id, nameKey, defaultValue, min, max, setter, getter,
+                value -> Component.literal(value + "%"));
+    }
+
+    private static IntegerOptionBuilder integerOption(ConfigBuilder builder, ResourceLocation id, String nameKey,
+            int defaultValue, int min, int max, java.util.function.Consumer<Integer> setter,
+            java.util.function.Supplier<Integer> getter, java.util.function.IntFunction<Component> formatter) {
         return builder.createIntegerOption(id)
                 .setName(Component.translatable(nameKey))
                 .setTooltip(Component.translatable(nameKey + ".tooltip"))
                 .setDefaultValue(defaultValue)
                 .setRange(min, max, 1)
-                .setValueFormatter(value -> Component.literal(value + "%"))
+                .setValueFormatter(formatter::apply)
                 .setImpact(OptionImpact.MEDIUM)
                 .setBinding(setter, getter)
                 .setStorageHandler(SAVE);
