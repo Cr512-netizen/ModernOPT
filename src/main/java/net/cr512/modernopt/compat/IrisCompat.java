@@ -9,7 +9,7 @@ import java.lang.reflect.Method;
  *
  * <p>With a shader pack active the world is still rendered into ModernOPT's scaled target
  * (Iris sizes its gbuffers from {@code Minecraft#getMainRenderTarget()}), but Iris owns the
- * scene depth buffer. FSR 2 must reproject against that depth, not against the scaled target's
+ * scene depth buffer. MSR must reproject against that depth, not against the scaled target's
  * own attachment, which the final fullscreen pass never writes. The accessors below reach the
  * pipeline's {@code RenderTargets} reflectively and return {@code -1} when the Iris version does
  * not expose the expected shape.</p>

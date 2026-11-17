@@ -11,15 +11,15 @@ public enum UpscalerType {
     /** AMD FidelityFX Super Resolution 1: EASU reconstruction + RCAS sharpening. */
     FSR1("FSR 1", true),
     /**
-     * Temporal FSR 2 style upscaler: jittered world pass, camera reprojection, history
+     * Temporal reconstruction (formerly MSR): jittered world pass, camera reprojection, history
      * accumulation, then RCAS. Uses the same sharpness setting as FSR 1.
      */
-    FSR2("FSR 2", true),
+    MSR("MSR", true),
     /**
-     * Minecraft Super Resolution 2.0: Variance-clipping temporal pass + fused EASU+RCAS+Edge-Aware.
+     * MSR2: variance-clipping temporal pass + fused EASU+RCAS+edge-aware spatial pass.
      * Supports both compute shader (GL 4.3+) and fragment shader fallback paths.
      */
-    MSR("MSR 2.0", true);
+    MSR2("MSR2", true);
 
     private final String label;
     private final boolean shader;

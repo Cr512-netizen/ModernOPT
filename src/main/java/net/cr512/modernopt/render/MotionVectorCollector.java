@@ -1,7 +1,7 @@
 package net.cr512.modernopt.render;
 
 /**
- * MSR 2.0 Motion Vector Collector.
+ * MSR2 Motion Vector Collector.
  *
  * Collects entity motion vectors for temporal reprojection without GC allocations.
  * Uses a pre-allocated flat object pool and SSBO for GPU transfer.

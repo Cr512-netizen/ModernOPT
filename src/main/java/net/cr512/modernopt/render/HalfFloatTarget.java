@@ -13,7 +13,7 @@ import java.nio.IntBuffer;
 /**
  * Colour-only render target with an {@code RGBA16F} attachment.
  *
- * <p>The vanilla {@link RenderTarget} always allocates {@code RGBA8}. FSR 2 accumulates the
+ * <p>The vanilla {@link RenderTarget} always allocates {@code RGBA8}. MSR accumulates the
  * image over many frames, so an 8 bit history would slowly quantise the result and show banding
  * in dark gradients. Half floats keep the accumulated colour stable. No depth attachment is
  * needed: the temporal pass only writes colour and stores the linear view depth in the alpha

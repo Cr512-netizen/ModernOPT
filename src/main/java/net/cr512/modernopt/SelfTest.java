@@ -38,7 +38,7 @@ public final class SelfTest {
 
     private static final String[] STATES = {
             "BILINEAR-50",
-            "FSR2-50",
+            "MSR-50",
             "MSR2-50",
             "BILINEAR-50-B",
             "OFF-100"
@@ -422,6 +422,15 @@ public final class SelfTest {
             ModernOptConfig.FP16_WORLD.set(true);
         }
         ModernOptConfig.SCALE_WHOLE_WINDOW.set(name.contains("!wws"));
+        int shadowIndex = name.indexOf("!shadow");
+        if (shadowIndex >= 0) {
+            int shadowInterval = digits(name.substring(shadowIndex + 7));
+            if (shadowInterval >= 1 && shadowInterval <= 4) {
+                ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(shadowInterval);
+            }
+        } else {
+            ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(1);
+        }
         int hudIndex = name.indexOf("!hud");
         if (hudIndex >= 0) {
             int hudPercent = digits(name.substring(hudIndex + 4));
@@ -441,20 +450,20 @@ public final class SelfTest {
                 ModernOptConfig.ENABLED.set(false);
                 ModernOptConfig.SHOW_OVERLAY.set(false);
             }
-            case "MSR", "MSR2" -> configure(percent, UpscalerType.MSR, true);
-            case "FSR2" -> configure(percent, UpscalerType.FSR2, false);
+            case "MSR2" -> configure(percent, UpscalerType.MSR2, true);
+            case "MSR" -> configure(percent, UpscalerType.MSR, false);
             case "FSR1" -> configure(percent, UpscalerType.FSR1, false);
             default -> configure(percent, UpscalerType.BILINEAR, false);
         }
         ModernOptSettings.refresh();
     }
 
-    private static void configure(int percent, UpscalerType upscaler, boolean msrEnabled) {
+    private static void configure(int percent, UpscalerType upscaler, boolean msr2Enabled) {
         ModernOptConfig.ENABLED.set(true);
         ModernOptConfig.RENDER_SCALE_PERCENT.set(percent);
         ModernOptConfig.UPSCALER.set(upscaler);
-        ModernOptConfig.MSR_ENABLED.set(msrEnabled);
-        ModernOptConfig.MSR_DYNAMIC_RES.set(false);
+        ModernOptConfig.MSR2_ENABLED.set(msr2Enabled);
+        ModernOptConfig.MSR2_DYNAMIC_RES.set(false);
         ModernOptConfig.FSR_EASU_SHARPNESS.set(0);
         ModernOptConfig.FSR_RCAS_SHARPNESS.set(25);
         ModernOptConfig.SSAA.set(false);

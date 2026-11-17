@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Records entity motion vectors for MSR 2.0 temporal reprojection.
+ * Records entity motion vectors for MSR2 temporal reprojection.
  * Hooks into entity rendering to capture screen-space positions.
  */
 @Mixin(EntityRenderDispatcher.class)

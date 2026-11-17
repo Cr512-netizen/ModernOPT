@@ -18,23 +18,24 @@ public final class ModernOptSettings {
     private static volatile UpscalerType upscaler = UpscalerType.FSR1;
     private static volatile MsaaLevel msaa = MsaaLevel.OFF;
     private static volatile int shadowMapResolution = 2048;
+    private static volatile int shadowUpdateInterval = 1;
     private static volatile boolean fp16World = false;
     private static volatile int hudScalePercent = 100;
     private static volatile boolean scaleWholeWindow;
 
-    // MSR 2.0 settings
-    private static volatile boolean msrEnabled = false;
-    private static volatile double msrVarianceScale = 2.0;
-    private static volatile boolean msrEdgeAware = true;
-    private static volatile int msrSharpness = 30;
-    private static volatile double msrDepthThreshold = 0.02;
-    private static volatile double msrHistoryWeight = 0.85;
+    // MSR2 settings
+    private static volatile boolean msr2Enabled = false;
+    private static volatile double msr2VarianceScale = 2.0;
+    private static volatile boolean msr2EdgeAware = true;
+    private static volatile int msr2Sharpness = 30;
+    private static volatile double msr2DepthThreshold = 0.02;
+    private static volatile double msr2HistoryWeight = 0.85;
 
     // DRS settings
-    private static volatile boolean msrDynamicRes = true;
-    private static volatile int msrTemporalMinFps = 40;
-    private static volatile int msrScaleStep = 5;
-    private static volatile int msrMinScale = 50;
+    private static volatile boolean msr2DynamicRes = true;
+    private static volatile int msr2TemporalMinFps = 40;
+    private static volatile int msr2ScaleStep = 5;
+    private static volatile int msr2MinScale = 50;
 
     private ModernOptSettings() {
     }
@@ -55,23 +56,24 @@ public final class ModernOptSettings {
         ssaa = ModernOptConfig.SSAA.get();
         fxaa = ModernOptConfig.FXAA.get();
         shadowMapResolution = ModernOptConfig.SHADOW_MAP_RESOLUTION.get();
+        shadowUpdateInterval = ModernOptConfig.SHADOW_UPDATE_INTERVAL.get();
         fp16World = ModernOptConfig.FP16_WORLD.get();
         hudScalePercent = ModernOptConfig.HUD_SCALE_PERCENT.get();
         scaleWholeWindow = ModernOptConfig.SCALE_WHOLE_WINDOW.get();
 
-        // MSR 2.0
-        msrEnabled = ModernOptConfig.MSR_ENABLED.get();
-        msrVarianceScale = ModernOptConfig.MSR_VARIANCE_SCALE.get();
-        msrEdgeAware = ModernOptConfig.MSR_EDGE_AWARE.get();
-        msrSharpness = ModernOptConfig.MSR_SHARPNESS.get();
-        msrDepthThreshold = ModernOptConfig.MSR_DEPTH_THRESHOLD.get();
-        msrHistoryWeight = ModernOptConfig.MSR_HISTORY_WEIGHT.get();
+        // MSR2
+        msr2Enabled = ModernOptConfig.MSR2_ENABLED.get();
+        msr2VarianceScale = ModernOptConfig.MSR2_VARIANCE_SCALE.get();
+        msr2EdgeAware = ModernOptConfig.MSR2_EDGE_AWARE.get();
+        msr2Sharpness = ModernOptConfig.MSR2_SHARPNESS.get();
+        msr2DepthThreshold = ModernOptConfig.MSR2_DEPTH_THRESHOLD.get();
+        msr2HistoryWeight = ModernOptConfig.MSR2_HISTORY_WEIGHT.get();
 
         // DRS
-        msrDynamicRes = ModernOptConfig.MSR_DYNAMIC_RES.get();
-        msrTemporalMinFps = ModernOptConfig.MSR_TEMPORAL_MIN_FPS.get();
-        msrScaleStep = ModernOptConfig.MSR_SCALE_STEP.get();
-        msrMinScale = ModernOptConfig.MSR_MIN_SCALE.get();
+        msr2DynamicRes = ModernOptConfig.MSR2_DYNAMIC_RES.get();
+        msr2TemporalMinFps = ModernOptConfig.MSR2_TEMPORAL_MIN_FPS.get();
+        msr2ScaleStep = ModernOptConfig.MSR2_SCALE_STEP.get();
+        msr2MinScale = ModernOptConfig.MSR2_MIN_SCALE.get();
     }
 
     public static boolean enabled() {
@@ -129,6 +131,10 @@ public final class ModernOptSettings {
         return shadowMapResolution;
     }
 
+    /** Rebuild the shadow map every N frames (1 = every frame). */
+    public static int shadowUpdateInterval() {
+        return shadowUpdateInterval;
+    }
     /** Render the pre-upscale image into an RGBA16F buffer instead of RGBA8. */
     public static boolean fp16World() {
         return fp16World;
@@ -144,45 +150,45 @@ public final class ModernOptSettings {
         return scaleWholeWindow;
     }
 
-    // MSR 2.0 getters
-    public static boolean msrEnabled() {
-        return msrEnabled;
+    // MSR2 getters
+    public static boolean msr2Enabled() {
+        return msr2Enabled;
     }
 
-    public static double msrVarianceScale() {
-        return msrVarianceScale;
+    public static double msr2VarianceScale() {
+        return msr2VarianceScale;
     }
 
-    public static boolean msrEdgeAware() {
-        return msrEdgeAware;
+    public static boolean msr2EdgeAware() {
+        return msr2EdgeAware;
     }
 
-    public static int msrSharpness() {
-        return msrSharpness;
+    public static int msr2Sharpness() {
+        return msr2Sharpness;
     }
 
-    public static double msrDepthThreshold() {
-        return msrDepthThreshold;
+    public static double msr2DepthThreshold() {
+        return msr2DepthThreshold;
     }
 
-    public static double msrHistoryWeight() {
-        return msrHistoryWeight;
+    public static double msr2HistoryWeight() {
+        return msr2HistoryWeight;
     }
 
     // DRS getters
-    public static boolean msrDynamicRes() {
-        return msrDynamicRes;
+    public static boolean msr2DynamicRes() {
+        return msr2DynamicRes;
     }
 
-    public static int msrTemporalMinFps() {
-        return msrTemporalMinFps;
+    public static int msr2TemporalMinFps() {
+        return msr2TemporalMinFps;
     }
 
-    public static int msrScaleStep() {
-        return msrScaleStep;
+    public static int msr2ScaleStep() {
+        return msr2ScaleStep;
     }
 
-    public static int msrMinScale() {
-        return msrMinScale;
+    public static int msr2MinScale() {
+        return msr2MinScale;
     }
 }

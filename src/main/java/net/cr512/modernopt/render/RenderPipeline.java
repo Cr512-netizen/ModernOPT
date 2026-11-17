@@ -36,9 +36,9 @@ import org.joml.Vector3f;
  *   <li>{@code GameRenderer#renderLevel} HEAD: bind the scaled target and tell
  *       {@code Minecraft#getMainRenderTarget} to answer with it, so the world, entities,
  *       particles, clouds and post effects all land in the smaller/larger image.</li>
- *   <li>Right before {@code LevelRenderer#renderLevel}: for FSR 2, offset the projection matrix
+ *   <li>Right before {@code LevelRenderer#renderLevel}: for MSR, offset the projection matrix
  *       by a sub-pixel Halton jitter and remember the camera pose.</li>
- *   <li>Right before the hand pass: finish the FSR 2 chain into the real main target, so the
+ *   <li>Right before the hand pass: finish the MSR chain into the real main target, so the
  *       depth buffer is still available for reprojection and the hand is rendered natively.</li>
  *   <li>{@code GameRenderer#render} right before {@code Gui#render}: the remaining filters
  *       resolve MSAA if needed, run the reconstruction filter into the real main target and
@@ -85,18 +85,18 @@ public final class RenderPipeline {
     private static int lastHeight = -1;
 
     /** Temporal upscaling state. */
-    private static boolean fsr2ThisFrame;
-    private static boolean fsr2ActiveThisFrame;
-    private static boolean fsr2Unsupported;
+    private static boolean msrThisFrame;
+    private static boolean msrActiveThisFrame;
+    private static boolean msrUnsupported;
     private static boolean poseCaptured;
     private static boolean historyValid;
-    private static boolean loggedFsr2Active;
-    private static boolean loggedFsr2Iris;
-    private static boolean loggedFsr2Msaa;
-    private static boolean loggedFsr2Fallback;
+    private static boolean loggedMsrActive;
+    private static boolean loggedMsrIris;
+    private static boolean loggedMsrMsaa;
+    private static boolean loggedMsrFallback;
     private static boolean loggedProjectionGuard;
-    private static int fsr2FailureCount;
-    private static boolean fsr2DepthValidThisFrame = true;
+    private static int msrFailureCount;
+    private static boolean msrDepthValidThisFrame = true;
     private static int irisDepthMisses;
     private static Level lastLevel;
     private static UpscalerType lastUpscaler;
@@ -131,10 +131,10 @@ public final class RenderPipeline {
     // R2 (Sobol) jitter sequence - better distribution than Halton, less clustering
     private static final float[][] R2_JITTER = new float[64][2];
 
-    // MSR 2.0 state
-    private static boolean msrThisFrame;
-    private static boolean msrActiveThisFrame;
-    private static MSRHistoryTarget msrHistory;
+    // MSR2 state
+    private static boolean msr2ThisFrame;
+    private static boolean msr2ActiveThisFrame;
+    private static MSR2HistoryTarget msr2History;
     private static boolean msrShaderFailure;
     private static boolean msrHistoryValid;
     private static int msrFrameIndex;
@@ -162,7 +162,7 @@ public final class RenderPipeline {
     private static boolean cachedScaleWholeWindow;
     private static boolean wholeWindowActive;
 
-    // MSR 2.0 cached settings
+    // MSR2 cached settings
     private static boolean cachedMsrEnabled = false;
     private static double cachedMsrVarianceScale = 2.0;
     private static boolean cachedMsrEdgeAware = true;
@@ -243,7 +243,7 @@ public final class RenderPipeline {
     // Compute shader support (GL 4.3+)
     private static boolean computeAvailable = false;
     private static MotionVectorCollector motionVectorCollector;
-    private static MsrTemporalCompute msrComputeProgram;
+    private static Msr2TemporalCompute msrComputeProgram;
     private static boolean msrComputeFailed;
 
     private RenderPipeline() {
@@ -264,15 +264,15 @@ public final class RenderPipeline {
 
     /**
      * Label for the overlay: the upscaler that actually produced the last world frame.
-     * Keeps the UI honest when FSR 2 fell back to FSR 1 (SSAA or a pass failure).
+     * Keeps the UI honest when MSR fell back to FSR 1 (SSAA or a pass failure).
      */
     public static String activeUpscalerLabel() {
         UpscalerType requested = ModernOptSettings.upscaler();
-        if (requested == UpscalerType.FSR2 && !fsr2ActiveThisFrame) {
-            return ModernOptSettings.ssaa() ? "FSR 2 off (SSAA)" : "FSR 2 off (FSR 1)";
+        if (requested == UpscalerType.MSR && !msrActiveThisFrame) {
+            return ModernOptSettings.ssaa() ? "MSR off (SSAA)" : "MSR off (FSR 1)";
         }
-        if (requested == UpscalerType.FSR2 && !fsr2DepthValidThisFrame) {
-            return "FSR 2 (no depth)";
+        if (requested == UpscalerType.MSR && !msrDepthValidThisFrame) {
+            return "MSR (no depth)";
         }
         return requested.label();
     }
@@ -300,9 +300,9 @@ public final class RenderPipeline {
     /** Called at the head of {@code GameRenderer#renderLevel}. */
     public static void beginWorldFrame() {
         worldActive = false;
-        fsr2ThisFrame = false;
         msrThisFrame = false;
-        msrActiveThisFrame = false;
+        msr2ThisFrame = false;
+        msr2ActiveThisFrame = false;
         poseCaptured = false;
         // Never let the window-size override leak from a frame that was skipped or aborted:
         // otherwise the next frame reads the *scaled* width back and halves the target again.
@@ -348,7 +348,7 @@ public final class RenderPipeline {
         if (minecraft.level != lastLevel) {
             lastLevel = minecraft.level;
             resetHistory();
-            resetMsrHistory();
+            resetMsr2History();
             lastUpscaler = null;
         }
 
@@ -358,17 +358,17 @@ public final class RenderPipeline {
         if (iris != lastIris) {
             lastIris = iris;
             resetHistory();
-            resetMsrHistory();
+            resetMsr2History();
         }
-        boolean fsr2Wanted = requested == UpscalerType.FSR2 && !cachedSsaa;
-        if (requested == UpscalerType.FSR2 && iris && !loggedFsr2Iris) {
-            loggedFsr2Iris = true;
-            ModernOPT.LOG.info("[ModernOPT] FSR 2 is active with the Iris shader pack: using Iris depth for "
+        boolean msrWanted = requested == UpscalerType.MSR && !cachedSsaa;
+        if (requested == UpscalerType.MSR && iris && !loggedMsrIris) {
+            loggedMsrIris = true;
+            ModernOPT.LOG.info("[ModernOPT] MSR is active with the Iris shader pack: using Iris depth for "
                     + "reprojection and letting the pack's own temporal filter handle sub-pixel jitter");
         }
-        if (fsr2Wanted && cachedMsaaSamples > 1 && !loggedFsr2Msaa) {
-            loggedFsr2Msaa = true;
-            ModernOPT.LOG.info("[ModernOPT] MSAA is off in FSR 2 mode (the temporal pass needs a single sampled depth buffer)");
+        if (msrWanted && cachedMsaaSamples > 1 && !loggedMsrMsaa) {
+            loggedMsrMsaa = true;
+            ModernOPT.LOG.info("[ModernOPT] MSAA is off in MSR mode (the temporal pass needs a single sampled depth buffer)");
         }
 
         int samples = cachedMsaaSamples;
@@ -384,7 +384,7 @@ public final class RenderPipeline {
                 logIrisOnce("MSAA is off while an Iris shader pack is active");
             }
         }
-        if (fsr2Wanted) {
+        if (msrWanted) {
             samples = 1;
         }
 
@@ -392,42 +392,42 @@ public final class RenderPipeline {
             logIrisOnce("shader pack detected, scaling the Iris pipeline as well");
         }
 
-        if (fsr2Wanted && (!ensureShaders(minecraft) || shaders == null || !shaders.hasTemporal())) {
+        if (msrWanted && (!ensureShaders(minecraft) || shaders == null || !shaders.hasTemporal())) {
             if (shaders == null || !shaders.isValid()) {
                 return;
             }
-            fsr2Unsupported = true;
-            fsr2Wanted = false;
-            if (!loggedFsr2Fallback) {
-                loggedFsr2Fallback = true;
-                ModernOPT.LOG.warn("[ModernOPT] FSR 2 temporal pass unavailable, falling back to FSR 1");
+            msrUnsupported = true;
+            msrWanted = false;
+            if (!loggedMsrFallback) {
+                loggedMsrFallback = true;
+                ModernOPT.LOG.warn("[ModernOPT] MSR temporal pass unavailable, falling back to FSR 1");
             }
         }
 
         int[] size = RenderScaleMath.targetSize(windowWidth, windowHeight, cachedRenderScale,
                 cachedSsaa, RenderSystem.maxSupportedTextureSize());
 
-        // MSR 2.0 takes priority over other upscalers when enabled
+        // MSR2 takes priority over other upscalers when enabled
         if (cachedMsrEnabled) {
             // MSR uses the same scaled target but different reconstruction
             // Force single sample for MSR temporal pass
             samples = 1;
-            fsr2Wanted = false;
+            msrWanted = false;
             // At 100% render scale there is nothing to reconstruct: MSR must be a pure
             // passthrough here so it can never be slower than native rendering.
             if (size[0] >= windowWidth && size[1] >= windowHeight) {
                 resetHistory();
-                resetMsrHistory();
+                resetMsr2History();
                 rememberUpscalerSettings(requested);
                 return;
             }
         }
 
         boolean useful = size[0] != windowWidth || size[1] != windowHeight || samples > 1
-                || cachedFxaa || fsr2Wanted || cachedMsrEnabled;
+                || cachedFxaa || msrWanted || cachedMsrEnabled;
         if (!useful) {
             resetHistory();
-            resetMsrHistory();
+            resetMsr2History();
             rememberUpscalerSettings(requested);
             return;
         }
@@ -435,40 +435,40 @@ public final class RenderPipeline {
         ensureScaledTarget(size[0], size[1], samples);
         if (scaled == null) {
             resetHistory();
-            resetMsrHistory();
+            resetMsr2History();
             return;
         }
 
         // Reset temporal history before allocating/reallocating the MSR targets. Resetting after
-        // ensureMsrHistoryTargets() would destroy the freshly created ping-pong pair.
+        // ensureMSR2HistoryTargets() would destroy the freshly created ping-pong pair.
         boolean settingsChanged = requested != lastUpscaler
                 || cachedRenderScale != lastUpscalerPercent
                 || cachedSsaa != lastUpscalerSsaa;
         rememberUpscalerSettings(requested);
-        if (!fsr2Wanted) {
+        if (!msrWanted) {
             resetHistory();
         } else if (settingsChanged) {
             resetHistory();
         }
         if (settingsChanged) {
             // MSR history must not survive a scale or upscaler change either.
-            resetMsrHistory();
+            resetMsr2History();
         }
 
         // Initialize MSR history targets if needed
         if (cachedMsrEnabled) {
-            ensureMsrHistoryTargets(size[0], size[1]);
-            msrThisFrame = true;
-            fsr2Wanted = false;
+            ensureMSR2HistoryTargets(size[0], size[1]);
+            msr2ThisFrame = true;
+            msrWanted = false;
         }
 
         scaled.setLinearFilter(requested != UpscalerType.NEAREST);
-        fsr2ThisFrame = fsr2Wanted;
+        msrThisFrame = msrWanted;
         int outputWidth = minecraft.getMainRenderTarget().width;
         int outputHeight = minecraft.getMainRenderTarget().height;
-        if (fsr2Wanted && !fsr2Unsupported) {
+        if (msrWanted && !msrUnsupported) {
             // The temporal history lives in output resolution. Allocate it here: switching to
-            // FSR 2 at runtime used to reach reconstructFsr2() with null history targets and
+            // MSR at runtime used to reach reconstructMsr() with null history targets and
             // silently fall back to FSR 1 for the rest of the session.
             ensureHistoryTargets(outputWidth, outputHeight);
         }
@@ -490,9 +490,9 @@ public final class RenderPipeline {
             ModernOPT.LOG.info("[BENCH][GL] begin {}", debugGlState());
         }
 
-        if (fsr2ThisFrame && !loggedFsr2Active) {
-            loggedFsr2Active = true;
-            ModernOPT.LOG.info("[ModernOPT] FSR 2 temporal upscaling active ({}x{} -> {}x{}, camera-reconstructed motion)",
+        if (msrThisFrame && !loggedMsrActive) {
+            loggedMsrActive = true;
+            ModernOPT.LOG.info("[ModernOPT] MSR temporal upscaling active ({}x{} -> {}x{}, camera-reconstructed motion)",
                     scaled.width, scaled.height, outputWidth, outputHeight);
         }
     }
@@ -570,19 +570,19 @@ public final class RenderPipeline {
         cachedSoftness = ModernOptSettings.softness();
         cachedScaleWholeWindow = ModernOptSettings.scaleWholeWindow();
 
-        // MSR 2.0
-        cachedMsrEnabled = ModernOptSettings.msrEnabled() || (cachedUpscaler == UpscalerType.MSR);
-        cachedMsrVarianceScale = ModernOptSettings.msrVarianceScale();
-        cachedMsrEdgeAware = ModernOptSettings.msrEdgeAware();
-        cachedMsrSharpness = ModernOptSettings.msrSharpness();
-        cachedMsrDepthThreshold = ModernOptSettings.msrDepthThreshold();
-        cachedMsrHistoryWeight = ModernOptSettings.msrHistoryWeight();
+        // MSR2
+        cachedMsrEnabled = ModernOptSettings.msr2Enabled() || (cachedUpscaler == UpscalerType.MSR2);
+        cachedMsrVarianceScale = ModernOptSettings.msr2VarianceScale();
+        cachedMsrEdgeAware = ModernOptSettings.msr2EdgeAware();
+        cachedMsrSharpness = ModernOptSettings.msr2Sharpness();
+        cachedMsrDepthThreshold = ModernOptSettings.msr2DepthThreshold();
+        cachedMsrHistoryWeight = ModernOptSettings.msr2HistoryWeight();
 
         // DRS
-        cachedMsrDynamicRes = ModernOptSettings.msrDynamicRes();
-        cachedMsrTemporalMinFps = ModernOptSettings.msrTemporalMinFps();
-        cachedMsrScaleStep = ModernOptSettings.msrScaleStep();
-        cachedMsrMinScale = ModernOptSettings.msrMinScale();
+        cachedMsrDynamicRes = ModernOptSettings.msr2DynamicRes();
+        cachedMsrTemporalMinFps = ModernOptSettings.msr2TemporalMinFps();
+        cachedMsrScaleStep = ModernOptSettings.msr2ScaleStep();
+        cachedMsrMinScale = ModernOptSettings.msr2MinScale();
 // Compute shader detection (GL 4.3+)
         if (!computeAvailable) {
             try {
@@ -604,7 +604,7 @@ public final class RenderPipeline {
     }
 
     /**
-     * Applies the FSR 2 sub-pixel jitter to the projection matrix that is about to be used by the
+     * Applies the MSR sub-pixel jitter to the projection matrix that is about to be used by the
      * world pass and records the pose needed for reprojection.
      *
      * <p>Called from the {@code LevelRenderer#renderLevel} call site, i.e. after vanilla applied
@@ -612,11 +612,11 @@ public final class RenderPipeline {
      * pass; the hand pass gets the untouched matrix.</p>
      */
     public static Matrix4f jitterProjection(Matrix4f projection, Camera camera) {
-        if (!fsr2ThisFrame && !msrThisFrame || scaled == null) {
+        if (!msrThisFrame && !msr2ThisFrame || scaled == null) {
             return projection;
         }
 
-        // Capture camera pose for both FSR 2 (reprojection + jitter) and MSR 2.0 (reprojection only).
+        // Capture camera pose for both MSR (reprojection + jitter) and MSR2 (reprojection only).
         // MSR does not apply sub-pixel jitter, but it still needs the view/projection/camera state
         // so its temporal pass can reproject history pixels to the previous frame.
         tempQuat.set(camera.rotation()).conjugate();
@@ -626,7 +626,7 @@ public final class RenderPipeline {
         currentCameraY = camera.getPosition().y;
         currentCameraZ = camera.getPosition().z;
 
-        if (!fsr2ThisFrame) {
+        if (!msrThisFrame) {
             // MSR path: pose captured, no jitter applied
             poseCaptured = true;
             return projection;
@@ -636,7 +636,7 @@ public final class RenderPipeline {
             resetHistory();
             if (!loggedProjectionGuard) {
                 loggedProjectionGuard = true;
-                ModernOPT.LOG.debug("[ModernOPT] skipping FSR 2 on a degenerate projection matrix (first frame)");
+                ModernOPT.LOG.debug("[ModernOPT] skipping MSR on a degenerate projection matrix (first frame)");
             }
             return projection;
         }
@@ -668,7 +668,7 @@ public final class RenderPipeline {
     /**
      * Called right before the vanilla hand pass. Both temporal upscalers have to finish here:
      * the hand pass clears the depth buffer, which the temporal pass still needs, and the hand
-     * itself should stay at native resolution. Previously only FSR 2 stopped here; MSR ran
+     * itself should stay at native resolution. Previously only MSR stopped here; MSR ran
      * after the hand and therefore read an already-cleared (all-sky) depth buffer.
      */
     public static void finishBeforeHand() {
@@ -783,6 +783,39 @@ public final class RenderPipeline {
         return scaled;
     }
 
+    // ------------------------------------------------------------------
+    // Shadow map hold (update every N frames)
+    // ------------------------------------------------------------------
+
+    private static int shadowHoldFrames;
+    private static boolean shadowHoldHaveMap;
+    private static int shadowHoldFramebuffer = -1;
+
+    /** Whether the shadow map has to be drawn on this frame. */
+    public static boolean shadowHoldShouldDraw(int interval) {
+        return !shadowHoldHaveMap || interval <= 1 || shadowHoldFrames >= interval - 1;
+    }
+
+    /** Marks a frame that skipped the shadow pass. */
+    public static void shadowHoldNoteSkipped() {
+        shadowHoldFrames++;
+    }
+
+    /** Marks a frame that drew the shadow map. */
+    public static void shadowHoldNoteDrawn() {
+        shadowHoldFrames = 0;
+        shadowHoldHaveMap = true;
+    }
+
+    /** GL id of the shadow framebuffer the pack samples, or -1 when unknown. */
+    public static int shadowHoldFramebuffer() {
+        return shadowHoldFramebuffer;
+    }
+
+    public static void shadowHoldSetFramebuffer(int framebuffer) {
+        shadowHoldFramebuffer = framebuffer;
+    }
+
     /**
      * Presents a whole-window-scaled frame and disarms the mode.
      *
@@ -869,31 +902,31 @@ public final class RenderPipeline {
             ModernOPT.LOG.info("[BENCH][GL] end {}", debugGlState());
         }
 
-        boolean temporal = fsr2ThisFrame && poseCaptured && !fsr2Unsupported;
+        boolean temporal = msrThisFrame && poseCaptured && !msrUnsupported;
         boolean jittered = poseCaptured;
-        fsr2ActiveThisFrame = temporal;
+        msrActiveThisFrame = temporal;
 
         if (wholeWindowActive) {
             // Nothing to reconstruct into the window target: the scaled target already holds the
             // whole frame and Minecraft#run's final blit upscales it. Keep the window size
             // override alive so the HUD lays out in the same GUI units as the world.
             worldActive = false;
-            fsr2ThisFrame = false;
-            poseCaptured = false;
             msrThisFrame = false;
+            poseCaptured = false;
+            msr2ThisFrame = false;
             GpuProfiler.end(GpuProfiler.UPSCALE);
             return;
         }
 
         worldActive = false;
         windowScaled = false;
-        fsr2ThisFrame = false;
+        msrThisFrame = false;
         poseCaptured = false;
 
-        // Handle MSR 2.0
-        if (msrThisFrame) {
-            msrActiveThisFrame = true;
-            msrThisFrame = false;
+        // Handle MSR2
+        if (msr2ThisFrame) {
+            msr2ActiveThisFrame = true;
+            msr2ThisFrame = false;
             // MSR doesn't use jitter, but its temporal pass still needs the camera pose
             // captured above (currentView / currentProjection / currentCamera*).
             jittered = false; // MSR does not modify the projection matrix
@@ -912,42 +945,42 @@ public final class RenderPipeline {
             scaled.resolveMsaa();
             if (temporal) {
                 try {
-                    reconstructFsr2(main);
-                    fsr2FailureCount = 0;
+                    reconstructMsr(main);
+                    msrFailureCount = 0;
                 } catch (Throwable throwable) {
                     resetHistory();
-                    fsr2ActiveThisFrame = false;
-                    fsr2FailureCount++;
-                    if (fsr2FailureCount >= 3) {
-                        fsr2Unsupported = true;
+                    msrActiveThisFrame = false;
+                    msrFailureCount++;
+                    if (msrFailureCount >= 3) {
+                        msrUnsupported = true;
                     }
-                    if (!loggedFsr2Fallback) {
-                        loggedFsr2Fallback = true;
-                        ModernOPT.LOG.error("[ModernOPT] FSR 2 pass failed, falling back to FSR 1"
-                                + (fsr2FailureCount >= 3 ? " for this session" : " for this frame"), throwable);
+                    if (!loggedMsrFallback) {
+                        loggedMsrFallback = true;
+                        ModernOPT.LOG.error("[ModernOPT] MSR pass failed, falling back to FSR 1"
+                                + (msrFailureCount >= 3 ? " for this session" : " for this frame"), throwable);
                     } else {
-                        ModernOPT.LOG.error("[ModernOPT] FSR 2 pass failed again (loggedFsr2Fallback already true): " + throwable.getMessage());
+                        ModernOPT.LOG.error("[ModernOPT] MSR pass failed again (loggedMsrFallback already true): " + throwable.getMessage());
                     }
                     reconstructSpatial(main);
                 }
-            } else if (msrActiveThisFrame) {
+            } else if (msr2ActiveThisFrame) {
                 try {
-                    reconstructMsr(main);
-                    fsr2FailureCount = 0; // reuse: reset failure counter on success
+                    reconstructMsr2(main);
+                    msrFailureCount = 0; // reuse: reset failure counter on success
                 } catch (Throwable throwable) {
                     msrShaderFailure = true;
                     // Never leave the MSR history FBO / compute program / image units bound:
                     // the FSR 1 fallback below must draw into the real main target.
                     releaseMsrState(main);
-                    resetMsrHistory();
-                    ModernOPT.LOG.error("[ModernOPT] MSR 2.0 pass failed, falling back to FSR 1", throwable);
+                    resetMsr2History();
+                    ModernOPT.LOG.error("[ModernOPT] MSR2 pass failed, falling back to FSR 1", throwable);
                     try {
                         reconstructSpatial(main);
                     } catch (Throwable fallbackFailure) {
                         ModernOPT.LOG.error("[ModernOPT] FSR 1 fallback after MSR failure also failed", fallbackFailure);
                     }
                 }
-                msrActiveThisFrame = false;
+                msr2ActiveThisFrame = false;
             } else {
                 reconstructSpatial(main);
             }
@@ -980,11 +1013,11 @@ public final class RenderPipeline {
     }
 
     /**
-     * FSR 2 chain: EASU to output resolution, temporal accumulation against the reprojected
+     * MSR chain: EASU to output resolution, temporal accumulation against the reprojected
      * history, then RCAS (and optionally FXAA). Runs in the output resolution for the whole
      * temporal stage, so the history is not limited by the internal resolution.
      */
-    private static void reconstructFsr2(RenderTarget main) {
+    private static void reconstructMsr(RenderTarget main) {
         ShaderLibrary library = shaders;
         if (library == null || library.temporal == null) {
             throw new IllegalStateException("temporal shader is not available");
@@ -1013,13 +1046,13 @@ public final class RenderPipeline {
                 if (irisDepthMisses >= 60 && !loggedIrisDepth) {
                     loggedIrisDepth = true;
                     ModernOPT.LOG.warn("[ModernOPT] Iris depth texture is unavailable after 60 frames; "
-                            + "FSR 2 reprojection is rotation-only (disocclusion test disabled)");
+                            + "MSR reprojection is rotation-only (disocclusion test disabled)");
                 }
             }
         } else {
             irisDepthMisses = 0;
         }
-        fsr2DepthValidThisFrame = depthValid;
+        msrDepthValidThisFrame = depthValid;
 
         currentProjection.invert(inverseProjection);
         if (!inverseProjection.isFinite()) {
@@ -1095,12 +1128,12 @@ public final class RenderPipeline {
         if (outWidth != lastWidth || outHeight != lastHeight) {
             lastWidth = outWidth;
             lastHeight = outHeight;
-            ModernOPT.LOG.info("[ModernOPT] presenting {}x{} world image at {}x{} (FSR 2)",
+            ModernOPT.LOG.info("[ModernOPT] presenting {}x{} world image at {}x{} (MSR)",
                     sourceWidth, sourceHeight, outWidth, outHeight);
         }
     }
 
-    /** Spatial reconstruction used by every non-temporal mode, and by the FSR 2 fallback. */
+    /** Spatial reconstruction used by every non-temporal mode, and by the MSR fallback. */
     private static void reconstructSpatial(RenderTarget main) {
         int outWidth = main.width;
         int outHeight = main.height;
@@ -1114,7 +1147,7 @@ public final class RenderPipeline {
         ShaderLibrary library = shaders;
         UpscalerType upscaler = cachedUpscaler;
         boolean fsr1Path = !cachedSsaa
-                && (upscaler == UpscalerType.FSR1 || upscaler == UpscalerType.FSR2);
+                && (upscaler == UpscalerType.FSR1 || upscaler == UpscalerType.MSR);
 
         // At small upscale factors (~1.25x), EASU is slower than bilinear - use simpler filter
         float upscale = (float) outWidth / (float) sourceWidth;
@@ -1183,7 +1216,7 @@ public final class RenderPipeline {
         return switch (type) {
             case NEAREST -> library.nearest;
             case SOFT -> library.soft;
-            case BILINEAR, FSR1, FSR2, MSR -> library.bilinear;
+            case BILINEAR, FSR1, MSR, MSR2 -> library.bilinear;
         };
     }
 
@@ -1220,7 +1253,7 @@ public final class RenderPipeline {
         historyBack = historyB;
         historyValid = false;
         jitterIndex = 0;
-        ModernOPT.LOG.info("[ModernOPT] allocated FSR 2 history targets at {}x{}", width, height);
+        ModernOPT.LOG.info("[ModernOPT] allocated MSR history targets at {}x{}", width, height);
     }
 
     private static void destroyHistoryTargets() {
@@ -1410,7 +1443,7 @@ public final class RenderPipeline {
         }
         msrComputeFailed = false;
         try {
-            msrComputeProgram = MsrTemporalCompute.load(resources);
+            msrComputeProgram = Msr2TemporalCompute.load(resources);
             ModernOPT.LOG.info("[ModernOPT] MSR: GL 4.3 compute temporal shader compiled");
         } catch (Throwable throwable) {
             msrComputeProgram = null;
@@ -1627,7 +1660,7 @@ public final class RenderPipeline {
     /** Drops every GL object; called from the client stopping event so nothing leaks on world exit. */
     public static void shutdown() {
         worldActive = false;
-        fsr2ThisFrame = false;
+        msrThisFrame = false;
         poseCaptured = false;
         historyValid = false;
         if (scaled != null) {
@@ -1656,79 +1689,79 @@ public final class RenderPipeline {
         lastLevel = null;
         lastUpscaler = null;
         lastUpscalerPercent = -1;
-        fsr2Unsupported = false;
-        fsr2FailureCount = 0;
-        fsr2DepthValidThisFrame = true;
+        msrUnsupported = false;
+        msrFailureCount = 0;
+        msrDepthValidThisFrame = true;
         irisDepthMisses = 0;
         irisThisFrame = false;
         lastIris = false;
         lastUpscalerSsaa = false;
         jitterIndex = 0;
 
-        // MSR 2.0 cleanup
-        msrThisFrame = false;
-        msrActiveThisFrame = false;
+        // MSR2 cleanup
+        msr2ThisFrame = false;
+        msr2ActiveThisFrame = false;
         msrShaderFailure = false;
         msrHistoryValid = false;
         msrFrameIndex = 0;
         destroyMsrCompute();
         msrComputeFailed = false;
-        if (msrHistory != null) {
-            msrHistory.destroy();
-            msrHistory = null;
+        if (msr2History != null) {
+            msr2History.destroy();
+            msr2History = null;
         }
     }
 
-    // ==================== MSR 2.0 METHODS ====================
+    // ==================== MSR2 METHODS ====================
 
-    private static void resetMsrHistory() {
+    private static void resetMsr2History() {
         msrHistoryValid = false;
         msrFrameIndex = 0;
         if (computeAvailable) {
             // A destroyed/invalidated history texture must not stay attached to image units.
-            MsrTemporalCompute.unbindImage(0, GL30C.GL_R11F_G11F_B10F);
-            MsrTemporalCompute.unbindImage(1, GL30C.GL_R16UI);
+            Msr2TemporalCompute.unbindImage(0, GL30C.GL_R11F_G11F_B10F);
+            Msr2TemporalCompute.unbindImage(1, GL30C.GL_R16UI);
         }
-        if (msrHistory != null) {
-            msrHistory.destroy();
-            msrHistory = null;
-        }
-    }
-
-    private static void destroyMsrHistoryTargets() {
-        if (msrHistory != null) {
-            msrHistory.destroy();
-            msrHistory = null;
+        if (msr2History != null) {
+            msr2History.destroy();
+            msr2History = null;
         }
     }
 
-    private static void ensureMsrHistoryTargets(int width, int height) {
-        if (msrHistory != null && msrHistory.getWidth() == width && msrHistory.getHeight() == height) {
+    private static void destroyMSR2HistoryTargets() {
+        if (msr2History != null) {
+            msr2History.destroy();
+            msr2History = null;
+        }
+    }
+
+    private static void ensureMSR2HistoryTargets(int width, int height) {
+        if (msr2History != null && msr2History.getWidth() == width && msr2History.getHeight() == height) {
             return;
         }
-        if (msrHistory != null) {
-            msrHistory.destroy();
+        if (msr2History != null) {
+            msr2History.destroy();
         }
-        msrHistory = MSRHistoryTarget.create(width, height);
+        msr2History = MSR2HistoryTarget.create(width, height);
         msrHistoryValid = false;
         msrFrameIndex = 0;
-        ModernOPT.LOG.info("[ModernOPT] allocated MSR 2.0 history targets at {}x{}", width, height);
+        ModernOPT.LOG.info("[ModernOPT] allocated MSR2 history targets at {}x{}", width, height);
     }
 
     
 
-    private static void reconstructMsr(RenderTarget main) {
+    private static void reconstructMsr2(RenderTarget main) {
         ShaderLibrary library = shaders;
         if (library == null || !library.hasMsr()) {
             throw new IllegalStateException("MSR shaders not available");
         }
-        if (msrHistory == null) {
+        if (msr2History == null) {
             throw new IllegalStateException("MSR history targets not allocated");
         }
-        if (msrHistory.getWidth() != scaled.width || msrHistory.getHeight() != scaled.height) {
+        if (msr2History.getWidth() != scaled.width || msr2History.getHeight() != scaled.height) {
             // A resize slipped through beginWorldFrame (Alt+Enter, F11, window drag): recreate
             // before anything samples a stale ping-pong pair.
-            ensureMsrHistoryTargets(scaled.width, scaled.height);
+            ensureMSR2HistoryTargets(scaled.width, scaled.height);
         }
 
         int outWidth = main.width;
@@ -1738,7 +1771,7 @@ public final class RenderPipeline {
         int sourceTexture = scaled.getColorTextureId();
         int depthTexture = scaled.getDepthTextureId();
 
-        // MSR never runs reconstructFsr2(), which is where the shared inverse projection is
+        // MSR never runs reconstructMsr(), which is where the shared inverse projection is
         // normally built. Compute it here, otherwise reprojection silently uses a stale
         // matrix (identity on the first frame) and the history is sampled at wrong UVs.
         // On the very first world frame the projection may not have been captured yet; that
@@ -1775,10 +1808,10 @@ public final class RenderPipeline {
                         sourceTexture, depthTexture);
             }
             // The just-written ping-pong side becomes the read side for the spatial pass.
-            msrHistory.swap();
+            msr2History.swap();
         }
 
-        int temporalColor = temporalWorthIt ? msrHistory.getReadColorTexture() : sourceTexture;
+        int temporalColor = temporalWorthIt ? msr2History.getReadColorTexture() : sourceTexture;
 
         // ===== SPATIAL PASS (EASU + CAS) - always a fragment shader =====
         ShaderLibrary.beginPassState();
@@ -1789,7 +1822,7 @@ public final class RenderPipeline {
 
             // Native resolution viewport and the real game framebuffer. main.bindWrite() goes
             // through GlStateManager, which now agrees with the FBO actually bound because
-            // MSRHistoryTarget also uses GlStateManager.
+            // MSR2HistoryTarget also uses GlStateManager.
             main.bindWrite(true);
 
             library.msrSpatial.setSampler("TemporalColor", temporalColor);
@@ -1830,15 +1863,15 @@ public final class RenderPipeline {
      */
     private static void runComputeTemporal(int sourceWidth, int sourceHeight,
             int outWidth, int outHeight, int sourceTexture, int depthTexture) {
-        MsrTemporalCompute compute = msrComputeProgram;
+        Msr2TemporalCompute compute = msrComputeProgram;
         if (compute == null) {
             throw new IllegalStateException("MSR compute program is not loaded");
         }
 
-        int historyColorRead = msrHistory.getReadColorTexture();
-        int historyDepthRead = msrHistory.getReadDepthTexture();
-        int historyColorWrite = msrHistory.getWriteColorTexture();
-        int historyDepthWrite = msrHistory.getWriteDepthTexture();
+        int historyColorRead = msr2History.getReadColorTexture();
+        int historyDepthRead = msr2History.getReadDepthTexture();
+        int historyColorWrite = msr2History.getWriteColorTexture();
+        int historyDepthWrite = msr2History.getWriteDepthTexture();
 
         int previousActive = GlStateManager._getActiveTexture();
         try {
@@ -1880,7 +1913,7 @@ public final class RenderPipeline {
             compute.setFloat("HistoryValid", msrHistoryValid ? 1.0F : 0.0F);
             compute.setFloat("DepthValid", depthTexture != 0 ? 1.0F : 0.0F);
 
-            msrHistory.bindWriteForCompute();
+            msr2History.bindWriteForCompute();
             compute.bindImage(0, historyColorWrite, GL30C.GL_R11F_G11F_B10F);
             compute.bindImage(1, historyDepthWrite, GL30C.GL_R16UI);
 
@@ -1894,8 +1927,8 @@ public final class RenderPipeline {
                     | GL42.GL_TEXTURE_FETCH_BARRIER_BIT
                     | GL43.GL_SHADER_STORAGE_BARRIER_BIT);
 
-            MsrTemporalCompute.unbindImage(0, GL30C.GL_R11F_G11F_B10F);
-            MsrTemporalCompute.unbindImage(1, GL30C.GL_R16UI);
+            Msr2TemporalCompute.unbindImage(0, GL30C.GL_R11F_G11F_B10F);
+            Msr2TemporalCompute.unbindImage(1, GL30C.GL_R16UI);
             compute.unbind();
         } finally {
             GlStateManager._activeTexture(previousActive);
@@ -1905,40 +1938,40 @@ public final class RenderPipeline {
     /** Fragment-shader fallback for GPUs without a usable GL 4.3 compute program. */
     private static void runFragmentTemporal(ShaderLibrary library, int sourceWidth, int sourceHeight,
             int outWidth, int outHeight, int sourceTexture, int depthTexture) {
-        int historyColorRead = msrHistory.getReadColorTexture();
-        int historyDepthRead = msrHistory.getReadDepthTexture();
+        int historyColorRead = msr2History.getReadColorTexture();
+        int historyDepthRead = msr2History.getReadDepthTexture();
 
         ShaderLibrary.beginPassState();
         try {
             // Both MRT attachments (colour + R16UI depth) are written by this pass.
             GlStateManager._colorMask(true, true, true, true);
-            msrHistory.bindWrite();
+            msr2History.bindWrite();
 
-            library.msrTemporal.setSampler("CurrentColor", sourceTexture);
-            library.msrTemporal.setSampler("CurrentDepth", depthTexture);
-            library.msrTemporal.setSampler("HistoryColor", historyColorRead);
-            library.msrTemporal.setSampler("HistoryDepth", historyDepthRead);
+            library.msr2Temporal.setSampler("CurrentColor", sourceTexture);
+            library.msr2Temporal.setSampler("CurrentDepth", depthTexture);
+            library.msr2Temporal.setSampler("HistoryColor", historyColorRead);
+            library.msr2Temporal.setSampler("HistoryDepth", historyDepthRead);
 
-            setUniform2f(library.msrTemporal, "InputSize", (float) sourceWidth, (float) sourceHeight);
-            setUniform2f(library.msrTemporal, "Jitter", 0.0F, 0.0F);
-            setUniform1f(library.msrTemporal, "VarianceScale", (float) cachedMsrVarianceScale);
-            setUniform1f(library.msrTemporal, "DepthThreshold", (float) cachedMsrDepthThreshold);
-            setUniform1f(library.msrTemporal, "HistoryWeight", (float) cachedMsrHistoryWeight);
+            setUniform2f(library.msr2Temporal, "InputSize", (float) sourceWidth, (float) sourceHeight);
+            setUniform2f(library.msr2Temporal, "Jitter", 0.0F, 0.0F);
+            setUniform1f(library.msr2Temporal, "VarianceScale", (float) cachedMsrVarianceScale);
+            setUniform1f(library.msr2Temporal, "DepthThreshold", (float) cachedMsrDepthThreshold);
+            setUniform1f(library.msr2Temporal, "HistoryWeight", (float) cachedMsrHistoryWeight);
 
             tempVec3.set((float) (currentCameraX - previousCameraX),
                     (float) (currentCameraY - previousCameraY),
                     (float) (currentCameraZ - previousCameraZ));
-            setUniform3f(library.msrTemporal, "CameraDelta", tempVec3.x, tempVec3.y, tempVec3.z);
-            setUniformMatrix4f(library.msrTemporal, "ViewRotation", currentView);
-            setUniformMatrix4f(library.msrTemporal, "PrevViewRotation", previousView);
-            setUniformMatrix4f(library.msrTemporal, "InvProjection", inverseProjection);
-            setUniformMatrix4f(library.msrTemporal, "PrevProjection", previousProjection);
-            setUniform1f(library.msrTemporal, "HistoryValid", msrHistoryValid ? 1.0F : 0.0F);
-            setUniform1f(library.msrTemporal, "DepthValid", depthTexture != 0 ? 1.0F : 0.0F);
+            setUniform3f(library.msr2Temporal, "CameraDelta", tempVec3.x, tempVec3.y, tempVec3.z);
+            setUniformMatrix4f(library.msr2Temporal, "ViewRotation", currentView);
+            setUniformMatrix4f(library.msr2Temporal, "PrevViewRotation", previousView);
+            setUniformMatrix4f(library.msr2Temporal, "InvProjection", inverseProjection);
+            setUniformMatrix4f(library.msr2Temporal, "PrevProjection", previousProjection);
+            setUniform1f(library.msr2Temporal, "HistoryValid", msrHistoryValid ? 1.0F : 0.0F);
+            setUniform1f(library.msr2Temporal, "DepthValid", depthTexture != 0 ? 1.0F : 0.0F);
 
-            library.msrTemporal.apply();
+            library.msr2Temporal.apply();
             drawFullscreenQuad();
-            library.msrTemporal.clear();
+            library.msr2Temporal.clear();
         } finally {
             ShaderLibrary.endPassState();
         }
@@ -1953,11 +1986,11 @@ public final class RenderPipeline {
             msrComputeProgram.unbind();
         }
         if (computeAvailable) {
-            MsrTemporalCompute.unbindImage(0, GL30C.GL_R11F_G11F_B10F);
-            MsrTemporalCompute.unbindImage(1, GL30C.GL_R16UI);
+            Msr2TemporalCompute.unbindImage(0, GL30C.GL_R11F_G11F_B10F);
+            Msr2TemporalCompute.unbindImage(1, GL30C.GL_R16UI);
         }
-        if (msrHistory != null) {
-            msrHistory.unbind();
+        if (msr2History != null) {
+            msr2History.unbind();
         }
         // GlStateManager now tracks the default FBO; binding main afterwards is guaranteed to
         // issue a real glBindFramebuffer and restore the native viewport.
