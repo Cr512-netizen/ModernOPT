@@ -18,7 +18,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Raw OpenGL 4.3 compute program for the MSR 2.0 temporal pass.
+ * Raw OpenGL 4.3 compute program for the MSR2 temporal pass.
  *
  * <p>Minecraft's {@link net.minecraft.client.renderer.ShaderInstance} can only wrap graphics
  * programs (vertex + fragment), so {@code glDispatchCompute} on the fragment temporal shader is
@@ -27,16 +27,16 @@ import java.util.Map;
  * needs. It is only created when the driver reports GL 4.3; otherwise {@link RenderPipeline}
  * keeps using the fragment temporal fallback.</p>
  */
-public final class MsrTemporalCompute {
+public final class Msr2TemporalCompute {
 
     private final int program;
     private final Map<String, Integer> uniformLocations = new HashMap<>();
 
-    private MsrTemporalCompute(int program) {
+    private Msr2TemporalCompute(int program) {
         this.program = program;
     }
 
-    public static MsrTemporalCompute load(ResourceProvider resources) throws IOException {
+    public static Msr2TemporalCompute load(ResourceProvider resources) throws IOException {
         ResourceLocation location = ResourceLocation.fromNamespaceAndPath(
                 ModernOPT.MOD_ID, "shaders/core/msr_temporal.comp");
         Resource resource = resources.getResource(location).orElseThrow(
@@ -48,7 +48,7 @@ public final class MsrTemporalCompute {
         return compile(source);
     }
 
-    private static MsrTemporalCompute compile(String source) throws IOException {
+    private static Msr2TemporalCompute compile(String source) throws IOException {
         int shader = GL20C.glCreateShader(GL43C.GL_COMPUTE_SHADER);
         GL20C.glShaderSource(shader, source);
         GL20C.glCompileShader(shader);
@@ -67,7 +67,7 @@ public final class MsrTemporalCompute {
             GL20C.glDeleteProgram(program);
             throw new IOException("MSR temporal compute program failed to link:\n" + log);
         }
-        return new MsrTemporalCompute(program);
+        return new Msr2TemporalCompute(program);
     }
 
     public void bind() {

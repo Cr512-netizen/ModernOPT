@@ -32,7 +32,7 @@ public abstract class GameRendererMixin {
     }
 
     /**
-     * Adds the FSR 2 sub-pixel jitter to the projection matrix handed to the world renderer.
+     * Adds the MSR sub-pixel jitter to the projection matrix handed to the world renderer.
      * Only the argument is replaced: the local matrix used later for the hand pass stays
      * untouched, and the hand pass resets the projection in any case.
      */
@@ -49,7 +49,7 @@ public abstract class GameRendererMixin {
     }
 
     /**
-     * FSR 2 must finish before vanilla clears the depth buffer for the hand pass. At this point
+     * MSR must finish before vanilla clears the depth buffer for the hand pass. At this point
      * the world (including the NeoForge AFTER_LEVEL stage) is complete and the depth buffer still
      * belongs to the scaled target. Every other mode keeps finishing before the HUD.
      */

@@ -10,7 +10,7 @@ import org.lwjgl.opengl.GL33C;
 import java.nio.IntBuffer;
 
 /**
- * MSR 2.0 History Target using memory-efficient formats:
+ * MSR2 History Target using memory-efficient formats:
  * - Color: R11G11B10F (32 bits/pixel, no alpha)
  * - Depth: R16_UINT (packed linear depth, 16 bits/pixel)
  *
@@ -28,7 +28,7 @@ import java.nio.IntBuffer;
  * says "the main target is bound"), the spatial pass then writes into the history texture and
  * the real screen is never updated - the classic MSR black screen.</p>
  */
-public final class MSRHistoryTarget {
+public final class MSR2HistoryTarget {
 
     private int width;
     private int height;
@@ -43,10 +43,10 @@ public final class MSRHistoryTarget {
 
     private boolean useA = true; // true = read from A, write to B
 
-    private MSRHistoryTarget() {}
+    private MSR2HistoryTarget() {}
 
-    public static MSRHistoryTarget create(int width, int height) {
-        MSRHistoryTarget target = new MSRHistoryTarget();
+    public static MSR2HistoryTarget create(int width, int height) {
+        MSR2HistoryTarget target = new MSR2HistoryTarget();
         target.allocate(width, height);
         return target;
     }

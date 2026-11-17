@@ -25,20 +25,21 @@ public final class ModernOptConfig {
 
     // Shader pack shadow map
     public static final ModConfigSpec.IntValue SHADOW_MAP_RESOLUTION;
+    public static final ModConfigSpec.IntValue SHADOW_UPDATE_INTERVAL;
     public static final ModConfigSpec.IntValue HUD_SCALE_PERCENT;
     public static final ModConfigSpec.BooleanValue SCALE_WHOLE_WINDOW;
 
-    // MSR 2.0 config
-    public static final ModConfigSpec.BooleanValue MSR_ENABLED;
-    public static final ModConfigSpec.DoubleValue MSR_VARIANCE_SCALE;
-    public static final ModConfigSpec.BooleanValue MSR_EDGE_AWARE;
-    public static final ModConfigSpec.IntValue MSR_SHARPNESS;
-    public static final ModConfigSpec.DoubleValue MSR_DEPTH_THRESHOLD;
-    public static final ModConfigSpec.DoubleValue MSR_HISTORY_WEIGHT;
-    public static final ModConfigSpec.BooleanValue MSR_DYNAMIC_RES;
-    public static final ModConfigSpec.IntValue MSR_TEMPORAL_MIN_FPS;
-    public static final ModConfigSpec.IntValue MSR_SCALE_STEP;
-    public static final ModConfigSpec.IntValue MSR_MIN_SCALE;
+    // MSR2 config
+    public static final ModConfigSpec.BooleanValue MSR2_ENABLED;
+    public static final ModConfigSpec.DoubleValue MSR2_VARIANCE_SCALE;
+    public static final ModConfigSpec.BooleanValue MSR2_EDGE_AWARE;
+    public static final ModConfigSpec.IntValue MSR2_SHARPNESS;
+    public static final ModConfigSpec.DoubleValue MSR2_DEPTH_THRESHOLD;
+    public static final ModConfigSpec.DoubleValue MSR2_HISTORY_WEIGHT;
+    public static final ModConfigSpec.BooleanValue MSR2_DYNAMIC_RES;
+    public static final ModConfigSpec.IntValue MSR2_TEMPORAL_MIN_FPS;
+    public static final ModConfigSpec.IntValue MSR2_SCALE_STEP;
+    public static final ModConfigSpec.IntValue MSR2_MIN_SCALE;
 
     static {
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
@@ -57,9 +58,9 @@ public final class ModernOptConfig {
                 .defineEnum("upscaler", UpscalerType.FSR1);
         SOFTNESS = b.comment("SoftScale blur strength, 0 = neutral, 100 = very soft.")
                 .defineInRange("softness", 35, 0, 100);
-        FSR_EASU_SHARPNESS = b.comment("FSR 1 / FSR 2 EASU sharpening, 0 = off, 100 = strong.")
+        FSR_EASU_SHARPNESS = b.comment("FSR 1 / MSR EASU sharpening, 0 = off, 100 = strong.")
                 .defineInRange("fsrEasuSharpness", 0, 0, 100);
-        FSR_RCAS_SHARPNESS = b.comment("FSR 1 / FSR 2 RCAS sharpening, 0 = off, 100 = strong.")
+        FSR_RCAS_SHARPNESS = b.comment("FSR 1 / MSR RCAS sharpening, 0 = off, 100 = strong.")
                 .defineInRange("fsrRcasSharpness", 25, 0, 100);
         HUD_SCALE_PERCENT = b.comment(
                         "Resolution the HUD and other GUI elements are rendered at, as a percentage of the window.",
@@ -84,6 +85,13 @@ public final class ModernOptConfig {
                         "shadow edges. Values between the steps are snapped to the nearest one.",
                         "Applied when a world loads or when this value changes (the shader pack is reloaded).")
                 .defineInRange("shadowMapResolution", 2048, 512, 4096);
+        SHADOW_UPDATE_INTERVAL = b.comment(
+                        "Rebuild the shadow map every N frames instead of every frame.",
+                        "1 keeps the pack's normal behaviour. 2-4 skip the whole world-from-the-sun pass on",
+                        "the frames in between and keep sampling the previous map; the matrices are moved",
+                        "with the camera so shadows stay attached to the world. Saves one to two milliseconds",
+                        "per skipped frame on the frames that skip.")
+                .defineInRange("updateInterval", 1, 1, 4);
         b.pop();
 
         b.comment("Anti-aliasing.").push("antialiasing");
@@ -102,29 +110,29 @@ public final class ModernOptConfig {
                 .define("fp16ColorTarget", false);
         b.pop();
 
-        b.comment("MSR 2.0 (Minecraft Super Resolution) - experimental upscaler.").push("msr");
-        MSR_ENABLED = b.comment("Enable MSR 2.0 upscaler (experimental). Overrides other upscalers when enabled.")
+        b.comment("MSR2 - experimental temporal upscaler.").push("msr2");
+        MSR2_ENABLED = b.comment("Enable MSR2 upscaler (experimental). Overrides other upscalers when enabled.")
                 .define("enabled", false);
-        MSR_VARIANCE_SCALE = b.comment("Variance clipping threshold multiplier for temporal pass. Higher = more aggressive history rejection.")
+        MSR2_VARIANCE_SCALE = b.comment("Variance clipping threshold multiplier for temporal pass. Higher = more aggressive history rejection.")
                 .defineInRange("varianceScale", 2.0, 0.5, 4.0);
-        MSR_EDGE_AWARE = b.comment("Enable edge-aware interpolation in spatial pass (preserves geometry edges).")
+        MSR2_EDGE_AWARE = b.comment("Enable edge-aware interpolation in spatial pass (preserves geometry edges).")
                 .define("edgeAware", true);
-        MSR_SHARPNESS = b.comment("MSR spatial sharpening strength (CAS), 0 = off, 100 = strong.")
+        MSR2_SHARPNESS = b.comment("MSR spatial sharpening strength (CAS), 0 = off, 100 = strong.")
                 .defineInRange("sharpness", 30, 0, 100);
-        MSR_DEPTH_THRESHOLD = b.comment("Depth difference threshold for temporal disocclusion detection.")
+        MSR2_DEPTH_THRESHOLD = b.comment("Depth difference threshold for temporal disocclusion detection.")
                 .defineInRange("depthThreshold", 0.02, 0.005, 0.1);
-        MSR_HISTORY_WEIGHT = b.comment("Base history blend weight for temporal accumulation (0.0-1.0).")
+        MSR2_HISTORY_WEIGHT = b.comment("Base history blend weight for temporal accumulation (0.0-1.0).")
                 .defineInRange("historyWeight", 0.85, 0.5, 0.95);
         b.pop();
 
         b.comment("Dynamic Resolution Scaling (DRS) - auto-adjusts render scale based on FPS.").push("dynamicResolution");
-        MSR_DYNAMIC_RES = b.comment("Enable dynamic resolution scaling for MSR. Automatically lowers render scale when FPS drops.")
+        MSR2_DYNAMIC_RES = b.comment("Enable dynamic resolution scaling for MSR. Automatically lowers render scale when FPS drops.")
                 .define("enabled", true);
-        MSR_TEMPORAL_MIN_FPS = b.comment("Minimum FPS threshold. Below this, temporal pass is disabled (falls back to spatial only).")
+        MSR2_TEMPORAL_MIN_FPS = b.comment("Minimum FPS threshold. Below this, temporal pass is disabled (falls back to spatial only).")
                 .defineInRange("temporalMinFps", 40, 20, 60);
-        MSR_SCALE_STEP = b.comment("Step size for auto-scaling (percentage points per adjustment).")
+        MSR2_SCALE_STEP = b.comment("Step size for auto-scaling (percentage points per adjustment).")
                 .defineInRange("scaleStep", 5, 1, 20);
-        MSR_MIN_SCALE = b.comment("Minimum render scale percentage (floor for dynamic scaling).")
+        MSR2_MIN_SCALE = b.comment("Minimum render scale percentage (floor for dynamic scaling).")
                 .defineInRange("minScale", 50, 25, 75);
         b.pop();
 

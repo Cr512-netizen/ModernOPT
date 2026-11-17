@@ -34,18 +34,18 @@ public final class ShaderLibrary {
     public final ShaderInstance easu;
     public final ShaderInstance rcas;
     public final ShaderInstance blit;
-    /** {@code null} means this driver/program failed to link; FSR 2 then falls back to FSR 1. */
+    /** {@code null} means this driver/program failed to link; MSR then falls back to FSR 1. */
     public final ShaderInstance temporal;
     
-    // MSR 2.0 shaders
-    public final ShaderInstance msrTemporal;
+    // MSR2 shaders
+    public final ShaderInstance msr2Temporal;
     public final ShaderInstance msrSpatial;
     public final ShaderInstance msrBlit;
 
     private ShaderLibrary(ShaderInstance bilinear, ShaderInstance nearest, ShaderInstance soft,
                           ShaderInstance box, ShaderInstance fxaa, ShaderInstance easu, ShaderInstance rcas,
                           ShaderInstance blit, ShaderInstance temporal,
-                          ShaderInstance msrTemporal, ShaderInstance msrSpatial, ShaderInstance msrBlit) {
+                          ShaderInstance msr2Temporal, ShaderInstance msrSpatial, ShaderInstance msrBlit) {
         this.bilinear = bilinear;
         this.nearest = nearest;
         this.soft = soft;
@@ -55,7 +55,7 @@ public final class ShaderLibrary {
         this.rcas = rcas;
         this.blit = blit;
         this.temporal = temporal;
-        this.msrTemporal = msrTemporal;
+        this.msr2Temporal = msr2Temporal;
         this.msrSpatial = msrSpatial;
         this.msrBlit = msrBlit;
     }
@@ -66,20 +66,20 @@ public final class ShaderLibrary {
             temporal = create(resources, "temporal");
         } catch (Throwable throwable) {
             // Keep every other upscaler working when only the temporal pass is unsupported.
-            ModernOPT.LOG.error("[ModernOPT] FSR 2 temporal shader failed to compile, FSR 2 will use the FSR 1 path",
+            ModernOPT.LOG.error("[ModernOPT] MSR temporal shader failed to compile, MSR will use the FSR 1 path",
                     throwable);
         }
         
-        // MSR 2.0 shaders
-        ShaderInstance msrTemporal = null;
+        // MSR2 shaders
+        ShaderInstance msr2Temporal = null;
         ShaderInstance msrSpatial = null;
         ShaderInstance msrBlit = null;
         try {
-            msrTemporal = create(resources, "msr_temporal");
+            msr2Temporal = create(resources, "msr_temporal");
             msrSpatial = create(resources, "msr_spatial");
             msrBlit = create(resources, "blit");
         } catch (Throwable throwable) {
-            ModernOPT.LOG.error("[ModernOPT] MSR 2.0 shaders failed to compile, MSR will be unavailable",
+            ModernOPT.LOG.error("[ModernOPT] MSR2 shaders failed to compile, MSR will be unavailable",
                     throwable);
         }
         
@@ -93,7 +93,7 @@ public final class ShaderLibrary {
                 create(resources, "rcas"),
                 create(resources, "blit"),
                 temporal,
-                msrTemporal,
+                msr2Temporal,
                 msrSpatial,
                 msrBlit);
     }
@@ -115,8 +115,8 @@ public final class ShaderLibrary {
         if (this.temporal != null) {
             this.temporal.close();
         }
-        if (this.msrTemporal != null) {
-            this.msrTemporal.close();
+        if (this.msr2Temporal != null) {
+            this.msr2Temporal.close();
         }
         if (this.msrSpatial != null) {
             this.msrSpatial.close();
@@ -131,9 +131,9 @@ public final class ShaderLibrary {
         return isProgram(this.temporal);
     }
 
-    /** True when MSR 2.0 shaders are available. */
+    /** True when MSR2 shaders are available. */
     public boolean hasMsr() {
-        return isProgram(this.msrTemporal) && isProgram(this.msrSpatial) && isProgram(this.msrBlit);
+        return isProgram(this.msr2Temporal) && isProgram(this.msrSpatial) && isProgram(this.msrBlit);
     }
 
     /**
@@ -200,7 +200,7 @@ public final class ShaderLibrary {
     }
 
     /**
-     * One-texel bilinear copy. Used by the MSR 2.0 spatial pass when the upscale factor is small
+     * One-texel bilinear copy. Used by the MSR2 spatial pass when the upscale factor is small
      * enough that the fused EASU+RCAS sharpening costs more than it is worth.
      */
     public static void drawBlit(ShaderInstance shader, int source, int sourceWidth, int sourceHeight,

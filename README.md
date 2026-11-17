@@ -12,9 +12,9 @@ resolution.
 | Option | Values | What it does |
 | --- | --- | --- |
 | Render scale | 25 - 100 % | Internal world resolution. 75 % means roughly 56 % of the pixels. |
-| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `FSR 2`, `MSR` | Filter used to present the internal image. `FSR 2` adds a temporal accumulation pass. `MSR` (Minecraft Super Resolution) is the newest upscaler, built on the same camera-reconstructed reprojection as FSR 2 but with a 2-pass design (temporal + fused spatial) and R11G11B10F history buffers for half the VRAM bandwidth. |
+| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `MSR`, `MSR2` | Filter used to present the internal image. `MSR` adds a temporal accumulation pass. `MSR2` is the newest upscaler, built on the same camera-reconstructed reprojection as MSR but with a 2-pass design (temporal + fused spatial) and R11G11B10F history buffers for half the VRAM bandwidth. |
 | SoftScale softness | 0 - 100 % | Blur radius of the 9-tap tent filter (`Soft scale`). |
-| FSR sharpness | 0 - 100 % | RCAS strength applied after the FSR 1 EASU or FSR 2 temporal upscale. |
+| FSR sharpness | 0 - 100 % | RCAS strength applied after the FSR 1 EASU or MSR temporal upscale. |
 | MSAA | Off, 2x, 4x, 8x, 16x | Multisampling for the world pass (hardware, resolved before the upscale). |
 | SSAA | On / Off | Renders the world at 2x resolution and downsamples with a 2x2 box filter. |
 | FXAA | On / Off | Post-process edge smoothing on the final native-resolution image. |
@@ -26,9 +26,9 @@ resolution.
 Anti-aliasing order is always *world -> SSAA downsample -> reconstruction filter -> FXAA*, so the
 options compose instead of fighting each other.
 
-### FSR 2
+### MSR
 
-`FSR 2` is a temporal upscaler in the same shape as AMD's FSR 2: the world is rendered with a
+`MSR` is a temporal upscaler in the same shape as AMD's FSR 2: the world is rendered with a
 sub-pixel Halton jitter, EASU brings the current frame to output resolution, a temporal pass
 reprojects the previous frame with the camera matrices and accumulates it in an RGBA16F history
 buffer, and RCAS sharpens the result (FXAA can follow). A depth test rejects disoccluded pixels,
@@ -39,15 +39,15 @@ camera only, so moving entities, particles and the hand rely on the clamp/reacti
 instead of per-object velocities; fast objects can leave a short trail. The first frame after a
 world load (FOV still 0, degenerate projection) is skipped and the history is reset.
 
-FSR 2 runs at 100 % too, where it acts as temporal anti-aliasing. SSAA has priority: enabling
-SSAA turns FSR 2 off. With an Iris shader pack active, ModernOPT disables its own projection
-jitter and lets the pack's temporal filter drive sub-pixel jitter; FSR 2 still reprojects the
-pack's output and upscales it. MSAA is also forced off in FSR 2 mode and that is logged once.
+MSR runs at 100 % too, where it acts as temporal anti-aliasing. SSAA has priority: enabling
+SSAA turns MSR off. With an Iris shader pack active, ModernOPT disables its own projection
+jitter and lets the pack's temporal filter drive sub-pixel jitter; MSR still reprojects the
+pack's output and upscales it. MSAA is also forced off in MSR mode and that is logged once.
 
-### MSR 2.0
+### MSR2
 
-`MSR` is the newest upscaler in ModernOPT. It uses the same camera-reconstructed motion vectors
-as FSR 2, but merges the passes: a temporal pass with variance clipping in YCoCg (3x3 mean +
+`MSR2` is the newest upscaler in ModernOPT. It uses the same camera-reconstructed motion vectors
+as MSR, but merges the passes: a temporal pass with variance clipping in YCoCg (3x3 mean +
 2-sigma rejection, much better ghosting suppression than the old 5-point clamp) followed by a
 fused spatial pass that does EASU upsampling + RCAS sharpening in a single fragment shader with
 edge-aware interpolation along depth edges, so block faces stay crisp instead of being smeared.
@@ -59,7 +59,7 @@ Key properties:
 - The final blit uses hardware glBlitFramebuffer with GL_LINEAR, not a custom shader.
 - Iris integration: shadow viewports are preserved, and if the Iris depth buffer cannot be
   read cleanly MSR falls back to a simplified spatial-only mode.
-- Falls back to FSR 1 / FSR 2 automatically if the shaders fail to compile or the GPU errors.
+- Falls back to FSR 1 / MSR automatically if the shaders fail to compile or the GPU errors.
 - Dynamic resolution scaling (DRS) is available: render scale is lowered when FPS drops below
   the configured threshold and raised again when stable.
 
@@ -68,11 +68,11 @@ Key properties:
 | Mode | Render scale | Avg FPS | 1% Low (ms) |
 | --- | --- | --- | --- |
 | Native | 100 % | 97.7 | 9.29 |
-| FSR 2 | 50 % | 115.8 | 7.65 |
-| **MSR** | **50 %** | **118.1** | **7.50** |
-| **MSR** | **40 %** | **130.5** | **2.40** |
+| MSR | 50 % | 115.8 | 7.65 |
+| **MSR2** | **50 %** | **118.1** | **7.50** |
+| **MSR2** | **40 %** | **130.5** | **2.40** |
 
-MSR 50 % is faster and smoother than FSR 2 at the same render scale, and leaves no trails
+MSR2 50 % is faster and smoother than MSR at the same render scale, and leaves no trails
 behind entities (camera-reconstructed motion + variance clipping reject disoccluded history).
 
 ### FP16 world target
@@ -80,7 +80,7 @@ behind entities (camera-reconstructed motion + variance clipping reject disocclu
 `renderScale.fp16ColorTarget` (default on) allocates the pre-upscale colour attachment as
 `RGBA16F` instead of `RGBA8`. Shader packs produce HDR values and tonemap at the end of their own
 chain, so with an 8-bit buffer the image is quantised *before* the upscaler sees it - visible as
-banding in sky gradients and dark scenes, and as slightly harsher sharpening in FSR/MSR.
+banding in sky gradients and dark scenes, and as slightly harsher sharpening in the FSR/MSR upscalers.
 
 Measured cost on a 5060 Ti at 960x540: within run-to-run noise (98.6 fps vs 98.9 fps with the full
 Complementary config, 275.8 vs 273.2 fps with shadows off), because the buffer is the small,
@@ -152,12 +152,12 @@ Key points:
   but it means very low scales soften those effects too.
 * The upscalers are presentation filters. They cannot recover detail that was never rendered,
   which is why FSR 1 looks best at 67-85 % scale.
-* FSR 2 uses camera-reconstructed motion vectors. It has no per-object velocities, so fast
+* MSR uses camera-reconstructed motion vectors. It has no per-object velocities, so fast
   moving entities and particles can ghost briefly before the neighbourhood clamp rejects them.
   Under an Iris shader pack, depth is read from the pack's gbuffer when Iris exposes it; if it
-  cannot be read, FSR 2 falls back to rotation-only reprojection for that frame and logs a
+  cannot be read, MSR falls back to rotation-only reprojection for that frame and logs a
   warning once.
-* Under a heavy shader pack, FSR 2 cannot make the pack's fixed full-resolution passes cheaper.
+* Under a heavy shader pack, MSR cannot make the pack's fixed full-resolution passes cheaper.
   Complementary's shadow map, composite and post chain keep the GPU busy even at 25 % render
   scale; the upscaler only scales the gbuffer/world pass. Reaching a much higher frame rate can
   therefore require lowering the pack's shadow or post settings, not just the render scale.
@@ -167,22 +167,22 @@ Key points:
 ## Testing
 
 Verified in a NeoForge dev client with only **Sodium 0.8.13**, **Iris 1.8.14-beta.1** and
-**Complementary Unbound r5.9.3** installed: render scale 50-75 %, bilinear, FSR 1 and FSR 2,
+**Complementary Unbound r5.9.3** installed: render scale 50-75 %, bilinear, FSR 1 and MSR,
 correct depth (no holes or LODs over the world), HUD at native resolution, first person hand and
 nearby entities visible in place under an active shader pack, and no OpenGL errors when the window
 is resized or the shader pipeline is rebuilt.
 
-FSR 2 was also checked with shaders off, at 100 % (temporal AA + RCAS at native resolution) and
+MSR was also checked with shaders off, at 100 % (temporal AA + RCAS at native resolution) and
 under Complementary. With the pack active and the world loaded, the test scene at `300,63,300`
 measured on an RTX 5060 Ti 16 GB / Ryzen 7 7800X3D at 1920x1080, render distance 12:
 
 | Mode | Frame rate | GPU |
 | --- | ---: | ---: |
 | Native (mod disabled) | 111 fps | 94 % |
-| FSR 2, 100 % | 94 fps | 96 % |
-| FSR 2, 75 % | 123 fps | 96 % |
-| FSR 2, 50 % | 197-198 fps | 94 % |
-| FSR 2, 25 % | 216 fps | 93 % |
+| MSR, 100 % | 94 fps | 96 % |
+| MSR, 75 % | 123 fps | 96 % |
+| MSR, 50 % | 197-198 fps | 94 % |
+| MSR, 25 % | 216 fps | 93 % |
 
 The 50 % result is a real 1.78x over native. The small gain from 50 % to 25 % shows where the
 shader pack's fixed cost takes over; it is not an upscaler bug. Native 1:1 crops of the water,
@@ -238,6 +238,26 @@ Lower resolutions reduce VRAM (a 2048 depth map is 16 MB, 512 is 1 MB) and shado
 this GPU the shadow pass is draw-call bound, so expect ~0.1-0.4 ms rather than a large frame-time
 win - see the benchmark notes below.
 
+### Shadow update interval
+
+`shadows.updateInterval` (1-4, default 1) rebuilds the shadow map every N frames instead of every
+frame. The frames in between skip the whole second world pass from the sun and keep sampling the
+previous map; the matrices are restored from the frame that drew it and translated by the camera
+movement, so the shadows stay attached to the world. Clears that target the shadow framebuffer are
+skipped while the map is being held, otherwise they would wipe it.
+
+Measured in the same world with the pack's shadows enabled (render distance 16, simulation 5,
+1920x1080, 50 % world):
+
+| interval | FPS | frame |
+|---|---|---|
+| 1 (every frame) | 100-104 | 9.6-10.0 ms |
+| 2 | 140 | 7.2 ms |
+| 3 | 149-150 | 6.7 ms |
+
+Screenshots at interval 1 and 3 show the same shadow placement; the remaining pixel differences
+come from the pack's animated cloud shadows. With interval 1 the feature is a no-op.
+
 ## Building
 
 Requires JDK 21.
@@ -257,7 +277,7 @@ exactly this on every push and uploads the jar as an artifact.
   [FidelityFX Super Resolution 1](https://github.com/GPUOpen-Effects/FidelityFX-FSR) reference
   implementation (MIT). The reference fetches 2x2 quads with `gather4`; this port fetches each tap
   individually, which is equivalent on any GL 3.2+ driver.
-* The FSR 2 temporal upscaler is an original implementation inspired by AMD's
+* The MSR temporal upscaler is an original implementation inspired by AMD's
   [FidelityFX Super Resolution 2](https://github.com/GPUOpen-Effects/FidelityFX-FSR2) design
   (jitter, reprojection, history clamping, RCAS). It shares no code with the FSR 2 reference.
 * FXAA follows Timothy Lottes' original luma-based algorithm.
