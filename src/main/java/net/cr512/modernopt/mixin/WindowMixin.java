@@ -5,6 +5,7 @@ import net.cr512.modernopt.render.RenderPipeline;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
@@ -34,5 +35,11 @@ public abstract class WindowMixin {
         if (override > 0) {
             callbackInfo.setReturnValue(override);
         }
+    }
+
+    /** Presents the whole-window-scaled frame just before the back buffer is swapped. */
+    @Inject(method = "updateDisplay()V", at = @At("HEAD"))
+    private void modernopt$presentWholeWindow(CallbackInfo callbackInfo) {
+        RenderPipeline.endWholeWindowFrame();
     }
 }
