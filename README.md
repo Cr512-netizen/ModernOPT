@@ -63,18 +63,6 @@ Key properties:
 - Dynamic resolution scaling (DRS) is available: render scale is lowered when FPS drops below
   the configured threshold and raised again when stable.
 
-### Benchmarks (Complementary Unbound r5.9.3, 1920x1080, fixed scene)
-
-| Mode | Render scale | Avg FPS | 1% Low (ms) |
-| --- | --- | --- | --- |
-| Native | 100 % | 97.7 | 9.29 |
-| MSR | 50 % | 115.8 | 7.65 |
-| **MSR2** | **50 %** | **118.1** | **7.50** |
-| **MSR2** | **40 %** | **130.5** | **2.40** |
-
-MSR2 50 % is faster and smoother than MSR at the same render scale, and leaves no trails
-behind entities (camera-reconstructed motion + variance clipping reject disoccluded history).
-
 ### FP16 world target
 
 `renderScale.fp16ColorTarget` (default on) allocates the pre-upscale colour attachment as
