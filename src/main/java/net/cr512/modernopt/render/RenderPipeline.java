@@ -1342,6 +1342,10 @@ public final class RenderPipeline {
         realWindowHeight = windowHeight;
         windowScaled = true;
         wholeWindowActive = true;
+        // The main target is smaller than the window. Bind it with setViewport=true here: when a
+        // GUI screen is open, vanilla does not rebind it before drawing the world behind the menu,
+        // leaving a window-sized viewport on a small framebuffer and cropping the world to a corner.
+        main.bindWrite(true);
         // Iris cancels vanilla's hand pass; draw it ourselves like in the scaled mode.
         deferredHandThisFrame = true;
         resetHistory();
@@ -1370,32 +1374,35 @@ public final class RenderPipeline {
      * window-size override and of vanilla's final blit.
      */
     public static void endWholeWindowFrame() {
-        if (!wholeWindowActive) {
-            return;
-        }
-        wholeWindowActive = false;
-        windowScaled = false;
         Minecraft minecraft = Minecraft.getInstance();
         RenderTarget main = minecraft.getMainRenderTarget();
-        if (main != null && realWindowWidth > 0 && realWindowHeight > 0
-                && (main.width != realWindowWidth || main.height != realWindowHeight)) {
-            main.unbindWrite();
-            org.lwjgl.opengl.GL30C.glBindFramebuffer(org.lwjgl.opengl.GL30C.GL_FRAMEBUFFER, 0);
-            // Raw GL here: RenderTarget#blitToScreen's GlStateManager viewport call is intercepted
-            // by other mods and can end up leaving the small size behind, which presents the frame
-            // into a corner of the window with the rest black.
-            org.lwjgl.opengl.GL11C.glViewport(0, 0, realWindowWidth, realWindowHeight);
-            org.lwjgl.opengl.GL11C.glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
-            org.lwjgl.opengl.GL11C.glClear(org.lwjgl.opengl.GL11C.GL_COLOR_BUFFER_BIT
-                    | org.lwjgl.opengl.GL11C.GL_DEPTH_BUFFER_BIT);
-            if (ensureShaders(minecraft) && shaders != null && shaders.isValid()) {
-                ShaderLibrary.beginPassState();
-                ShaderLibrary.drawBlit(shaders.blit, main.getColorTextureId(), main.width, main.height,
-                        realWindowWidth, realWindowHeight);
-                ShaderLibrary.endPassState();
-            } else {
-                main.blitToScreen(realWindowWidth, realWindowHeight, true);
-            }
+        boolean smallMain = main != null && realWindowWidth > 0 && realWindowHeight > 0
+                && (main.width != realWindowWidth || main.height != realWindowHeight);
+        // A frame can end without the world pass having run (loading screen, menu, a mod cancelling
+        // renderLevel). The main target is still small from whole-window mode then, so present it
+        // anyway and always drop the window override - otherwise the GUI is laid out for the wrong
+        // resolution and only a corner of the frame reaches the window.
+        wholeWindowActive = false;
+        windowScaled = false;
+        if (!smallMain) {
+            return;
+        }
+        main.unbindWrite();
+        org.lwjgl.opengl.GL30C.glBindFramebuffer(org.lwjgl.opengl.GL30C.GL_FRAMEBUFFER, 0);
+        // Raw GL here: RenderTarget#blitToScreen's GlStateManager viewport call is intercepted
+        // by other mods and can end up leaving the small size behind, which presents the frame
+        // into a corner of the window with the rest black.
+        org.lwjgl.opengl.GL11C.glViewport(0, 0, realWindowWidth, realWindowHeight);
+        org.lwjgl.opengl.GL11C.glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
+        org.lwjgl.opengl.GL11C.glClear(org.lwjgl.opengl.GL11C.GL_COLOR_BUFFER_BIT
+                | org.lwjgl.opengl.GL11C.GL_DEPTH_BUFFER_BIT);
+        if (ensureShaders(minecraft) && shaders != null && shaders.isValid()) {
+            ShaderLibrary.beginPassState();
+            ShaderLibrary.drawBlit(shaders.blit, main.getColorTextureId(), main.width, main.height,
+                    realWindowWidth, realWindowHeight);
+            ShaderLibrary.endPassState();
+        } else {
+            main.blitToScreen(realWindowWidth, realWindowHeight, true);
         }
     }
 
