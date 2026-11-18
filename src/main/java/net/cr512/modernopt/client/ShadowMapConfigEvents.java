@@ -26,6 +26,7 @@ public final class ShadowMapConfigEvents {
         if (event.getConfig().getSpec() != ModernOptConfig.SPEC) {
             return;
         }
+        ShadowMapResolution.invalidateFileCache();
         ModernOptSettings.refresh();
         if (ShadowMapResolution.needsReload()) {
             ShadowMapResolution.requestReload();

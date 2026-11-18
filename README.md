@@ -230,9 +230,10 @@ win - see the benchmark notes below.
 
 `shadows.updateInterval` (1-4, default 1) rebuilds the shadow map every N frames instead of every
 frame. The frames in between skip the whole second world pass from the sun and keep sampling the
-previous map; the matrices are restored from the frame that drew it and translated by the camera
-movement, so the shadows stay attached to the world. Clears that target the shadow framebuffer are
-skipped while the map is being held, otherwise they would wipe it.
+previous map with the exact matrices of the frame that drew it, so shadows stay anchored to the
+world. Moving far enough forces an immediate rebuild so the held frustum cannot run out of
+coverage. Clears that target the shadow framebuffer are skipped while the map is being held,
+otherwise they would wipe it.
 
 Measured in the same world with the pack's shadows enabled (render distance 16, simulation 5,
 1920x1080, 50 % world):

@@ -177,7 +177,6 @@ public class ModernOptConfigScreen extends Screen {
                 value -> {
                     ModernOptConfig.SHADOW_MAP_RESOLUTION.set(shadowSizes[value]);
                     ModernOptSettings.refresh();
-                    ShadowMapResolution.requestReload();
                 },
                 value -> shadowSizes[value] + " x " + shadowSizes[value]));
 
@@ -343,6 +342,11 @@ public class ModernOptConfigScreen extends Screen {
     public void onClose() {
         ModernOptConfig.SPEC.save();
         ModernOptSettings.refresh();
+        // Defer the pack reload until the screen closes: a slider drag changes the value many
+        // times and must not recompile the pack on every step.
+        if (ShadowMapResolution.needsReload()) {
+            ShadowMapResolution.requestReload();
+        }
         if (this.minecraft != null) {
             this.minecraft.setScreen(this.parent);
         }

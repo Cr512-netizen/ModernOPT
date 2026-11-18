@@ -40,6 +40,7 @@ public final class ShadowMapResolution {
     private static volatile int patchedFor = -1;
     private static int reloadRequestedFor = -1;
     private static int fileValue = Integer.MIN_VALUE;
+    private static Boolean fileEnabled;
     private static volatile boolean reloadPending;
 
     private ShadowMapResolution() {
@@ -120,6 +121,44 @@ public final class ShadowMapResolution {
         return parsed;
     }
 
+    /** Reads the master switch from the file; used before the config spec exists at startup. */
+    private static boolean enabledFromConfigFile() {
+        if (fileEnabled != null) {
+            return fileEnabled;
+        }
+        boolean parsed = true;
+        try {
+            java.nio.file.Path path = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get()
+                    .resolve("modernopt-client.toml");
+            if (java.nio.file.Files.isReadable(path)) {
+                String section = "";
+                for (String line : java.nio.file.Files.readAllLines(path)) {
+                    String trimmed = line.trim();
+                    if (trimmed.startsWith("[")) {
+                        section = trimmed;
+                    } else if ((section.isEmpty() || section.equals("[general]"))
+                            && trimmed.startsWith("enabled")) {
+                        int equals = trimmed.indexOf('=');
+                        if (equals >= 0) {
+                            parsed = Boolean.parseBoolean(trimmed.substring(equals + 1).trim());
+                        }
+                        break;
+                    }
+                }
+            }
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.warn("[ModernOPT] could not read the master switch from the config, assuming enabled", throwable);
+        }
+        fileEnabled = parsed;
+        return parsed;
+    }
+
+    /** Drops the file cache after NeoForge reloads the config spec. */
+    public static void invalidateFileCache() {
+        fileValue = Integer.MIN_VALUE;
+        fileEnabled = null;
+    }
+
     /** True when ModernOPT may override the pack's shadow map (master switch is on). */
     public static boolean enabled() {
         return overridesEnabled();
@@ -131,9 +170,9 @@ public final class ShadowMapResolution {
                 return ModernOptConfig.ENABLED.get();
             }
         } catch (RuntimeException ignored) {
-            // Fall through to the snapshot.
+            // Fall through to the file/snapshot.
         }
-        return ModernOptSettings.enabled();
+        return enabledFromConfigFile();
     }
 
     /**
@@ -149,6 +188,12 @@ public final class ShadowMapResolution {
         if (!overridesEnabled()) {
             applied = packValue;
             packRequested = packValue;
+            // The pack is back on its own value; forget the patched/reload bookkeeping so that
+            // re-enabling the mod patches and reloads again instead of assuming the shaders match.
+            patchedFor = packValue;
+            reloadRequestedFor = -1;
+            loggedDesired = -1;
+            loggedPack = -1;
             return packValue;
         }
         int desired = desired();
