@@ -83,8 +83,6 @@ public abstract class IrisShadowRendererMixin {
             if (minecraft == null || minecraft.gameRenderer == null) {
                 return;
             }
-            Camera camera = minecraft.gameRenderer.getMainCamera();
-            Vec3 position = camera.getPosition();
             java.lang.reflect.Field modelViewField = modernopt$matrixField("MODELVIEW");
             java.lang.reflect.Field projectionField = modernopt$matrixField("PROJECTION");
             if (modelViewField == null || projectionField == null) {
@@ -95,10 +93,10 @@ public abstract class IrisShadowRendererMixin {
             if (modelView == null || projection == null) {
                 return;
             }
+            // Keep the exact shadow-space matrices of the drawn frame. Translating them with the
+            // camera moved the shadow lookup coordinates with the viewer, which made shadows swim;
+            // leaving them untouched keeps them anchored to the world.
             modelView.set(modernopt$heldModelView);
-            modelView.translate((float) (position.x - modernopt$heldX),
-                    (float) (position.y - modernopt$heldY),
-                    (float) (position.z - modernopt$heldZ));
             projection.set(modernopt$heldProjection);
         } catch (Throwable throwable) {
             ModernOPT.LOG.warn("[ModernOPT] could not hold the shadow matrices", throwable);
@@ -123,6 +121,7 @@ public abstract class IrisShadowRendererMixin {
             modernopt$heldX = position.x;
             modernopt$heldY = position.y;
             modernopt$heldZ = position.z;
+            RenderPipeline.shadowHoldSetCamera(position.x, position.y, position.z);
             modernopt$haveHeld = true;
             modernopt$framesSinceDraw = 0;
         } catch (Throwable throwable) {

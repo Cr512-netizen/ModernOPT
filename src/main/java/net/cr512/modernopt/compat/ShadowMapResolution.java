@@ -147,6 +147,8 @@ public final class ShadowMapResolution {
      */
     public static int apply(int packValue) {
         if (!overridesEnabled()) {
+            applied = packValue;
+            packRequested = packValue;
             return packValue;
         }
         int desired = desired();
@@ -194,7 +196,7 @@ public final class ShadowMapResolution {
 
     /** True when the config no longer matches the shadow map currently in use. */
     public static boolean needsReload() {
-        return applied > 0 && desired() != applied;
+        return enabled() && applied > 0 && desired() != applied;
     }
 
     /**
@@ -222,8 +224,8 @@ public final class ShadowMapResolution {
                     // No pack loaded: the value is picked up on the next pack load anyway.
                     return;
                 }
-                ModernOPT.LOG.info("[ModernOPT] reloading shader pack for shadow map {}x{}",
-                        desired(), desired());
+                ModernOPT.LOG.info("[ModernOPT] reloading shader pack to {}",
+                        enabled() ? "apply shadow map " + desired() : "restore the pack's shadow map");
                 iris.getMethod("reload").invoke(null);
             } catch (Throwable throwable) {
                 ModernOPT.LOG.warn("[ModernOPT] could not reload the shader pack after the shadow "
