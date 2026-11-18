@@ -61,6 +61,7 @@ public class ModernOptConfigScreen extends Screen {
                             boolean enabled = !ModernOptSettings.enabled();
                             ModernOptConfig.ENABLED.set(enabled);
                             ModernOptSettings.refresh();
+                            ShadowMapResolution.requestReload();
                             // Rebuild so every control reflects the new state immediately.
                             this.rebuildWidgets();
                         })
@@ -73,6 +74,7 @@ public class ModernOptConfigScreen extends Screen {
                         (button, value) -> {
                             ModernOptConfig.ENABLED.set(value);
                             ModernOptSettings.refresh();
+                            ShadowMapResolution.requestReload();
                             disableButton.setMessage(disableLabel());
                         }));
 
@@ -168,15 +170,16 @@ public class ModernOptConfigScreen extends Screen {
                         }));
 
         // --- right column: shadows and MSR2 ---
-        addRight(CycleButton.<Integer>builder(size -> Component.literal(size + " x " + size))
-                .withValues(java.util.Arrays.stream(ShadowMapResolution.allowedValues()).boxed().toList())
-                .withInitialValue(ShadowMapResolution.desired())
-                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.shadowMapResolution"),
-                        (button, value) -> {
-                            ModernOptConfig.SHADOW_MAP_RESOLUTION.set(value);
-                            ModernOptSettings.refresh();
-                            ShadowMapResolution.requestReload();
-                        }));
+        int[] shadowSizes = ShadowMapResolution.allowedValues();
+        addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
+                Component.translatable("modernopt.option.shadowMapResolution"), 0, shadowSizes.length - 1,
+                shadowResolutionIndex(shadowSizes, ShadowMapResolution.desired()),
+                value -> {
+                    ModernOptConfig.SHADOW_MAP_RESOLUTION.set(shadowSizes[value]);
+                    ModernOptSettings.refresh();
+                    ShadowMapResolution.requestReload();
+                },
+                value -> shadowSizes[value] + " x " + shadowSizes[value]));
 
         addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.shadowUpdateInterval"), 1, 4,
@@ -260,6 +263,15 @@ public class ModernOptConfigScreen extends Screen {
 
         this.scroll = 0;
         layoutColumns();
+    }
+
+    private static int shadowResolutionIndex(int[] sizes, int value) {
+        for (int i = 0; i < sizes.length; i++) {
+            if (sizes[i] == value) {
+                return i;
+            }
+        }
+        return 0;
     }
 
     private Component disableLabel() {

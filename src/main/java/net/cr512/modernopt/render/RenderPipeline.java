@@ -327,6 +327,10 @@ public final class RenderPipeline {
             resetHistory();
             return;
         }
+        if (minecraft.gameRenderer != null && minecraft.gameRenderer.getMainCamera() != null) {
+            net.minecraft.world.phys.Vec3 shadowCamera = minecraft.gameRenderer.getMainCamera().getPosition();
+            shadowHoldCheckCamera(shadowCamera.x, shadowCamera.y, shadowCamera.z);
+        }
 
         // Cache settings once per frame
         ModernOptSettings.refresh();
@@ -801,10 +805,41 @@ public final class RenderPipeline {
     private static int shadowHoldFrames;
     private static boolean shadowHoldHaveMap;
     private static int shadowHoldFramebuffer = -1;
+    private static double shadowHoldCameraX;
+    private static double shadowHoldCameraY;
+    private static double shadowHoldCameraZ;
+    private static boolean shadowHoldForceDraw;
+
+    /** Further than this from the drawn frame's camera forces a rebuild (in blocks, squared). */
+    private static final double SHADOW_HOLD_MOVE_LIMIT_SQ = 2.25;
 
     /** Whether the shadow map has to be drawn on this frame. */
     public static boolean shadowHoldShouldDraw(int interval) {
-        return !shadowHoldHaveMap || interval <= 1 || shadowHoldFrames >= interval - 1;
+        return !shadowHoldHaveMap || interval <= 1 || shadowHoldForceDraw
+                || shadowHoldFrames >= interval - 1;
+    }
+
+    /** Camera position of the last frame that actually drew the map. */
+    public static void shadowHoldSetCamera(double x, double y, double z) {
+        shadowHoldCameraX = x;
+        shadowHoldCameraY = y;
+        shadowHoldCameraZ = z;
+    }
+
+    /**
+     * Forces a rebuild when the camera moved far enough that the held shadow frustum would no
+     * longer cover the view, which shows up as shadows disappearing or being clipped at speed.
+     */
+    public static void shadowHoldCheckCamera(double x, double y, double z) {
+        if (!shadowHoldHaveMap || ModernOptSettings.shadowUpdateInterval() <= 1) {
+            return;
+        }
+        double dx = x - shadowHoldCameraX;
+        double dy = y - shadowHoldCameraY;
+        double dz = z - shadowHoldCameraZ;
+        if (dx * dx + dy * dy + dz * dz > SHADOW_HOLD_MOVE_LIMIT_SQ) {
+            shadowHoldForceDraw = true;
+        }
     }
 
     /** Marks a frame that skipped the shadow pass. */
@@ -816,6 +851,7 @@ public final class RenderPipeline {
     public static void shadowHoldNoteDrawn() {
         shadowHoldFrames = 0;
         shadowHoldHaveMap = true;
+        shadowHoldForceDraw = false;
     }
 
     /** GL id of the shadow framebuffer the pack samples, or -1 when unknown. */
@@ -1338,6 +1374,7 @@ public final class RenderPipeline {
             ModernOPT.LOG.info("[ModernOPT] whole-window scaling: main target {}x{} -> {}x{}",
                     windowWidth, windowHeight, size[0], size[1]);
         }
+        main.setFilterMode(org.lwjgl.opengl.GL11C.GL_LINEAR);
         realWindowWidth = windowWidth;
         realWindowHeight = windowHeight;
         windowScaled = true;
@@ -1360,6 +1397,7 @@ public final class RenderPipeline {
             if (main != null && windowWidth > 0 && windowHeight > 0
                     && (main.width != windowWidth || main.height != windowHeight)) {
                 main.resize(windowWidth, windowHeight, Minecraft.ON_OSX);
+                main.setFilterMode(org.lwjgl.opengl.GL11C.GL_NEAREST);
                 ModernOPT.LOG.info("[ModernOPT] restored the main target to {}x{}",
                         windowWidth, windowHeight);
             }
