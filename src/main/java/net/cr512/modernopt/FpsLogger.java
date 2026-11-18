@@ -36,7 +36,6 @@ public final class FpsLogger {
     private static long lastLogTime = 0;
     private static final List<Long> frameTimesNanos = new ArrayList<>(4096);
     private static long lastFrameNanos = 0;
-    private static boolean wasEnabled = false;
 
     private FpsLogger() {
     }
@@ -100,12 +99,20 @@ public final class FpsLogger {
             double minMs = sorted.get(0) / 1_000_000.0;
             double maxMs = sorted.get(sorted.size() - 1) / 1_000_000.0;
 
-            int p1Index = Math.min(sorted.size() - 1, sorted.size() / 100);
-            double p1Ms = sorted.get(p1Index) / 1_000_000.0;
+            int count1 = Math.max(1, sorted.size() / 100);
+            int count01 = Math.max(1, sorted.size() / 1000);
+            long slow1 = 0L;
+            long slow01 = 0L;
+            for (int i = 0; i < count1; i++) {
+                slow1 += sorted.get(sorted.size() - 1 - i);
+            }
+            for (int i = 0; i < count01; i++) {
+                slow01 += sorted.get(sorted.size() - 1 - i);
+            }
+            double p1Ms = slow1 / count1 / 1_000_000.0;
             double p1Fps = 1000.0 / p1Ms;
 
-            int p01Index = Math.min(sorted.size() - 1, sorted.size() / 1000);
-            double p01Ms = sorted.get(p01Index) / 1_000_000.0;
+            double p01Ms = slow01 / count01 / 1_000_000.0;
             double p01Fps = 1000.0 / p01Ms;
 
             // Get current mod settings

@@ -324,19 +324,24 @@ public final class RenderPipeline {
 
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null || minecraft.noRender) {
+            restoreWindowSizedMainTarget(minecraft);
             resetHistory();
             return;
-        }
-        if (minecraft.gameRenderer != null && minecraft.gameRenderer.getMainCamera() != null) {
-            net.minecraft.world.phys.Vec3 shadowCamera = minecraft.gameRenderer.getMainCamera().getPosition();
-            shadowHoldCheckCamera(shadowCamera.x, shadowCamera.y, shadowCamera.z);
         }
 
         // Cache settings once per frame
         ModernOptSettings.refresh();
         if (!ModernOptSettings.enabled()) {
+            // A whole-window frame may have left the main target small; disabling the mod must
+            // restore the real window size instead of leaving the game locked at the old scale.
+            restoreWindowSizedMainTarget(minecraft);
             resetHistory();
             return;
+        }
+
+        if (minecraft.gameRenderer != null && minecraft.gameRenderer.getMainCamera() != null) {
+            net.minecraft.world.phys.Vec3 shadowCamera = minecraft.gameRenderer.getMainCamera().getPosition();
+            shadowHoldCheckCamera(shadowCamera.x, shadowCamera.y, shadowCamera.z);
         }
 
         // Fast settings cache - only refresh when actually changed
@@ -804,6 +809,7 @@ public final class RenderPipeline {
 
     private static int shadowHoldFrames;
     private static boolean shadowHoldHaveMap;
+    private static boolean shadowHoldHaveMatrices;
     private static int shadowHoldFramebuffer = -1;
     private static double shadowHoldCameraX;
     private static double shadowHoldCameraY;
@@ -815,7 +821,7 @@ public final class RenderPipeline {
 
     /** Whether the shadow map has to be drawn on this frame. */
     public static boolean shadowHoldShouldDraw(int interval) {
-        return !shadowHoldHaveMap || interval <= 1 || shadowHoldForceDraw
+        return !shadowHoldHaveMap || !shadowHoldHaveMatrices || interval <= 1 || shadowHoldForceDraw
                 || shadowHoldFrames >= interval - 1;
     }
 
@@ -851,7 +857,21 @@ public final class RenderPipeline {
     public static void shadowHoldNoteDrawn() {
         shadowHoldFrames = 0;
         shadowHoldHaveMap = true;
+        shadowHoldHaveMatrices = true;
         shadowHoldForceDraw = false;
+    }
+
+    /**
+     * Forgets the held map when Iris recreates its shadow targets (pack reload, resolution
+     * change). The old framebuffer id and clear passes are no longer valid, so the next frame must
+     * rebuild the map.
+     */
+    public static void shadowHoldResetTargets() {
+        shadowHoldFrames = 0;
+        shadowHoldHaveMap = false;
+        shadowHoldHaveMatrices = false;
+        shadowHoldForceDraw = false;
+        shadowHoldFramebuffer = -1;
     }
 
     /** GL id of the shadow framebuffer the pack samples, or -1 when unknown. */
@@ -861,32 +881,6 @@ public final class RenderPipeline {
 
     public static void shadowHoldSetFramebuffer(int framebuffer) {
         shadowHoldFramebuffer = framebuffer;
-    }
-
-    /**
-     * Presents a whole-window-scaled frame and disarms the mode.
-     *
-     * <p>Called at the very end of the GUI pass: the scaled target holds the complete frame
-     * (world, hand, HUD), so it is blitted into the real main target with linear filtering, and
-     * vanilla's own blit to the window runs unchanged afterwards. Doing it here instead of taking
-     * over {@code Minecraft#run} keeps the main loop untouched.</p>
-     */
-    public static void presentWholeWindow(Minecraft minecraft) {
-        if (!wholeWindowActive) {
-            return;
-        }
-        wholeWindowActive = false;
-        windowScaled = false;
-        ScaledRenderTarget frame = scaled;
-        if (frame == null) {
-            return;
-        }
-        RenderTarget main = minecraft.getMainRenderTarget();
-        if (main == null) {
-            return;
-        }
-        main.bindWrite(true);
-        frame.blitToScreen(main.width, main.height, false);
     }
 
     /**
@@ -1350,7 +1344,7 @@ public final class RenderPipeline {
 
     /**
      * Whole-window mode: the frame renders straight into the real main target, resized to the
-     * internal resolution, and vanilla's present blit upscales it to the window. No extra copy.
+     * internal resolution, and is presented to the window by {@link #endWholeWindowFrame()}.
      */
     private static void beginWholeWindowFrame(Minecraft minecraft) {
         int windowWidth = minecraft.getWindow().getWidth();
@@ -1390,17 +1384,19 @@ public final class RenderPipeline {
 
     /** Puts the main target back to the real window size when whole-window scaling is off. */
     private static void restoreWindowSizedMainTarget(Minecraft minecraft) {
-        if (!wholeWindowActive) {
-            RenderTarget main = minecraft.getMainRenderTarget();
-            int windowWidth = minecraft.getWindow().getWidth();
-            int windowHeight = minecraft.getWindow().getHeight();
-            if (main != null && windowWidth > 0 && windowHeight > 0
-                    && (main.width != windowWidth || main.height != windowHeight)) {
-                main.resize(windowWidth, windowHeight, Minecraft.ON_OSX);
-                main.setFilterMode(org.lwjgl.opengl.GL11C.GL_NEAREST);
-                ModernOPT.LOG.info("[ModernOPT] restored the main target to {}x{}",
-                        windowWidth, windowHeight);
-            }
+        boolean wasWholeWindow = wholeWindowActive;
+        RenderTarget main = minecraft.getMainRenderTarget();
+        int windowWidth = minecraft.getWindow().getWidth();
+        int windowHeight = minecraft.getWindow().getHeight();
+        if (main != null && windowWidth > 0 && windowHeight > 0
+                && (main.width != windowWidth || main.height != windowHeight)) {
+            main.resize(windowWidth, windowHeight, Minecraft.ON_OSX);
+            main.setFilterMode(org.lwjgl.opengl.GL11C.GL_NEAREST);
+            ModernOPT.LOG.info("[ModernOPT] restored the main target to {}x{}",
+                    windowWidth, windowHeight);
+        } else if (main != null && wasWholeWindow) {
+            // Same size but the filter was switched to LINEAR for whole-window presentation.
+            main.setFilterMode(org.lwjgl.opengl.GL11C.GL_NEAREST);
         }
         wholeWindowActive = false;
         windowScaled = false;
@@ -1413,18 +1409,24 @@ public final class RenderPipeline {
      */
     public static void endWholeWindowFrame() {
         Minecraft minecraft = Minecraft.getInstance();
+        // Drop the overrides first so the window reports its real framebuffer size, even if it was
+        // resized while a small main target was active.
+        wholeWindowActive = false;
+        windowScaled = false;
+        int windowWidth = minecraft.getWindow().getWidth();
+        int windowHeight = minecraft.getWindow().getHeight();
         RenderTarget main = minecraft.getMainRenderTarget();
-        boolean smallMain = main != null && realWindowWidth > 0 && realWindowHeight > 0
-                && (main.width != realWindowWidth || main.height != realWindowHeight);
+        boolean smallMain = main != null && windowWidth > 0 && windowHeight > 0
+                && (main.width != windowWidth || main.height != windowHeight);
         // A frame can end without the world pass having run (loading screen, menu, a mod cancelling
         // renderLevel). The main target is still small from whole-window mode then, so present it
         // anyway and always drop the window override - otherwise the GUI is laid out for the wrong
         // resolution and only a corner of the frame reaches the window.
-        wholeWindowActive = false;
-        windowScaled = false;
         if (!smallMain) {
             return;
         }
+        realWindowWidth = windowWidth;
+        realWindowHeight = windowHeight;
         main.unbindWrite();
         org.lwjgl.opengl.GL30C.glBindFramebuffer(org.lwjgl.opengl.GL30C.GL_FRAMEBUFFER, 0);
         // Raw GL here: RenderTarget#blitToScreen's GlStateManager viewport call is intercepted

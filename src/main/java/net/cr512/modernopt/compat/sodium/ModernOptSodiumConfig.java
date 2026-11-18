@@ -73,7 +73,11 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
                 .setName(Component.translatable("modernopt.sodium.group.general"))
                 .addOption(booleanOption(builder, ENABLED, "modernopt.option.enabled",
                         ModernOptConfig.ENABLED.getDefault(),
-                        value -> { ModernOptConfig.ENABLED.set(value); ModernOptSettings.refresh(); },
+                        value -> {
+                            ModernOptConfig.ENABLED.set(value);
+                            ModernOptSettings.refresh();
+                            net.cr512.modernopt.compat.ShadowMapResolution.requestReload();
+                        },
                         () -> ModernOptConfig.ENABLED.get()))
                 .addOption(booleanOption(builder, OVERLAY, "modernopt.option.overlay",
                         ModernOptConfig.SHOW_OVERLAY.getDefault(),

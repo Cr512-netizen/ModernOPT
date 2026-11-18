@@ -28,4 +28,9 @@ public final class ShadowClearRegistry {
     public static boolean isShadowPass(Object clearPass) {
         return clearPass != null && SHADOW_PASSES.contains(clearPass);
     }
+
+    /** Drops passes from a destroyed pipeline; called when Iris recreates its shadow targets. */
+    public static void clear() {
+        SHADOW_PASSES.clear();
+    }
 }

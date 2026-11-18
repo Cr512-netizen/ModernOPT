@@ -45,8 +45,12 @@ public abstract class IrisShadowRendererMixin {
 
     @Inject(method = "renderShadows", at = @At("HEAD"), cancellable = true, require = 0, remap = false)
     private void modernopt$beginShadowPass(CallbackInfo callbackInfo) {
+        if (!modernopt$haveHeld) {
+            // No usable matrices from an earlier frame: draw normally instead of holding.
+            RenderPipeline.shadowHoldResetTargets();
+        }
         int interval = Math.max(1, ModernOptSettings.shadowUpdateInterval());
-        if (!RenderPipeline.shadowHoldShouldDraw(interval)) {
+        if (!RenderPipeline.shadowHoldShouldDraw(interval) && modernopt$haveHeld) {
             RenderPipeline.shadowHoldNoteSkipped();
             modernopt$holdMatricesForThisCamera();
             callbackInfo.cancel();
@@ -71,7 +75,11 @@ public abstract class IrisShadowRendererMixin {
     @Inject(method = "renderShadows", at = @At("RETURN"), require = 0, remap = false)
     private void modernopt$endShadowPass(CallbackInfo callbackInfo) {
         modernopt$rememberDrawnFrame();
-        RenderPipeline.shadowHoldNoteDrawn();
+        if (modernopt$haveHeld) {
+            RenderPipeline.shadowHoldNoteDrawn();
+        } else {
+            RenderPipeline.shadowHoldResetTargets();
+        }
         RenderPipeline.setShadowPassActive(false);
         GpuProfiler.end(GpuProfiler.SHADOW);
     }
@@ -105,6 +113,7 @@ public abstract class IrisShadowRendererMixin {
 
     /** Remembers what the drawn frame used, so skipped frames can keep sampling it. */
     private static void modernopt$rememberDrawnFrame() {
+        modernopt$haveHeld = false;
         try {
             Minecraft minecraft = Minecraft.getInstance();
             if (minecraft == null || minecraft.gameRenderer == null) {

@@ -30,7 +30,8 @@ public final class ModernOPT {
         }
 
         container.registerConfig(ModConfig.Type.CLIENT, ModernOptConfig.SPEC);
-        migrateLegacyUpscalerNames();        container.registerExtensionPoint(IConfigScreenFactory.class,
+        migrateLegacyUpscalerNames();
+        container.registerExtensionPoint(IConfigScreenFactory.class,
                 (minecraft, parent) -> new ModernOptConfigScreen(parent));
         modBus.addListener(net.cr512.modernopt.client.ClientModInit::onRegisterKeyMappings);
     }

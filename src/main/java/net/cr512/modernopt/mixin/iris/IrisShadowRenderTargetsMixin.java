@@ -1,6 +1,8 @@
 package net.cr512.modernopt.mixin.iris;
 
+import net.cr512.modernopt.compat.ShadowClearRegistry;
 import net.cr512.modernopt.compat.ShadowMapResolution;
+import net.cr512.modernopt.render.RenderPipeline;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
@@ -24,6 +26,8 @@ public abstract class IrisShadowRenderTargetsMixin {
     @ModifyVariable(method = "<init>", at = @At("HEAD"), argsOnly = true, ordinal = 0,
             require = 0, remap = false)
     private static int modernopt$shadowMapResolution(int resolution) {
+        ShadowClearRegistry.clear();
+        RenderPipeline.shadowHoldResetTargets();
         return ShadowMapResolution.apply(resolution);
     }
 }
