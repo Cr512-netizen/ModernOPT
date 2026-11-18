@@ -31,6 +31,14 @@ public abstract class GameRendererMixin {
         RenderPipeline.beginWorldFrame();
     }
 
+    /** The menu blur post-chain is sized for a window-sized main target and breaks scaling. */
+    @Inject(method = "processBlurEffect(F)V", at = @At("HEAD"), cancellable = true)
+    private void modernopt$skipBlurWholeWindow(float partialTick, CallbackInfo callbackInfo) {
+        if (RenderPipeline.wholeWindowActive()) {
+            callbackInfo.cancel();
+        }
+    }
+
     /**
      * Adds the MSR sub-pixel jitter to the projection matrix handed to the world renderer.
      * Only the argument is replaced: the local matrix used later for the hand pass stays
