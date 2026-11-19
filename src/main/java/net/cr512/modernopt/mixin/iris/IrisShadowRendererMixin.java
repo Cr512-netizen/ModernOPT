@@ -140,11 +140,13 @@ public abstract class IrisShadowRendererMixin {
             }
             modernopt$heldModelView.set((Matrix4f) modelViewField.get(null));
             modernopt$heldProjection.set((Matrix4f) projectionField.get(null));
-            Vec3 position = minecraft.gameRenderer.getMainCamera().getPosition();
+            Camera camera = minecraft.gameRenderer.getMainCamera();
+            Vec3 position = camera.getPosition();
             modernopt$heldX = position.x;
             modernopt$heldY = position.y;
             modernopt$heldZ = position.z;
-            RenderPipeline.shadowHoldSetCamera(position.x, position.y, position.z);
+            RenderPipeline.shadowHoldSetCamera(position.x, position.y, position.z,
+                    camera.getYRot(), camera.getXRot());
             RenderPipeline.shadowHoldSetWorldTime(minecraft.level == null ? Long.MIN_VALUE
                     : minecraft.level.getDayTime());
             RenderPipeline.shadowHoldCaptureEntities(minecraft.level, position.x, position.y, position.z);

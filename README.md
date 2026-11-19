@@ -240,8 +240,11 @@ win - see the benchmark notes below.
 frame. The frames in between skip the whole second world pass from the sun and keep sampling the
 previous map with the exact matrices of the frame that drew it, so shadows stay anchored to the
 world. While the camera and nearby shadow casters are still the map is kept longer (up to eight
-frames); moving casters, a large camera move or a sun/time jump force an immediate rebuild. Clears that target the shadow framebuffer are skipped
-while the map is being held, otherwise they would wipe it.
+frames); moving casters, a large camera move, **any camera rotation**, or **any sun/time change**
+force an immediate rebuild. Rotation used to be missed because the check only compared camera
+position: a player looking around in place was treated as "still", the stale matrices made long
+sunset shadows swim and flicker. Clears that target the shadow framebuffer are skipped while the
+map is being held, otherwise they would wipe it. With interval 1 the feature is a no-op.
 
 Measured in the same world with the pack's shadows enabled (render distance 16, simulation 5,
 1920x1080, 50 % world):
@@ -253,7 +256,7 @@ Measured in the same world with the pack's shadows enabled (render distance 16, 
 | 3 | 149-150 | 6.7 ms |
 
 Screenshots at interval 1 and 3 show the same shadow placement; the remaining pixel differences
-come from the pack's animated cloud shadows. With interval 1 the feature is a no-op.
+come from the pack's animated cloud shadows.
 
 ## Building
 
