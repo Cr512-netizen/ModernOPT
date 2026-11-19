@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Cr512-netizen
+
 plugins {
     id 'java-library'
     id 'net.neoforged.moddev' version '2.0.148'
@@ -144,3 +147,10 @@ jar {
         ])
     }
 }
+
+// Ship the license with the binary, as required by Apache-2.0 distribution practice.
+jar {
+    from('LICENSE') { into 'META-INF' }
+    from('NOTICE') { into 'META-INF' }
+}
+
