@@ -23,7 +23,9 @@ public abstract class GlStateManagerMixin {
 
     @Inject(method = "_viewport", at = @At("HEAD"), cancellable = true)
     private static void modernopt$clampWorldViewport(int x, int y, int width, int height, CallbackInfo callbackInfo) {
+        net.cr512.modernopt.render.WorldCpuProfiler.noteViewport();
         if (RenderPipeline.clampViewport(x, y, width, height)) {
+            net.cr512.modernopt.render.WorldCpuProfiler.noteClampRepair();
             callbackInfo.cancel();
             return;
         }
@@ -69,6 +71,7 @@ public abstract class GlStateManagerMixin {
      */
     @Inject(method = "_glBindFramebuffer", at = @At("TAIL"))
     private static void modernopt$repairViewportOnBind(int target, int framebuffer, CallbackInfo callbackInfo) {
+        net.cr512.modernopt.render.WorldCpuProfiler.noteFramebufferBind();
         RenderPipeline.onFramebufferBound(target, framebuffer);
     }
 }
