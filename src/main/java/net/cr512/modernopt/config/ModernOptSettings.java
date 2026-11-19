@@ -18,7 +18,7 @@ public final class ModernOptSettings {
     private static volatile UpscalerType upscaler = UpscalerType.FSR1;
     private static volatile MsaaLevel msaa = MsaaLevel.OFF;
     private static volatile int shadowMapResolution = 2048;
-    private static volatile int shadowUpdateInterval = 1;
+    private static volatile int shadowUpdateInterval = 2;
     private static volatile boolean fp16World = false;
     private static volatile int hudScalePercent = 100;
     private static volatile boolean scaleWholeWindow;

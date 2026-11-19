@@ -89,9 +89,9 @@ public final class ModernOptConfig {
                         "Rebuild the shadow map every N frames instead of every frame.",
                         "1 keeps the pack's normal behaviour. 2-4 skip the whole world-from-the-sun pass on",
                         "the frames in between and keep sampling the previous map with the exact matrices",
-                        "of the frame that drew it; moving far enough forces an immediate rebuild.",
-                        "Saves one to two milliseconds per skipped frame on the frames that skip.")
-                .defineInRange("updateInterval", 1, 1, 4);
+                        "of the frame that drew it. While the camera is still, the map is held longer",
+                        "(up to four frames); large movement or a sun/time jump rebuilds immediately.")
+                .defineInRange("updateInterval", 2, 1, 4);
         b.pop();
 
         b.comment("Anti-aliasing.").push("antialiasing");

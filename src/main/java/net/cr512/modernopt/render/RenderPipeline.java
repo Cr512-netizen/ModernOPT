@@ -344,6 +344,7 @@ public final class RenderPipeline {
         if (minecraft.gameRenderer != null && minecraft.gameRenderer.getMainCamera() != null) {
             net.minecraft.world.phys.Vec3 shadowCamera = minecraft.gameRenderer.getMainCamera().getPosition();
             shadowHoldCheckCamera(shadowCamera.x, shadowCamera.y, shadowCamera.z);
+            shadowHoldCheckWorldTime(minecraft.level.getDayTime());
         }
 
         // Fast settings cache - only refresh when actually changed
@@ -817,14 +818,27 @@ public final class RenderPipeline {
     private static double shadowHoldCameraY;
     private static double shadowHoldCameraZ;
     private static boolean shadowHoldForceDraw;
+    private static boolean shadowHoldCameraStill = true;
+    private static long shadowHoldWorldTime = Long.MIN_VALUE;
 
     /** Further than this from the drawn frame's camera forces a rebuild (in blocks, squared). */
     private static final double SHADOW_HOLD_MOVE_LIMIT_SQ = 2.25;
+    /** Movement below this is treated as "standing still" (in blocks, squared). */
+    private static final double SHADOW_HOLD_STILL_SQ = 0.0025;
+    /** When the camera is still, keep the map longer than the configured interval, capped. */
+    private static final int SHADOW_HOLD_STILL_MAX = 8;
+    /** The sun may move this many ticks before the map is rebuilt (2 seconds at 20 tps). */
+    private static final long SHADOW_HOLD_TIME_STEP = 40;
 
     /** Whether the shadow map has to be drawn on this frame. */
     public static boolean shadowHoldShouldDraw(int interval) {
-        return !shadowHoldHaveMap || !shadowHoldHaveMatrices || interval <= 1 || shadowHoldForceDraw
-                || shadowHoldFrames >= interval - 1;
+        if (!shadowHoldHaveMap || !shadowHoldHaveMatrices || interval <= 1 || shadowHoldForceDraw) {
+            return true;
+        }
+        int effective = shadowHoldCameraStill
+                ? Math.min(SHADOW_HOLD_STILL_MAX, Math.max(interval, 4))
+                : interval;
+        return shadowHoldFrames >= effective - 1;
     }
 
     /** Camera position of the last frame that actually drew the map. */
@@ -845,9 +859,29 @@ public final class RenderPipeline {
         double dx = x - shadowHoldCameraX;
         double dy = y - shadowHoldCameraY;
         double dz = z - shadowHoldCameraZ;
-        if (dx * dx + dy * dy + dz * dz > SHADOW_HOLD_MOVE_LIMIT_SQ) {
+        double distanceSq = dx * dx + dy * dy + dz * dz;
+        shadowHoldCameraStill = distanceSq <= SHADOW_HOLD_STILL_SQ;
+        if (distanceSq > SHADOW_HOLD_MOVE_LIMIT_SQ) {
             shadowHoldForceDraw = true;
         }
+    }
+
+    /** Sun/time change since the drawn frame requires a fresh shadow map. */
+    public static void shadowHoldCheckWorldTime(long worldTime) {
+        if (!shadowHoldHaveMap || ModernOptSettings.shadowUpdateInterval() <= 1) {
+            return;
+        }
+        if (shadowHoldWorldTime != Long.MIN_VALUE && worldTime != shadowHoldWorldTime) {
+            long delta = Math.abs(worldTime - shadowHoldWorldTime);
+            delta = Math.min(delta, 24000L - Math.min(delta, 24000L));
+            if (delta > SHADOW_HOLD_TIME_STEP) {
+                shadowHoldForceDraw = true;
+            }
+        }
+    }
+
+    public static void shadowHoldSetWorldTime(long worldTime) {
+        shadowHoldWorldTime = worldTime;
     }
 
     /** Marks a frame that skipped the shadow pass. */
@@ -874,6 +908,8 @@ public final class RenderPipeline {
         shadowHoldHaveMatrices = false;
         shadowHoldForceDraw = false;
         shadowHoldFramebuffer = -1;
+        shadowHoldWorldTime = Long.MIN_VALUE;
+        shadowHoldCameraStill = true;
     }
 
     /** GL id of the shadow framebuffer the pack samples, or -1 when unknown. */
