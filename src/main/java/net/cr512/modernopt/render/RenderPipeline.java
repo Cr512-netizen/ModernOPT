@@ -310,6 +310,8 @@ public final class RenderPipeline {
 
     /** Called at the head of {@code GameRenderer#renderLevel}. */
     public static void beginWorldFrame() {
+        WorldCpuProfiler.noteWorldFrame();
+        WorldCpuProfiler.maybeLog();
         worldActive = false;
         msrThisFrame = false;
         msr2ThisFrame = false;
@@ -1633,6 +1635,7 @@ public final class RenderPipeline {
         if (width == target.viewWidth && height == target.viewHeight) {
             return false;
         }
+        net.cr512.modernopt.render.WorldCpuProfiler.noteClampGlQuery();
         if (!target.isCurrentDrawTarget()) {
             return false;
         }

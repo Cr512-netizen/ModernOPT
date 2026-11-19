@@ -178,6 +178,7 @@ public final class ScaledRenderTarget extends RenderTarget {
 
     private void bindWriteInternal(boolean setViewport) {
         RenderSystem.assertOnRenderThreadOrInit();
+        net.cr512.modernopt.render.WorldCpuProfiler.noteBind();
 
         // Go through the vanilla implementation first. Iris mixes into RenderTarget#bindWrite
         // and only learns that "the main target is bound" from there; skipping it makes Iris

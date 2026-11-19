@@ -2,6 +2,7 @@ package net.cr512.modernopt.mixin;
 
 import net.cr512.modernopt.render.MotionVectorCollector;
 import net.cr512.modernopt.render.RenderPipeline;
+import net.cr512.modernopt.render.WorldCpuProfiler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.world.entity.Entity;
@@ -25,6 +26,7 @@ public abstract class EntityRenderDispatcherMixin {
         at = @At("HEAD")
     )
     private void modernopt$recordEntityMotion(Entity entity, double x, double y, double z, float yaw, float pitch, com.mojang.blaze3d.vertex.PoseStack poseStack, net.minecraft.client.renderer.MultiBufferSource multiBufferSource, int packedLight, CallbackInfo ci) {
+        WorldCpuProfiler.beginEntity();
         MotionVectorCollector collector = RenderPipeline.getMotionVectorCollector();
         if (collector == null) return;
 
@@ -64,5 +66,13 @@ public abstract class EntityRenderDispatcherMixin {
         if (screenX >= 0 && screenX <= 1 && screenY >= 0 && screenY <= 1) {
             collector.recordMotion(entity.getId(), screenX, screenY);
         }
+    }
+
+    @Inject(method = "render", at = @At("RETURN"))
+    private void modernopt$endEntityTiming(Entity entity, double x, double y, double z, float yaw, float pitch,
+            com.mojang.blaze3d.vertex.PoseStack poseStack,
+            net.minecraft.client.renderer.MultiBufferSource multiBufferSource, int packedLight,
+            CallbackInfo ci) {
+        WorldCpuProfiler.endEntity();
     }
 }

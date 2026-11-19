@@ -2,6 +2,7 @@ package net.cr512.modernopt.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.cr512.modernopt.render.GpuProfiler;
+import net.cr512.modernopt.render.WorldCpuProfiler;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.RenderType;
@@ -22,11 +23,13 @@ public abstract class LevelRendererTimingMixin {
     private void modernopt$beginTerrain(RenderType renderType, double x, double y, double z,
             Matrix4f modelView, Matrix4f projection, CallbackInfo callbackInfo) {
         GpuProfiler.begin(GpuProfiler.TERRAIN);
+        WorldCpuProfiler.beginTerrain();
     }
 
     @Inject(method = "renderSectionLayer", at = @At("RETURN"))
     private void modernopt$endTerrain(RenderType renderType, double x, double y, double z,
             Matrix4f modelView, Matrix4f projection, CallbackInfo callbackInfo) {
+        WorldCpuProfiler.endTerrain();
         GpuProfiler.end(GpuProfiler.TERRAIN);
     }
 
