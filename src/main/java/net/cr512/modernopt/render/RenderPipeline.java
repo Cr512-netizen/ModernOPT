@@ -312,6 +312,7 @@ public final class RenderPipeline {
     public static void beginWorldFrame() {
         WorldCpuProfiler.noteWorldFrame();
         WorldCpuProfiler.maybeLog();
+        shadowHoldNoteFrame();
         worldActive = false;
         msrThisFrame = false;
         msr2ThisFrame = false;
@@ -345,6 +346,7 @@ public final class RenderPipeline {
             net.minecraft.world.phys.Vec3 shadowCamera = minecraft.gameRenderer.getMainCamera().getPosition();
             shadowHoldCheckCamera(shadowCamera.x, shadowCamera.y, shadowCamera.z);
             shadowHoldCheckWorldTime(minecraft.level.getDayTime());
+            shadowHoldCheckEntities(minecraft.level);
         }
 
         // Fast settings cache - only refresh when actually changed
@@ -820,11 +822,16 @@ public final class RenderPipeline {
     private static boolean shadowHoldForceDraw;
     private static boolean shadowHoldCameraStill = true;
     private static long shadowHoldWorldTime = Long.MIN_VALUE;
+    private static double shadowHoldFrameMs = 8.0;
+    private static long shadowHoldLastFrameNanos;
+    private static final java.util.Map<Integer, double[]> shadowHoldEntities = new java.util.HashMap<>();
 
     /** Further than this from the drawn frame's camera forces a rebuild (in blocks, squared). */
     private static final double SHADOW_HOLD_MOVE_LIMIT_SQ = 2.25;
     /** Movement below this is treated as "standing still" (in blocks, squared). */
     private static final double SHADOW_HOLD_STILL_SQ = 0.0025;
+    /** A visible shadow caster moving more than this invalidates the held map (blocks, squared). */
+    private static final double SHADOW_HOLD_ENTITY_MOVE_SQ = 0.01;
     /** When the camera is still, keep the map longer than the configured interval, capped. */
     private static final int SHADOW_HOLD_STILL_MAX = 8;
     /** The sun may move this many ticks before the map is rebuilt (2 seconds at 20 tps). */
@@ -838,6 +845,15 @@ public final class RenderPipeline {
         int effective = shadowHoldCameraStill
                 ? Math.min(SHADOW_HOLD_STILL_MAX, Math.max(interval, 4))
                 : interval;
+        // Heavy *static* frames get a larger shadow budget; when the camera moves, keep the
+        // configured interval so moving shadows cannot visibly lag.
+        if (shadowHoldCameraStill) {
+            if (shadowHoldFrameMs > 12.0) {
+                effective = Math.min(SHADOW_HOLD_STILL_MAX, effective + 2);
+            } else if (shadowHoldFrameMs > 10.0) {
+                effective = Math.min(SHADOW_HOLD_STILL_MAX, effective + 1);
+            }
+        }
         return shadowHoldFrames >= effective - 1;
     }
 
@@ -884,6 +900,65 @@ public final class RenderPipeline {
         shadowHoldWorldTime = worldTime;
     }
 
+    /** Feeds the smoothed frame time used by the shadow budget. Call once per world frame. */
+    public static void shadowHoldNoteFrame() {
+        long now = System.nanoTime();
+        if (shadowHoldLastFrameNanos != 0L) {
+            double ms = (now - shadowHoldLastFrameNanos) / 1_000_000.0;
+            if (ms > 0.0 && ms < 100.0) {
+                shadowHoldFrameMs = shadowHoldFrameMs * 0.9 + ms * 0.1;
+            }
+        }
+        shadowHoldLastFrameNanos = now;
+    }
+
+    /** Remembers the casters that were visible when the map was drawn. */
+    public static void shadowHoldCaptureEntities(net.minecraft.client.multiplayer.ClientLevel level,
+            double cameraX, double cameraY, double cameraZ) {
+        shadowHoldEntities.clear();
+        if (level == null || ModernOptSettings.shadowUpdateInterval() <= 1) {
+            return;
+        }
+        double radiusSq = 128.0 * 128.0;
+        try {
+            for (net.minecraft.world.entity.Entity entity : level.entitiesForRendering()) {
+                if (!entity.isAlive()) {
+                    continue;
+                }
+                double dx = entity.getX() - cameraX;
+                double dy = entity.getY() - cameraY;
+                double dz = entity.getZ() - cameraZ;
+                if (dx * dx + dy * dy + dz * dz <= radiusSq) {
+                    shadowHoldEntities.put(entity.getId(),
+                            new double[]{entity.getX(), entity.getY(), entity.getZ()});
+                }
+            }
+        } catch (Throwable ignored) {
+            // A concurrent entity update only means less precision for one hold window.
+        }
+    }
+
+    /** Any visible caster moving invalidates the held map before it becomes noticeable. */
+    public static void shadowHoldCheckEntities(net.minecraft.client.multiplayer.ClientLevel level) {
+        if (level == null || shadowHoldEntities.isEmpty() || ModernOptSettings.shadowUpdateInterval() <= 1) {
+            return;
+        }
+        for (java.util.Map.Entry<Integer, double[]> entry : shadowHoldEntities.entrySet()) {
+            net.minecraft.world.entity.Entity entity = level.getEntity(entry.getKey());
+            if (entity == null) {
+                continue;
+            }
+            double[] position = entry.getValue();
+            double dx = entity.getX() - position[0];
+            double dy = entity.getY() - position[1];
+            double dz = entity.getZ() - position[2];
+            if (dx * dx + dy * dy + dz * dz > SHADOW_HOLD_ENTITY_MOVE_SQ) {
+                shadowHoldForceDraw = true;
+                return;
+            }
+        }
+    }
+
     /** Marks a frame that skipped the shadow pass. */
     public static void shadowHoldNoteSkipped() {
         shadowHoldFrames++;
@@ -910,6 +985,7 @@ public final class RenderPipeline {
         shadowHoldFramebuffer = -1;
         shadowHoldWorldTime = Long.MIN_VALUE;
         shadowHoldCameraStill = true;
+        shadowHoldEntities.clear();
     }
 
     /** GL id of the shadow framebuffer the pack samples, or -1 when unknown. */

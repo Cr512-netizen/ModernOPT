@@ -133,6 +133,7 @@ public abstract class IrisShadowRendererMixin {
             RenderPipeline.shadowHoldSetCamera(position.x, position.y, position.z);
             RenderPipeline.shadowHoldSetWorldTime(minecraft.level == null ? Long.MIN_VALUE
                     : minecraft.level.getDayTime());
+            RenderPipeline.shadowHoldCaptureEntities(minecraft.level, position.x, position.y, position.z);
             modernopt$haveHeld = true;
             modernopt$framesSinceDraw = 0;
         } catch (Throwable throwable) {
