@@ -9,6 +9,7 @@
     "GameRendererMixin",
     "LevelRendererTimingMixin",
     "GlStateManagerMixin",
+    "MinecraftAccessor",
     "MinecraftMixin",
     "ScreenshotMixin",
     "WindowMixin"

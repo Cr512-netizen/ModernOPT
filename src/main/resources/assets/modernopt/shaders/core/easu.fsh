@@ -10,15 +10,20 @@ uniform vec4 Params;
 in vec2 texCoord;
 out vec4 fragColor;
 
-// Exposure-invariant luma - works with HDR/tonemapped colors from shader packs
+// Monotone luma. The previous version divided every channel by (c + 0.15) before the dot
+// product, which cost 36 divisions per output pixel at 2x. EASU only needs a scalar that
+// responds monotonically to the three channels; plain Rec.601 luma is what the reference uses
+// and is also well behaved for the HDR values a shader pack produces.
 float lumaOf(vec3 c) {
-    vec3 mapped = c / (c + vec3(0.15));
-    return dot(mapped, vec3(0.299, 0.587, 0.114));
+    return dot(max(c, vec3(0.0)), vec3(0.299, 0.587, 0.114));
 }
 
-// Fused fetch with luma - single texture read per tap
+// Fused fetch with luma - one unfiltered texel read per tap. The coordinates are already
+// integer texel positions; texelFetch avoids the normalized-coordinate setup and the
+// four-tap bilinear filter that texture() would run for every one of the twelve taps.
 vec4 fetchLuma(vec2 p) {
-    vec3 c = texture(InputSampler, (p + 0.5) / InputSize).rgb;
+    ivec2 ip = clamp(ivec2(p), ivec2(0), ivec2(InputSize) - ivec2(1));
+    vec3 c = texelFetch(InputSampler, ip, 0).rgb;
     return vec4(c, lumaOf(c));
 }
 

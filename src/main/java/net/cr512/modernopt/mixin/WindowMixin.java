@@ -3,41 +3,36 @@
 
 package net.cr512.modernopt.mixin;
 
+import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import com.mojang.blaze3d.platform.Window;
 import net.cr512.modernopt.render.RenderPipeline;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Reports the internal render resolution from {@code Window} while the world is being rendered.
+ * Reports the internal render resolution while a mode that scales the whole frame is active.
  *
- * <p>Redirecting {@code Minecraft#getMainRenderTarget()} alone is not enough: subsystems that size
- * their own buffers from the window (Iris' post-processing chain, vanilla helper targets, weather
- * and entity buffers, Sodium's per-frame allocations) keep allocating at the native resolution and
- * then draw full-resolution passes over a scaled image. A full-frame render-scale pipeline solves this
- * by making {@code Window} answer with the scaled size; this mixin does the same, but only for the
- * duration of the world pass, so the GUI, mouse handling and screenshots stay native.</p>
+ * <p>The plain world-only path leaves the window alone: the main target field is swapped instead,
+ * so subsystems that size buffers from the window are not forced through a getter hook on every
+ * call. Whole-window mode still needs the override because the window blit and GUI layout have to
+ * agree with the small main target. {@code @ModifyReturnValue} avoids allocating a callback object
+ * on every {@code getWidth}/{@code getHeight} call.</p>
  */
 @Mixin(Window.class)
 public abstract class WindowMixin {
 
-    @Inject(method = "getWidth()I", at = @At("HEAD"), cancellable = true)
-    private void modernopt$scaledWidth(CallbackInfoReturnable<Integer> callbackInfo) {
+    @ModifyReturnValue(method = "getWidth()I", at = @At("RETURN"))
+    private int modernopt$scaledWidth(int original) {
         int override = RenderPipeline.windowWidthOverride();
-        if (override > 0) {
-            callbackInfo.setReturnValue(override);
-        }
+        return override > 0 ? override : original;
     }
 
-    @Inject(method = "getHeight()I", at = @At("HEAD"), cancellable = true)
-    private void modernopt$scaledHeight(CallbackInfoReturnable<Integer> callbackInfo) {
+    @ModifyReturnValue(method = "getHeight()I", at = @At("RETURN"))
+    private int modernopt$scaledHeight(int original) {
         int override = RenderPipeline.windowHeightOverride();
-        if (override > 0) {
-            callbackInfo.setReturnValue(override);
-        }
+        return override > 0 ? override : original;
     }
 
     /** Presents the whole-window-scaled frame just before the back buffer is swapped. */

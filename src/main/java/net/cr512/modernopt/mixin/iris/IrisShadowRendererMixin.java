@@ -48,11 +48,17 @@ public abstract class IrisShadowRendererMixin {
 
     @Inject(method = "renderShadows", at = @At("HEAD"), cancellable = true, require = 0, remap = false)
     private void modernopt$beginShadowPass(CallbackInfo callbackInfo) {
+        int interval = Math.max(1, ModernOptSettings.shadowUpdateInterval());
+        if (interval <= 1) {
+            // Every-frame shadows are plain Iris behaviour: do not bind, query or reflect here.
+            // The hold machinery only exists for interval > 1.
+            RenderPipeline.setShadowPassActive(false);
+            return;
+        }
         if (!modernopt$haveHeld) {
             // No usable matrices from an earlier frame: draw normally instead of holding.
             RenderPipeline.shadowHoldResetTargets();
         }
-        int interval = Math.max(1, ModernOptSettings.shadowUpdateInterval());
         if (!RenderPipeline.shadowHoldShouldDraw(interval) && modernopt$haveHeld) {
             RenderPipeline.shadowHoldNoteSkipped();
             modernopt$holdMatricesForThisCamera();
@@ -77,6 +83,11 @@ public abstract class IrisShadowRendererMixin {
 
     @Inject(method = "renderShadows", at = @At("RETURN"), require = 0, remap = false)
     private void modernopt$endShadowPass(CallbackInfo callbackInfo) {
+        int interval = Math.max(1, ModernOptSettings.shadowUpdateInterval());
+        if (interval <= 1) {
+            RenderPipeline.setShadowPassActive(false);
+            return;
+        }
         modernopt$rememberDrawnFrame();
         if (modernopt$haveHeld) {
             RenderPipeline.shadowHoldNoteDrawn();

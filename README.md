@@ -77,21 +77,28 @@ scaled one. The win is image quality: the upscaler now reads the same HDR range 
 ## How it works
 
 ```
-GameRenderer#renderLevel (HEAD)          -> bind the scaled target, redirect
-                                            Minecraft#getMainRenderTarget to it
-   world, entities, particles, weather   -> drawn into the internal target
-GameRenderer#render before Gui#render    -> drop the redirect, resolve MSAA,
-                                            run upscaler (+ optional FXAA) into the
-                                            real main target, bind it again
-Gui#render                               -> native resolution, untouched
+GameRenderer#renderLevel (HEAD)
+  plain modes (bilinear/nearest/soft/FSR 1)
+                                       -> install a minimal colour+depth target in the real
+                                          Minecraft#mainRenderTarget field, bind and clear it
+  advanced modes (MSAA/FP16/SSAA/MSR)  -> bind the scaled target and redirect
+                                          Minecraft#getMainRenderTarget to it
+   world, entities, particles, weather -> drawn into the internal target
+GameRenderer#render before Gui#render   -> restore the real target / drop the redirect,
+                                          run the upscaler (+ optional FXAA) into the real
+                                          main target, bind it again
+Gui#render                              -> native resolution, untouched
 ```
 
 Key points:
 
-* `Minecraft#getMainRenderTarget()` is the only thing that is redirected, so vanilla code paths
-  and mods that ask the game "where do I draw" keep working (Sodium chunk rendering, Distant
-  Horizons, weather, post effects).
-* The scaled target is a real `RenderTarget` (colour + depth texture), so anything that samples
+* Plain modes do not redirect `Minecraft#getMainRenderTarget()` at all: the field already
+  points at the small target, which removes a getter hook from Sodium's and Iris' hottest
+  path. The HUD keeps its own optional redirect, and advanced modes retain the call-time one
+  because their MSAA/FP16/temporal plumbing is built around the scaled target.
+* The fast target is a minimal `TextureTarget` (colour + depth), with no multisampling, HDR
+  attachment or history buffers. Advanced modes keep the existing `ScaledRenderTarget`.
+* The world target is a real `RenderTarget` (colour + depth texture), so anything that samples
   the depth buffer still finds one.
 * MSAA uses a separate multisampled framebuffer and resolves only the colour buffer; the depth
   buffer of the single-sampled target is what other code reads.
@@ -102,15 +109,16 @@ Key points:
 
 ## Compatibility
 
-* **Sodium** - no rendering conflict by design (only `getMainRenderTarget()` is redirected). The
-  Sodium video settings get a **ModernOPT** page that opens the full options screen, plus a
-  native **Settings** page with the common options. This uses Sodium 0.8.13's config API and its
-  `sodium:config_api_user` mod property, the same mechanism Iris uses. Sodium is a compile-only
-  dependency: its classes are only touched by `ModernOptSodiumConfig`, which Sodium itself loads,
-  so the mod still starts normally when Sodium is absent.
+* **Sodium** - no rendering conflict by design (plain modes swap the main target field, advanced
+  modes redirect `getMainRenderTarget()`). The Sodium video settings get a **ModernOPT** page that
+  opens the full options screen, plus a native **Settings** page with the common options. This uses
+  Sodium 0.8.13's config API and its `sodium:config_api_user` mod property, the same mechanism Iris
+  uses. Sodium is a compile-only dependency: its classes are only touched by
+  `ModernOptSodiumConfig`, which Sodium itself loads, so the mod still starts normally when Sodium
+  is absent.
 * **Iris** - supported. Iris sizes its gbuffer and depth targets from
-  `Minecraft#getMainRenderTarget()`, so the same redirect scales the whole shader pipeline, not
-  just the vanilla world pass. While a shader pack is active MSAA is forced off (the pack owns
+  `Minecraft#getMainRenderTarget()`, so both the field swap and the advanced redirect scale the
+  whole shader pipeline, not just the vanilla world pass. While a shader pack is active MSAA is forced off (the pack owns
   its multisampled buffers); render scaling, the upscaler and FXAA still apply. Iris caches the
   depth texture it attaches to its framebuffers behind a version counter, so the scaled target
   exposes its own counter through the `Blaze3dRenderTargetExt` methods. That keeps depth correct
