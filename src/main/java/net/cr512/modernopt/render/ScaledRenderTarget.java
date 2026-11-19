@@ -60,6 +60,16 @@ public final class ScaledRenderTarget extends RenderTarget {
         cachedViewportHeight = height;
     }
 
+    /** Width half of {@link #noteViewport(int, int)}; used by non-allocating argument hooks. */
+    public static void noteViewportWidth(int width) {
+        cachedViewportWidth = width;
+    }
+
+    /** Height half of {@link #noteViewport(int, int)}; used by non-allocating argument hooks. */
+    public static void noteViewportHeight(int height) {
+        cachedViewportHeight = height;
+    }
+
     /** Width of the last viewport requested through GlStateManager. */
     public static int viewportWidth() {
         return cachedViewportWidth;

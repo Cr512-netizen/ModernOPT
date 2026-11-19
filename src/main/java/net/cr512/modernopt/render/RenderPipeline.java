@@ -51,6 +51,14 @@ import org.joml.Vector3f;
 public final class RenderPipeline {
 
     private static ScaledRenderTarget scaled;
+    /** Minimal target used by plain spatial modes (bilinear / nearest / FSR 1). */
+    private static FastWorldTarget fastTarget;
+    /** Target the current world frame is drawing into (fast or advanced), or {@code null}. */
+    private static RenderTarget frameWorldTarget;
+    private static boolean fastWorldActive;
+    /** Real {@code Minecraft.mainRenderTarget} while the field is pointing at the world target. */
+    private static RenderTarget nativeMainTarget;
+    private static boolean worldTargetSwapped;
     private static TextureTarget fsrTarget;
     private static TextureTarget fxaaTarget;
     private static HalfFloatTarget historyA;
@@ -222,7 +230,8 @@ public final class RenderPipeline {
             RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
             return main != null ? main.width : -1;
         }
-        return windowScaled && scaled != null ? scaled.viewWidth : -1;
+        RenderTarget target = activeWorldTarget();
+        return windowScaled && target != null ? target.viewWidth : -1;
     }
     /** Returns the height {@code Window#getHeight} should report, or {@code -1} for the real one. */
     public static int windowHeightOverride() {
@@ -230,7 +239,19 @@ public final class RenderPipeline {
             RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
             return main != null ? main.height : -1;
         }
-        return windowScaled && scaled != null ? scaled.viewHeight : -1;
+        RenderTarget target = activeWorldTarget();
+        return windowScaled && target != null ? target.viewHeight : -1;
+    }
+
+    /** Target used by the current (or last) world frame. */
+    public static RenderTarget activeWorldTarget() {
+        if (frameWorldTarget != null) {
+            return frameWorldTarget;
+        }
+        if (fastWorldActive && fastTarget != null) {
+            return fastTarget;
+        }
+        return scaled;
     }
 
     /** Real framebuffer width, captured when the world frame starts. */
@@ -265,15 +286,17 @@ public final class RenderPipeline {
 
     /** Internal world resolution, for the overlay and for logging. */
     public static int internalWidth() {
-        return scaled != null ? scaled.width : -1;
+        RenderTarget target = activeWorldTarget();
+        return target != null ? target.width : -1;
     }
 
     public static int internalHeight() {
-        return scaled != null ? scaled.height : -1;
+        RenderTarget target = activeWorldTarget();
+        return target != null ? target.height : -1;
     }
 
     public static int activeSamples() {
-        return scaled != null ? scaled.activeSamples() : 1;
+        return fastWorldActive ? 1 : (scaled != null ? scaled.activeSamples() : 1);
     }
 
     /**
@@ -291,9 +314,22 @@ public final class RenderPipeline {
         return requested.label();
     }
 
+    /**
+     * Advanced modes still use the call-time redirect so their existing MSAA/FP16/temporal
+     * plumbing keeps seeing the scaled target. The fast path never reaches this: its target is
+     * installed in the real field instead.
+     */
+    public static RenderTarget redirectedWorldTarget() {
+        if (!worldActive || fastWorldActive) {
+            return null;
+        }
+        return frameWorldTarget;
+    }
+
     /** The target the world should render into, or {@code null} when vanilla rendering is fine. */
+    @Deprecated
     public static RenderTarget currentWorldTarget() {
-        return worldActive ? scaled : null;
+        return redirectedWorldTarget();
     }
 
     /** Get the motion vector collector for entity motion recording. */
@@ -324,6 +360,10 @@ public final class RenderPipeline {
         // Never let the window-size override leak from a frame that was skipped or aborted:
         // otherwise the next frame reads the *scaled* width back and halves the target again.
         windowScaled = false;
+        frameWorldTarget = null;
+        // A previous frame may have been aborted between the field swap and its restore (screen
+        // change, exception, cancelled renderLevel). Start from the real target every time.
+        restoreMainTarget();
 
         GpuProfiler.maybeLog();
         RenderStageProfiler.maybeLog();
@@ -492,6 +532,27 @@ public final class RenderPipeline {
 
         scaled.setLinearFilter(requested != UpscalerType.NEAREST);
         msrThisFrame = msrWanted;
+        // Plain spatial modes do not need the MSAA/FP16/history plumbing of ScaledRenderTarget.
+        // Use the minimal target for those and keep the advanced target dormant as a fallback.
+        boolean useFastTarget = !cachedMsrEnabled
+                && !msrWanted
+                && !cachedSsaa
+                && samples == 1
+                && !ModernOptSettings.fp16World();
+        if (useFastTarget) {
+            ensureFastTarget(size[0], size[1]);
+            useFastTarget = fastTarget != null;
+        }
+        RenderTarget worldTarget = useFastTarget ? fastTarget : scaled;
+        frameWorldTarget = worldTarget;
+        fastWorldActive = useFastTarget;
+        if (worldTarget != null) {
+            int filterMode = requested != UpscalerType.NEAREST
+                    ? GL11C.GL_LINEAR : GL11C.GL_NEAREST;
+            if (worldTarget.filterMode != filterMode) {
+                worldTarget.setFilterMode(filterMode);
+            }
+        }
         int outputWidth = minecraft.getMainRenderTarget().width;
         int outputHeight = minecraft.getMainRenderTarget().height;
         if (msrWanted && !msrUnsupported) {
@@ -501,16 +562,31 @@ public final class RenderPipeline {
             ensureHistoryTargets(outputWidth, outputHeight);
         }
         worldActive = true;
-        scaled.bindWrite(true);
+        if (useFastTarget) {
+            // Plain spatial modes: install the small target in the real field. This is the hot
+            // path and must not pay for a per-call getter redirect.
+            swapMainTarget(minecraft, worldTarget);
+        }
+        if (worldTarget != null) {
+            // The frame-start clear in Minecraft#run targeted the native main target. Clear the
+            // small target here so plain rendering and packs that do not cover every pixel both
+            // start from a valid colour/depth buffer.
+            worldTarget.bindWrite(true);
+            GlStateManager._clearColor(0.0F, 0.0F, 0.0F, 0.0F);
+            GlStateManager._clear(GL11C.GL_COLOR_BUFFER_BIT | GL11C.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
+        }
         realWindowWidth = minecraft.getWindow().getWidth();
         realWindowHeight = minecraft.getWindow().getHeight();
-        windowScaled = true;
+        // Only the advanced path keeps the window override; the fast path leaves the window
+        // native and relies on the swapped main target.
+        windowScaled = !useFastTarget;
         wholeWindowActive = cachedScaleWholeWindow
-                && (scaled.width < realWindowWidth || scaled.height < realWindowHeight);
-        if (wholeWindowActive) {
+                && worldTarget != null
+                && (worldTarget.width < realWindowWidth || worldTarget.height < realWindowHeight);
+        if (wholeWindowActive && worldTarget != null) {
             // The scaled target *is* this frame's target; one blit at the end of Minecraft#run
             // puts it on the window. Linear filtering keeps the upscale smooth.
-            scaled.setLinearFilter(true);
+            worldTarget.setFilterMode(GL11C.GL_LINEAR);
         }
         GpuProfiler.beginCpuWorld();
         GpuProfiler.begin(GpuProfiler.WORLD);
@@ -611,23 +687,31 @@ public final class RenderPipeline {
         cachedMsrTemporalMinFps = ModernOptSettings.msr2TemporalMinFps();
         cachedMsrScaleStep = ModernOptSettings.msr2ScaleStep();
         cachedMsrMinScale = ModernOptSettings.msr2MinScale();
-// Compute shader detection (GL 4.3+)
-        if (!computeAvailable) {
-            try {
-                computeAvailable = org.lwjgl.opengl.GL.getCapabilities().OpenGL43;
-                if (computeAvailable) {
-                    motionVectorCollector = new MotionVectorCollector(true);
-                    ModernOPT.LOG.info("[ModernOPT] MSR: GL 4.3+ compute shaders available");
-                } else {
-                    ModernOPT.LOG.info("[ModernOPT] MSR: GL 4.3+ not available, using fragment shader fallback");
+        if (cachedMsrEnabled) {
+            // MSR2 needs per-entity motion vectors. Do not allocate or refresh the collector for
+            // spatial modes: the entity dispatcher calls this on every rendered entity, and an
+            // always-present collector made FSR 1 pay for temporal data it never reads.
+            if (!computeAvailable) {
+                try {
+                    computeAvailable = org.lwjgl.opengl.GL.getCapabilities().OpenGL43;
+                    if (computeAvailable) {
+                        ModernOPT.LOG.info("[ModernOPT] MSR: GL 4.3+ compute shaders available");
+                    } else {
+                        ModernOPT.LOG.info("[ModernOPT] MSR: GL 4.3+ not available, using fragment shader fallback");
+                    }
+                } catch (Throwable t) {
+                    computeAvailable = false;
+                    ModernOPT.LOG.warn("[ModernOPT] MSR: compute detection failed", t);
                 }
-            } catch (Throwable t) {
-                computeAvailable = false;
-                ModernOPT.LOG.warn("[ModernOPT] MSR: compute detection failed", t);
             }
-        }
-        if (motionVectorCollector != null) {
-            motionVectorCollector.beginFrame();
+            if (computeAvailable && motionVectorCollector == null) {
+                motionVectorCollector = new MotionVectorCollector(true);
+            }
+            if (motionVectorCollector != null) {
+                motionVectorCollector.beginFrame();
+            }
+        } else {
+            motionVectorCollector = null;
         }
     }
 
@@ -700,13 +784,13 @@ public final class RenderPipeline {
      * after the hand and therefore read an already-cleared (all-sky) depth buffer.
      */
     public static void finishBeforeHand() {
-        if (!worldActive || scaled == null) {
+        if (!worldActive || frameWorldTarget == null) {
             return;
         }
-        // Finish for every upscaler, not just the temporal ones. The hand is rendered into
-        // whatever target is bound right after this point; letting it run before the
-        // reconstruction would draw it into the scaled target and then overwrite it with the
-        // upscaled world (the hand simply disappeared in FSR 1 / bilinear / off modes).
+        // Finish for every upscaler. The hand is rendered into whatever target is bound right
+        // after this point; letting it run before the reconstruction would draw it into the
+        // small target and then overwrite it with the upscaled world (the hand simply
+        // disappeared in FSR 1 / bilinear / off modes).
         finishWorldFrame();
     }
 
@@ -806,9 +890,9 @@ public final class RenderPipeline {
         return wholeWindowActive;
     }
 
-    /** The scaled world target, or {@code null} while scaling is inactive. */
+    /** The target the world renders into, or {@code null} while scaling is inactive. */
     public static RenderTarget scaledTarget() {
-        return scaled;
+        return activeWorldTarget();
     }
 
     // ------------------------------------------------------------------
@@ -1050,7 +1134,8 @@ public final class RenderPipeline {
     }
 
     private static void finishWorldFrame() {
-        if (!worldActive || scaled == null) {
+        RenderTarget world = frameWorldTarget;
+        if (!worldActive || world == null) {
             return;
         }
         GpuProfiler.end(GpuProfiler.WORLD);
@@ -1078,6 +1163,9 @@ public final class RenderPipeline {
 
         worldActive = false;
         windowScaled = false;
+        // Put the real target back before reading it: reconstruction, the hand and the HUD all
+        // have to see the native target, not the small world field.
+        restoreMainTarget();
         msrThisFrame = false;
         poseCaptured = false;
 
@@ -1095,12 +1183,15 @@ public final class RenderPipeline {
         if (!ensureShaders(minecraft)) {
             restoreProjection(jittered);
             main.bindWrite(true);
+            frameWorldTarget = null;
             GpuProfiler.end(GpuProfiler.UPSCALE);
             return;
         }
 
         try {
-            scaled.resolveMsaa();
+            if (world == scaled && scaled != null) {
+                scaled.resolveMsaa();
+            }
             if (temporal) {
                 try {
                     reconstructMsr(main);
@@ -1119,7 +1210,7 @@ public final class RenderPipeline {
                     } else {
                         ModernOPT.LOG.error("[ModernOPT] MSR pass failed again (loggedMsrFallback already true): " + throwable.getMessage());
                     }
-                    reconstructSpatial(main);
+                    reconstructSpatial(main, world);
                 }
             } else if (msr2ActiveThisFrame) {
                 try {
@@ -1133,14 +1224,14 @@ public final class RenderPipeline {
                     resetMsr2History();
                     ModernOPT.LOG.error("[ModernOPT] MSR2 pass failed, falling back to FSR 1", throwable);
                     try {
-                        reconstructSpatial(main);
+                        reconstructSpatial(main, world);
                     } catch (Throwable fallbackFailure) {
                         ModernOPT.LOG.error("[ModernOPT] FSR 1 fallback after MSR failure also failed", fallbackFailure);
                     }
                 }
                 msr2ActiveThisFrame = false;
             } else {
-                reconstructSpatial(main);
+                reconstructSpatial(main, world);
             }
         } catch (Throwable throwable) {
             ModernOPT.LOG.error("[ModernOPT] reconstruction failed, falling back to a plain blit", throwable);
@@ -1160,6 +1251,7 @@ public final class RenderPipeline {
             // world pipeline instead. That copy never survives the composite at a reduced render
             // scale, so the hand is redrawn natively right after this frame is upscaled.
             deferredHandThisFrame = irisThisFrame;
+            frameWorldTarget = null;
             GpuProfiler.end(GpuProfiler.UPSCALE);
         }
     }
@@ -1292,12 +1384,15 @@ public final class RenderPipeline {
     }
 
     /** Spatial reconstruction used by every non-temporal mode, and by the MSR fallback. */
-    private static void reconstructSpatial(RenderTarget main) {
+    private static void reconstructSpatial(RenderTarget main, RenderTarget source) {
+        if (source == null) {
+            throw new IllegalStateException("world target is not allocated");
+        }
         int outWidth = main.width;
         int outHeight = main.height;
-        int sourceTexture = scaled.getColorTextureId();
-        int sourceWidth = scaled.width;
-        int sourceHeight = scaled.height;
+        int sourceTexture = source.getColorTextureId();
+        int sourceWidth = source.width;
+        int sourceHeight = source.height;
 
         float softness = cachedSoftness / 100.0F;
         float rcasSharpness = cachedFsrRcasSharpness / 100.0F;
@@ -1327,6 +1422,13 @@ public final class RenderPipeline {
                         main.bindWrite(true);
                         ShaderLibrary.draw(filter, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, softness, 0.0F);
                     }
+                } else if (!fxaa && rcasSharpness <= 0.0F) {
+                    // No sharpening requested: EASU can write straight into the real main target.
+                    // The intermediate full-resolution buffer and the RCAS pass exist only to
+                    // sharpen, so running them with a zero lobe was pure overhead.
+                    main.bindWrite(true);
+                    ShaderLibrary.draw(library.easu, sourceTexture, sourceWidth, sourceHeight,
+                            outWidth, outHeight, 0.0F, 0.0F);
                 } else {
                     // Full FSR 1 EASU + RCAS path
                     TextureTarget easu = ensureIntermediates(outWidth, outHeight, true);
@@ -1365,8 +1467,9 @@ public final class RenderPipeline {
         if (outWidth != lastWidth || outHeight != lastHeight) {
             lastWidth = outWidth;
             lastHeight = outHeight;
+            int samples = source == scaled && scaled != null ? scaled.activeSamples() : 1;
             ModernOPT.LOG.info("[ModernOPT] presenting {}x{} world image at {}x{} (samples={})",
-                    sourceWidth, sourceHeight, outWidth, outHeight, scaled.activeSamples());
+                    sourceWidth, sourceHeight, outWidth, outHeight, samples);
         }
     }
 
@@ -1501,6 +1604,7 @@ public final class RenderPipeline {
 
     /** Puts the main target back to the real window size when whole-window scaling is off. */
     private static void restoreWindowSizedMainTarget(Minecraft minecraft) {
+        restoreMainTarget();
         boolean wasWholeWindow = wholeWindowActive;
         RenderTarget main = minecraft.getMainRenderTarget();
         int windowWidth = minecraft.getWindow().getWidth();
@@ -1528,6 +1632,8 @@ public final class RenderPipeline {
         Minecraft minecraft = Minecraft.getInstance();
         // Drop the overrides first so the window reports its real framebuffer size, even if it was
         // resized while a small main target was active.
+        restoreMainTarget();
+        frameWorldTarget = null;
         wholeWindowActive = false;
         windowScaled = false;
         int windowWidth = minecraft.getWindow().getWidth();
@@ -1571,6 +1677,56 @@ public final class RenderPipeline {
         RenderTarget main = minecraft.getMainRenderTarget();
         if (main != null && main.width > 0 && main.height > 0) {
             GlStateManager._viewport(0, 0, main.width, main.height);
+        }
+    }
+
+    private static void ensureFastTarget(int width, int height) {
+        if (fastTarget != null && fastTarget.width == width && fastTarget.height == height) {
+            return;
+        }
+        if (fastTarget != null) {
+            fastTarget.destroyBuffers();
+            fastTarget = null;
+        }
+        try {
+            fastTarget = new FastWorldTarget(width, height);
+            ModernOPT.LOG.info("[ModernOPT] fast world target {}x{} (single colour+depth, no MSAA/FP16)",
+                    width, height);
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.warn("[ModernOPT] cannot allocate the {}x{} fast target, using the advanced target",
+                    width, height, throwable);
+            fastTarget = null;
+        }
+    }
+
+    /** Installs the world target in the real {@code Minecraft.mainRenderTarget} field. */
+    private static void swapMainTarget(Minecraft minecraft, RenderTarget target) {
+        if (worldTargetSwapped || minecraft == null || target == null) {
+            return;
+        }
+        net.cr512.modernopt.mixin.MinecraftAccessor accessor =
+                (net.cr512.modernopt.mixin.MinecraftAccessor) minecraft;
+        RenderTarget current = accessor.modernopt$getMainRenderTargetField();
+        if (current == target) {
+            return;
+        }
+        nativeMainTarget = current;
+        accessor.modernopt$setMainRenderTarget(target);
+        worldTargetSwapped = true;
+    }
+
+    /** Restores the real {@code mainRenderTarget} captured by {@link #swapMainTarget}. */
+    private static void restoreMainTarget() {
+        if (!worldTargetSwapped) {
+            return;
+        }
+        worldTargetSwapped = false;
+        RenderTarget nativeTarget = nativeMainTarget;
+        nativeMainTarget = null;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (nativeTarget != null && minecraft != null) {
+            ((net.cr512.modernopt.mixin.MinecraftAccessor) minecraft)
+                    .modernopt$setMainRenderTarget(nativeTarget);
         }
     }
 
@@ -1697,14 +1853,16 @@ public final class RenderPipeline {
                 window = minecraft.getWindow().getWidth() + "x" + minecraft.getWindow().getHeight();
             }
         }
+        RenderTarget active = activeWorldTarget();
         return "window=" + window + " realWindow=" + realWindowWidth + "x" + realWindowHeight
                 + " override=" + windowWidthOverride() + "x" + windowHeightOverride()
                 + " main=" + main
-                + " scaled=" + (scaled == null ? "null" : scaled.width + "x" + scaled.height)
-                + " scaledFbo=" + (scaled == null ? -1 : scaled.fboId())
+                + " active=" + (active == null ? "null" : active.width + "x" + active.height)
+                + " fast=" + fastWorldActive
+                + " swapped=" + worldTargetSwapped
                 + " drawFbo=" + drawFbo
                 + " viewport=" + vp[0] + "," + vp[1] + " " + vp[2] + "x" + vp[3]
-                + " active=" + worldActive;
+                + " worldActive=" + worldActive;
     }
 
 
@@ -1743,7 +1901,7 @@ public final class RenderPipeline {
             GlStateManager._viewport(0, 0, main.width, main.height);
             return true;
         }
-        ScaledRenderTarget target = scaled;
+        RenderTarget target = activeWorldTarget();
         if (!worldActive || target == null) {
             return false;
         }
@@ -1751,7 +1909,7 @@ public final class RenderPipeline {
             return false;
         }
         net.cr512.modernopt.render.WorldCpuProfiler.noteClampGlQuery();
-        if (!target.isCurrentDrawTarget()) {
+        if (!isCurrentDrawTarget(target)) {
             return false;
         }
 
@@ -1761,6 +1919,54 @@ public final class RenderPipeline {
 
         GlStateManager._viewport(0, 0, target.viewWidth, target.viewHeight);
         return true;
+    }
+
+    /** True when {@code target} (or its multisampled attachment) is the current draw buffer. */
+    private static boolean isCurrentDrawTarget(RenderTarget target) {
+        if (target == null || target.frameBufferId < 0) {
+            return false;
+        }
+        int bound = GL11C.glGetInteger(GL30C.GL_DRAW_FRAMEBUFFER_BINDING);
+        if (bound == target.frameBufferId) {
+            return true;
+        }
+        return target instanceof ScaledRenderTarget advanced
+                && bound == advanced.activeFramebufferId();
+    }
+
+    /**
+     * Repairs a window-sized viewport that leaked onto the world target through a
+     * {@code bindWrite(false)}. Called from the target's own bind override, so the FBO is known to
+     * be current and no GL framebuffer query is needed.
+     */
+    public static void repairWorldViewport(RenderTarget target, boolean setViewport) {
+        if (setViewport || target == null) {
+            return;
+        }
+        if (ScaledRenderTarget.viewportWidth() == target.viewWidth
+                && ScaledRenderTarget.viewportHeight() == target.viewHeight) {
+            return;
+        }
+        if (realWindowWidth <= 0 || realWindowHeight <= 0) {
+            return;
+        }
+        if (ScaledRenderTarget.viewportWidth() != realWindowWidth
+                || ScaledRenderTarget.viewportHeight() != realWindowHeight) {
+            return;
+        }
+        GlStateManager._viewport(0, 0, target.viewWidth, target.viewHeight);
+    }
+
+    /** True when {@code framebuffer} belongs to {@code target}, including an MSAA attachment. */
+    private static boolean isWorldFramebuffer(RenderTarget target, int framebuffer) {
+        if (target == null) {
+            return false;
+        }
+        if (framebuffer == target.frameBufferId) {
+            return true;
+        }
+        return target instanceof ScaledRenderTarget advanced
+                && framebuffer == advanced.activeFramebufferId();
     }
 
     /**
@@ -1774,7 +1980,7 @@ public final class RenderPipeline {
      * player sliver in the top-right corner and the floating entity fragments in the sky.</p>
      */
     public static void onFramebufferBound(int target, int framebuffer) {
-        ScaledRenderTarget scaledTarget = scaled;
+        RenderTarget activeTarget = activeWorldTarget();
         if (shadowPassActive()) {
             return;
         }
@@ -1795,13 +2001,11 @@ public final class RenderPipeline {
             frameWidth = main.width;
             frameHeight = main.height;
         } else {
-            if (scaledTarget == null
-                    || (framebuffer != scaledTarget.fboId()
-                    && framebuffer != scaledTarget.activeFramebufferId())) {
+            if (activeTarget == null || !isWorldFramebuffer(activeTarget, framebuffer)) {
                 return;
             }
-            frameWidth = scaledTarget.viewWidth;
-            frameHeight = scaledTarget.viewHeight;
+            frameWidth = activeTarget.viewWidth;
+            frameHeight = activeTarget.viewHeight;
         }
         if (realWindowWidth <= 0 || realWindowHeight <= 0) {
             return;
@@ -1861,10 +2065,17 @@ public final class RenderPipeline {
 
     /** Drops every GL object; called from the client stopping event so nothing leaks on world exit. */
     public static void shutdown() {
+        restoreMainTarget();
+        frameWorldTarget = null;
+        fastWorldActive = false;
         worldActive = false;
         msrThisFrame = false;
         poseCaptured = false;
         historyValid = false;
+        if (fastTarget != null) {
+            fastTarget.destroyBuffers();
+            fastTarget = null;
+        }
         if (scaled != null) {
             scaled.destroyBuffers();
             scaled = null;
