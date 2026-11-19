@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Cr512-netizen
+
 package net.cr512.modernopt.mixin.iris;
 
 import net.cr512.modernopt.render.ShadowResolutionPatcher;

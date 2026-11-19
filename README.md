@@ -270,3 +270,8 @@ exactly this on every push and uploads the jar as an artifact.
   [FidelityFX Super Resolution 2](https://github.com/GPUOpen-Effects/FidelityFX-FSR2) design
   (jitter, reprojection, history clamping, RCAS). It shares no code with the FSR 2 reference.
 * FXAA follows Timothy Lottes' original luma-based algorithm.
+
+## License
+
+ModernOPT is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+

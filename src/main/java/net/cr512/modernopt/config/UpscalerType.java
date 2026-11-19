@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Cr512-netizen
+
 package net.cr512.modernopt.config;
 
 /** Reconstruction filters available for scaling the world image back to window size. */
