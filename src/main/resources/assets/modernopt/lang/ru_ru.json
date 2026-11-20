@@ -41,6 +41,7 @@
   "modernopt.option.overlay.tooltip": "Показывать FPS и текущее внутреннее разрешение.",
   "modernopt.option.msrEnabled": "MSR2 (экспериментальный)",
   "modernopt.option.msrLanczos": "MSR2 Lanczos-реконструкция",
+  "modernopt.option.msrLanczos3": "MSR2 Lanczos-3 качество",
   "modernopt.option.msrVarianceScale": "MSR2 масштаб дисперсии",
   "modernopt.option.msrEdgeAware": "MSR2 edge-aware интерполяция",
   "modernopt.option.msrSharpness": "MSR2 резкость",
