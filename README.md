@@ -48,15 +48,17 @@ pack's output and upscales it. MSAA is also forced off in MSR mode and that is l
 
 `MSR2` is the newest upscaler in ModernOPT. It uses the same camera-reconstructed motion vectors
 as MSR, but merges the passes: a temporal pass with variance clipping in YCoCg (3x3 mean +
-2-sigma rejection, much better ghosting suppression than the old 5-point clamp) followed by a
-fused spatial pass that does EASU upsampling + RCAS sharpening in a single fragment shader with
-edge-aware interpolation along depth edges, so block faces stay crisp instead of being smeared.
+2-sigma rejection, much better ghosting suppression than the old 5-point clamp) followed by an
+RCAS sharpen pass.
 
 Key properties:
-- History is stored as R11G11B10F + R16_UINT (48 bits/px vs 64 for RGBA16F) -- half the VRAM
-  bandwidth, critical for iGPUs.
-- The temporal pass runs as a fragment shader on GL 3.2+ (compute shader path on GL 4.3+).
-- The final blit uses hardware glBlitFramebuffer with GL_LINEAR, not a custom shader.
+- History is stored as **R11G11B10F colour + R16_UINT depth** (48 bits/px vs 64 for RGBA16F),
+  and it is allocated at the **output resolution**. The temporal pass therefore keeps the detail
+  it accumulates instead of throwing it away before the final upscale.
+- The temporal pass runs as a compute shader on GL 4.3+ and dispatches one thread per output
+  pixel; the final pass is RCAS, or a plain copy when sharpening is off.
+- The fragment fallback remains for GPUs without compute, but a compute-capable driver is needed
+  for the output-resolution history path.
 - Iris integration: shadow viewports are preserved, and if the Iris depth buffer cannot be
   read cleanly MSR falls back to a simplified spatial-only mode.
 - Falls back to FSR 1 / MSR automatically if the shaders fail to compile or the GPU errors.
@@ -67,9 +69,10 @@ Key properties:
 
 The Upscaling tab has a one-click **Temporal 42 %** preset: it selects MSR2 and sets the internal
 resolution to 42 %. In a controlled FSR 1 50 % comparison (Complementary, shadows every frame,
-512 shadow map) this ran at 146 fps vs 129 fps for FSR 1 50 %. The image is softer than FSR 1
-50 %, so this is a performance mode, not a free quality upgrade. The preset only writes the
-existing `renderScale.percent`, `msr2.enabled` and `upscaler` values; you can tune them afterwards.
+512 shadow map) this ran at **145-149 fps** vs **129-133 fps** for FSR 1 50 %, with MSR2 at 50 % measuring
+**131 fps**. The image is softer than FSR 1 50 %, so this is a performance mode, not a free
+quality upgrade. The preset only writes the existing `renderScale.percent`, `msr2.enabled` and
+`upscaler` values; you can tune them afterwards.
 
 ### FP16 world target
 

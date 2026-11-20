@@ -18,7 +18,11 @@ import java.nio.IntBuffer;
  * - Depth: R16_UINT (packed linear depth, 16 bits/pixel)
  *
  * Total: 48 bits/pixel vs 64 (RGBA16F) or 128 (RGBA32F)
- * At 1080p: ~12 MB for ping-pong pair (color + depth)
+ * At 1080p: ~12 MB for a ping-pong pair (color + depth).
+ *
+ * <p>The target is allocated at the output resolution. The temporal pass dispatches one thread
+ * per output pixel, so the history keeps the detail that the old source-resolution history threw
+ * away before the spatial upscale.</p>
  *
  * Ping-pong strategy eliminates read-after-write hazards:
  * Frame N: read from A, write to B

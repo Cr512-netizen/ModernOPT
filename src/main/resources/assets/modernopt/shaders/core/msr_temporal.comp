@@ -8,7 +8,8 @@
 //   depth  : R16UI      (packed current depth, 16 bit)
 //
 // The pass reads the current low-resolution frame plus the ping-pong history and writes the
-// accumulated result into the *other* history target.
+// accumulated result into the *other* history target. OutputSize is the output-resolution history
+// (R11G11B10F + R16UI); InputSize is the low-resolution world colour/depth.
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -83,13 +84,13 @@ void computeVariance(vec2 uv, vec2 texel,
 
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 size = ivec2(InputSize);
+    ivec2 size = ivec2(OutputSize);
 
     if (pixel.x >= size.x || pixel.y >= size.y) {
         return;
     }
 
-    vec2 uv = (vec2(pixel) + 0.5) / vec2(InputSize);
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(OutputSize);
 
     // MSR does not jitter the projection matrix, but keep the uniform so a future jittered
     // path does not need shader changes.
