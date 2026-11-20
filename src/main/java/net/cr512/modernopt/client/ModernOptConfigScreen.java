@@ -224,6 +224,13 @@ public class ModernOptConfigScreen extends Screen {
                             ModernOptSettings.refresh();
                         }));
 
+        addRight(CycleButton.onOffBuilder(ModernOptSettings.msr2Lanczos())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.msrLanczos"),
+                        (button, value) -> {
+                            ModernOptConfig.MSR2_LANCZOS.set(value);
+                            ModernOptSettings.refresh();
+                        }));
+
         addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.msrVarianceScale"), 5, 40,
                 (int) (ModernOptSettings.msr2VarianceScale() * 10),

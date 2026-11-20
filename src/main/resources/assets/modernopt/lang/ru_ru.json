@@ -40,6 +40,7 @@
   "modernopt.option.fxaa.tooltip": "Сглаживание краёв на финальном изображении.",
   "modernopt.option.overlay.tooltip": "Показывать FPS и текущее внутреннее разрешение.",
   "modernopt.option.msrEnabled": "MSR2 (экспериментальный)",
+  "modernopt.option.msrLanczos": "MSR2 Lanczos-реконструкция",
   "modernopt.option.msrVarianceScale": "MSR2 масштаб дисперсии",
   "modernopt.option.msrEdgeAware": "MSR2 edge-aware интерполяция",
   "modernopt.option.msrSharpness": "MSR2 резкость",

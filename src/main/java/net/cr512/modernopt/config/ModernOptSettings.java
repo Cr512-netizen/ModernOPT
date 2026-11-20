@@ -29,6 +29,7 @@ public final class ModernOptSettings {
 
     // MSR2 settings
     private static volatile boolean msr2Enabled = false;
+    private static volatile boolean msr2Lanczos = true;
     private static volatile double msr2VarianceScale = 2.0;
     private static volatile boolean msr2EdgeAware = true;
     private static volatile int msr2Sharpness = 30;
@@ -68,6 +69,7 @@ public final class ModernOptSettings {
 
         // MSR2
         msr2Enabled = ModernOptConfig.MSR2_ENABLED.get();
+        msr2Lanczos = ModernOptConfig.MSR2_LANCZOS.get();
         msr2VarianceScale = ModernOptConfig.MSR2_VARIANCE_SCALE.get();
         msr2EdgeAware = ModernOptConfig.MSR2_EDGE_AWARE.get();
         msr2Sharpness = ModernOptConfig.MSR2_SHARPNESS.get();
@@ -163,6 +165,10 @@ public final class ModernOptSettings {
     // MSR2 getters
     public static boolean msr2Enabled() {
         return msr2Enabled;
+    }
+
+    public static boolean msr2Lanczos() {
+        return msr2Lanczos;
     }
 
     public static double msr2VarianceScale() {
