@@ -388,8 +388,7 @@ public final class RenderPipeline {
         if (minecraft.gameRenderer != null && minecraft.gameRenderer.getMainCamera() != null) {
             net.minecraft.client.Camera shadowCam = minecraft.gameRenderer.getMainCamera();
             net.minecraft.world.phys.Vec3 shadowCamera = shadowCam.getPosition();
-            shadowHoldCheckCamera(shadowCamera.x, shadowCamera.y, shadowCamera.z,
-                    shadowCam.getYRot(), shadowCam.getXRot());
+            shadowHoldCheckCamera(shadowCamera.x, shadowCamera.y, shadowCamera.z);
             shadowHoldCheckWorldTime(minecraft.level.getDayTime());
             shadowHoldCheckEntities(minecraft.level);
         }
@@ -908,10 +907,7 @@ public final class RenderPipeline {
     private static double shadowHoldCameraX;
     private static double shadowHoldCameraY;
     private static double shadowHoldCameraZ;
-    private static float shadowHoldCameraYaw;
-    private static float shadowHoldCameraPitch;
     private static boolean shadowHoldForceDraw;
-    private static boolean shadowHoldCameraStill = true;
     private static long shadowHoldWorldTime = Long.MIN_VALUE;
     private static double shadowHoldFrameMs = 8.0;
     private static long shadowHoldLastFrameNanos;
@@ -919,54 +915,35 @@ public final class RenderPipeline {
 
     /** Further than this from the drawn frame's camera forces a rebuild (in blocks, squared). */
     private static final double SHADOW_HOLD_MOVE_LIMIT_SQ = 2.25;
-    /** Movement below this is treated as "standing still" (in blocks, squared). */
-    private static final double SHADOW_HOLD_STILL_SQ = 0.0025;
-    /** Any camera rotation above this forces a fresh shadow map (degrees). */
-    private static final float SHADOW_HOLD_ROT_LIMIT_DEG = 0.25F;
     /** A visible shadow caster moving more than this invalidates the held map (blocks, squared). */
     private static final double SHADOW_HOLD_ENTITY_MOVE_SQ = 0.01;
-    /** When the camera is still, keep the map longer than the configured interval, capped. */
-    private static final int SHADOW_HOLD_STILL_MAX = 8;
-    /** Any sun/time change invalidates the map: holding it while the sun moves makes shadows jump. */
-    private static final long SHADOW_HOLD_TIME_STEP = 0;
+    /** A large sun/time jump forces a rebuild; normal daylight movement is handled by the interval. */
+    private static final long SHADOW_HOLD_TIME_STEP = 40;
 
     /** Whether the shadow map has to be drawn on this frame. */
     public static boolean shadowHoldShouldDraw(int interval) {
         if (!shadowHoldHaveMap || !shadowHoldHaveMatrices || interval <= 1 || shadowHoldForceDraw) {
             return true;
         }
-        int effective = shadowHoldCameraStill
-                ? Math.min(SHADOW_HOLD_STILL_MAX, Math.max(interval, 4))
-                : interval;
-        // Heavy *static* frames get a larger shadow budget; when the camera moves, keep the
-        // configured interval so moving shadows cannot visibly lag.
-        if (shadowHoldCameraStill) {
-            if (shadowHoldFrameMs > 12.0) {
-                effective = Math.min(SHADOW_HOLD_STILL_MAX, effective + 2);
-            } else if (shadowHoldFrameMs > 10.0) {
-                effective = Math.min(SHADOW_HOLD_STILL_MAX, effective + 1);
-            }
-        }
-        return shadowHoldFrames >= effective - 1;
+        // Hold exactly the configured number of frames, like a plain "update every N frames"
+        // option. The old extended static budget (up to eight frames) made the sun and small
+        // camera moves visibly step, even though the map was technically still valid.
+        return shadowHoldFrames >= interval - 1;
     }
 
-    /** Camera pose of the last frame that actually drew the map. */
-    public static void shadowHoldSetCamera(double x, double y, double z, float yaw, float pitch) {
+    /** Camera position of the last frame that actually drew the map. */
+    public static void shadowHoldSetCamera(double x, double y, double z) {
         shadowHoldCameraX = x;
         shadowHoldCameraY = y;
         shadowHoldCameraZ = z;
-        shadowHoldCameraYaw = yaw;
-        shadowHoldCameraPitch = pitch;
     }
 
     /**
-     * Forces a rebuild whenever the view changes. Translation alone was checked before, but a
-     * player rotating in place has an almost unchanged position: the old code treated that as
-     * "still" and held the shadow map for up to eight frames. The held matrices then described a
-     * different view, which made long sunset shadows swim and flicker. Any rotation now forces a
-     * redraw, and a moving camera never gets the extended static budget.
+     * Forces a rebuild when the camera moved far enough that the held shadow frustum would no
+     * longer cover the view. Smaller movement is handled by translating the held light matrix on
+     * the skipped frame, so shadows stay attached to the world instead of swimming.
      */
-    public static void shadowHoldCheckCamera(double x, double y, double z, float yaw, float pitch) {
+    public static void shadowHoldCheckCamera(double x, double y, double z) {
         if (!shadowHoldHaveMap || ModernOptSettings.shadowUpdateInterval() <= 1) {
             return;
         }
@@ -974,15 +951,7 @@ public final class RenderPipeline {
         double dy = y - shadowHoldCameraY;
         double dz = z - shadowHoldCameraZ;
         double distanceSq = dx * dx + dy * dy + dz * dz;
-        float dyaw = Math.abs(yaw - shadowHoldCameraYaw);
-        if (dyaw > 180.0F) {
-            dyaw = 360.0F - dyaw;
-        }
-        float dpitch = Math.abs(pitch - shadowHoldCameraPitch);
-        boolean rotating = dyaw > SHADOW_HOLD_ROT_LIMIT_DEG
-                || dpitch > SHADOW_HOLD_ROT_LIMIT_DEG;
-        shadowHoldCameraStill = distanceSq <= SHADOW_HOLD_STILL_SQ && !rotating;
-        if (distanceSq > SHADOW_HOLD_MOVE_LIMIT_SQ || rotating) {
+        if (distanceSq > SHADOW_HOLD_MOVE_LIMIT_SQ) {
             shadowHoldForceDraw = true;
         }
     }
@@ -1089,7 +1058,6 @@ public final class RenderPipeline {
         shadowHoldForceDraw = false;
         shadowHoldFramebuffer = -1;
         shadowHoldWorldTime = Long.MIN_VALUE;
-        shadowHoldCameraStill = true;
         shadowHoldEntities.clear();
     }
 

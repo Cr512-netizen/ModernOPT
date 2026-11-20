@@ -428,7 +428,7 @@ public final class SelfTest {
         int shadowIndex = name.indexOf("!shadow");
         if (shadowIndex >= 0) {
             int shadowInterval = digits(name.substring(shadowIndex + 7));
-            if (shadowInterval >= 1 && shadowInterval <= 4) {
+            if (shadowInterval >= 1 && shadowInterval <= 8) {
                 ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(shadowInterval);
             }
         } else {

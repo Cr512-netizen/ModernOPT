@@ -1,5 +1,8 @@
 {
   "modernopt.config.title": "ModernOPT",
+  "modernopt.tab.upscaling": "Upscaling",
+  "modernopt.tab.antialiasing": "Anti-aliasing",
+  "modernopt.tab.shadows": "Shadows",
   "modernopt.option.enabled": "ModernOPT enabled",
   "modernopt.option.disable": "Disable ModernOPT",
   "modernopt.option.enable": "Enable ModernOPT",
@@ -20,7 +23,7 @@
   "modernopt.option.overlay": "Status overlay",
   "modernopt.option.enabled.tooltip": "Master switch for all ModernOPT render changes. Turning it off restores the game's own rendering exactly.",
   "modernopt.option.disable.tooltip": "Fully disables ModernOPT: no target swap, no upscaling and no shadow changes until it is enabled again.",
-  "modernopt.option.shadowUpdateInterval.tooltip": "Rebuild the shadow map every N frames instead of every frame. 1 is the normal behaviour; 2-4 skip the shadow pass on the frames in between.",
+  "modernopt.option.shadowUpdateInterval.tooltip": "Rebuild the shadow map every N frames instead of every frame. 1 is the normal behaviour; 2-8 skip the shadow pass on the frames in between. The held matrix is moved with the camera so shadows stay anchored.",
   "modernopt.option.renderScale.tooltip": "Internal world resolution. Lower values render fewer pixels and upscale the result.",
   "modernopt.option.upscaler.tooltip": "Filter used to reconstruct the full-resolution image. MSR adds temporal accumulation and works with Iris shader packs; MSAA is forced off.",
   "modernopt.option.shadowMapResolution.tooltip": "Absolute shadow map resolution for Iris shader packs (512/1024/2048/4096). Independent of the render scale; changing it reloads the pack once.",
@@ -49,6 +52,7 @@
   "modernopt.sodium.group.general": "General",
   "modernopt.sodium.group.scaling": "Scaling",
   "modernopt.sodium.group.antialiasing": "Anti-aliasing",
+  "modernopt.sodium.group.shadows": "Shadows",
   "modernopt.sodium.open": "Open ModernOPT settings",
   "modernopt.sodium.open.tooltip": "Render scale, upscaling, MSAA, FXAA and SSAA",
   "key.modernopt.config": "Open ModernOPT options"

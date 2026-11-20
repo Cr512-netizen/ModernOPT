@@ -117,13 +117,17 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
                 .addOption(booleanOption(builder, WHOLE_WINDOW, "modernopt.option.scaleWholeWindow",
                         ModernOptConfig.SCALE_WHOLE_WINDOW.getDefault(),
                         value -> { ModernOptConfig.SCALE_WHOLE_WINDOW.set(value); ModernOptSettings.refresh(); },
-                        () -> ModernOptConfig.SCALE_WHOLE_WINDOW.get()))
+                        () -> ModernOptConfig.SCALE_WHOLE_WINDOW.get()));
+        page.addOptionGroup(scaling);
+
+        OptionGroupBuilder shadows = builder.createOptionGroup()
+                .setName(Component.translatable("modernopt.sodium.group.shadows"))
                 .addOption(integerOption(builder, SHADOW_INTERVAL, "modernopt.option.shadowUpdateInterval",
-                        ModernOptConfig.SHADOW_UPDATE_INTERVAL.getDefault(), 1, 4,
+                        ModernOptConfig.SHADOW_UPDATE_INTERVAL.getDefault(), 1, 8,
                         value -> { ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(value); ModernOptSettings.refresh(); },
                         () -> ModernOptConfig.SHADOW_UPDATE_INTERVAL.get(),
                         value -> Component.literal(value <= 1 ? "every frame" : "every " + value + " frames")));
-        page.addOptionGroup(scaling);
+        page.addOptionGroup(shadows);
 
         OptionGroupBuilder antialiasing = builder.createOptionGroup()
                 .setName(Component.translatable("modernopt.sodium.group.antialiasing"))
