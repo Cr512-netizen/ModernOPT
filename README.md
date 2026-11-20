@@ -62,9 +62,10 @@ Key properties:
   is the temporal anti-aliasing part; MSR keeps jitter disabled under Iris, MSR2 can be tried
   with a pack and falls back to the normal image if it does not pass the quality check.
 - The low-resolution current frame is reconstructed with **Lanczos-2** before temporal
-  accumulation (toggle: `msr2.lanczos`, default on). It noticeably reduces the soapy look on
-  grass and foliage, costs about 2% FPS, and can ring on high-contrast block edges; turn it off if
-  the image shimmers.
+  accumulation (toggle: `msr2.lanczos`, default on). The weighted sum is clamped to the source
+  neighbourhood, which removes the bright/dark halos from the negative lobes while keeping the
+  sharper in-band response. It noticeably reduces the soapy look on grass and foliage, costs about
+  2% FPS, and can still ring on very high-contrast block edges; turn it off if the image shimmers.
 - The fragment fallback remains for GPUs without compute, but a compute-capable driver is needed
   for the output-resolution history path.
 - Iris integration: shadow viewports are preserved, and if the Iris depth buffer cannot be

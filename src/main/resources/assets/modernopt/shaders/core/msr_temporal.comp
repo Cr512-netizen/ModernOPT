@@ -83,6 +83,8 @@ vec3 sampleCurrentLanczos(vec2 uv) {
     ivec2 basePixel = ivec2(base);
     vec3 sum = vec3(0.0);
     float weightSum = 0.0;
+    vec3 minColor = vec3(1.0e20);
+    vec3 maxColor = vec3(-1.0e20);
 
     for (int y = -1; y <= 2; y++) {
         float wy = lanczos2Weight(float(y) - fraction.y);
@@ -90,11 +92,17 @@ vec3 sampleCurrentLanczos(vec2 uv) {
             float wx = lanczos2Weight(float(x) - fraction.x);
             ivec2 pixel = clamp(basePixel + ivec2(x, y), ivec2(0), sourceSize - ivec2(1));
             float weight = wx * wy;
-            sum += texelFetch(CurrentColor, pixel, 0).rgb * weight;
+            vec3 color = texelFetch(CurrentColor, pixel, 0).rgb;
+            minColor = min(minColor, color);
+            maxColor = max(maxColor, color);
+            sum += color * weight;
             weightSum += weight;
         }
     }
-    return sum / max(weightSum, 1.0e-5);
+
+    // Lanczos has negative lobes; clamping the weighted sum to the source neighbourhood removes
+    // the bright/dark halos without giving up the sharper in-band response.
+    return clamp(sum / max(weightSum, 1.0e-5), minColor, maxColor);
 }
 
 // 3x3 neighbourhood mean/variance in YCoCg space (FSR 2 style variance clipping).
