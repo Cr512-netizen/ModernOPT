@@ -35,6 +35,7 @@ public final class ModernOptConfig {
 
     // MSR2 config
     public static final ModConfigSpec.BooleanValue MSR2_ENABLED;
+    public static final ModConfigSpec.BooleanValue MSR2_LANCZOS;
     public static final ModConfigSpec.DoubleValue MSR2_VARIANCE_SCALE;
     public static final ModConfigSpec.BooleanValue MSR2_EDGE_AWARE;
     public static final ModConfigSpec.IntValue MSR2_SHARPNESS;
@@ -122,6 +123,11 @@ public final class ModernOptConfig {
         b.comment("MSR2 - experimental temporal upscaler.").push("msr2");
         MSR2_ENABLED = b.comment("Enable MSR2 upscaler (experimental). Overrides other upscalers when enabled.")
                 .define("enabled", false);
+        MSR2_LANCZOS = b.comment(
+                        "Use Lanczos-2 to reconstruct the low-resolution current frame before temporal accumulation.",
+                        "Sharper than bilinear on grass, foliage and block edges, but can ring on high-contrast edges.",
+                        "Turn it off if the image shimmers or shows halos.")
+                .define("lanczos", true);
         MSR2_VARIANCE_SCALE = b.comment("Variance clipping threshold multiplier for temporal pass. Higher = more aggressive history rejection.")
                 .defineInRange("varianceScale", 2.0, 0.5, 4.0);
         MSR2_EDGE_AWARE = b.comment("Enable edge-aware interpolation in spatial pass (preserves geometry edges).")
