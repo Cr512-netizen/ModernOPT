@@ -15,6 +15,7 @@ public final class ModernOptConfig {
 
     public static final ModConfigSpec.BooleanValue ENABLED;
     public static final ModConfigSpec.IntValue RENDER_SCALE_PERCENT;
+    public static final ModConfigSpec.BooleanValue DYNAMIC_MOVING_RESOLUTION;
     public static final ModConfigSpec.EnumValue<UpscalerType> UPSCALER;
     public static final ModConfigSpec.IntValue SOFTNESS;
     public static final ModConfigSpec.IntValue FSR_EASU_SHARPNESS;
@@ -57,6 +58,11 @@ public final class ModernOptConfig {
         b.comment("Internal world render resolution.").push("renderScale");
         RENDER_SCALE_PERCENT = b.comment("Internal world resolution as a percentage of the window (25-100).")
                 .defineInRange("percent", 75, 25, 100);
+        DYNAMIC_MOVING_RESOLUTION = b.comment(
+                        "Lower the internal resolution by 15% while the camera moves or looks around.",
+                        "The configured resolution is multiplied by 0.85 and rounded to the nearest percent",
+                        "(70% -> 60%). It is restored after the camera has been still for a short moment.")
+                .define("dynamicMovingResolution", false);
         UPSCALER = b.comment("Reconstruction filter used to scale back up.")
                 .defineEnum("upscaler", UpscalerType.FSR1);
         SOFTNESS = b.comment("SoftScale blur strength, 0 = neutral, 100 = very soft.")

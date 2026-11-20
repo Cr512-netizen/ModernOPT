@@ -15,6 +15,7 @@ public final class ModernOptSettings {
     private static volatile boolean overlay;
     private static volatile boolean logFps = false;
     private static volatile int renderScalePercent = 75;
+    private static volatile boolean dynamicMovingResolution;
     private static volatile int softness = 35;
     private static volatile int fsrEasuSharpness = 0;
     private static volatile int fsrRcasSharpness = 25;
@@ -51,6 +52,7 @@ public final class ModernOptSettings {
         overlay = ModernOptConfig.SHOW_OVERLAY.get();
         logFps = ModernOptConfig.LOG_FPS.get();
         renderScalePercent = ModernOptConfig.RENDER_SCALE_PERCENT.get();
+        dynamicMovingResolution = ModernOptConfig.DYNAMIC_MOVING_RESOLUTION.get();
         upscaler = ModernOptConfig.UPSCALER.get();
         softness = ModernOptConfig.SOFTNESS.get();
         fsrEasuSharpness = ModernOptConfig.FSR_EASU_SHARPNESS.get();
@@ -101,6 +103,11 @@ public final class ModernOptSettings {
 
     public static int renderScalePercent() {
         return renderScalePercent;
+    }
+
+    /** Lower the internal resolution while the camera is moving. */
+    public static boolean dynamicMovingResolution() {
+        return dynamicMovingResolution;
     }
 
     public static int softness() {
