@@ -155,6 +155,16 @@ public class ModernOptConfigScreen extends Screen {
                             ModernOptSettings.refresh();
                         }));
 
+        addLeft(Button.builder(Component.translatable("modernopt.option.temporalPreset"), button -> {
+                    ModernOptConfig.RENDER_SCALE_PERCENT.set(42);
+                    ModernOptConfig.MSR2_ENABLED.set(true);
+                    ModernOptConfig.UPSCALER.set(UpscalerType.MSR2);
+                    ModernOptSettings.refresh();
+                    this.rebuildWidgets();
+                })
+                .bounds(0, 0, COLUMN_WIDTH, 20)
+                .build());
+
         addLeft(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.hudScale"), 50, 100,
                 ModernOptSettings.hudScalePercent(),
