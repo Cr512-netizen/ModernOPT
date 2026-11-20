@@ -57,6 +57,10 @@ Key properties:
   it accumulates instead of throwing it away before the final upscale.
 - The temporal pass runs as a compute shader on GL 4.3+ and dispatches one thread per output
   pixel; the final pass is RCAS, or a plain copy when sharpening is off.
+- MSR2 applies an R2 sub-pixel jitter, compensates for the previous frame's jitter phase when
+  reading history, and rejects history that moves more than 15% of the screen in one frame. This
+  is the temporal anti-aliasing part; MSR keeps jitter disabled under Iris, MSR2 can be tried
+  with a pack and falls back to the normal image if it does not pass the quality check.
 - The fragment fallback remains for GPUs without compute, but a compute-capable driver is needed
   for the output-resolution history path.
 - Iris integration: shadow viewports are preserved, and if the Iris depth buffer cannot be
@@ -69,7 +73,7 @@ Key properties:
 
 The Upscaling tab has a one-click **Temporal 42 %** preset: it selects MSR2 and sets the internal
 resolution to 42 %. In a controlled FSR 1 50 % comparison (Complementary, shadows every frame,
-512 shadow map) this ran at **145-149 fps** vs **129-133 fps** for FSR 1 50 %, with MSR2 at 50 % measuring
+512 shadow map) this ran at **149 fps** vs **133 fps** for FSR 1 50 %, with MSR2 at 50 % measuring
 **131 fps**. The image is softer than FSR 1 50 %, so this is a performance mode, not a free
 quality upgrade. The preset only writes the existing `renderScale.percent`, `msr2.enabled` and
 `upscaler` values; you can tune them afterwards.

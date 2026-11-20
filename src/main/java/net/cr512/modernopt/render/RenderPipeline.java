@@ -828,9 +828,7 @@ public final class RenderPipeline {
             return projection;
         }
 
-        // Capture camera pose for both MSR (reprojection + jitter) and MSR2 (reprojection only).
-        // MSR does not apply sub-pixel jitter, but it still needs the view/projection/camera state
-        // so its temporal pass can reproject history pixels to the previous frame.
+        // Capture camera pose for both MSR (reprojection + jitter) and MSR2 (reprojection + jitter).
         tempQuat.set(camera.rotation()).conjugate();
         currentView.set(tempQuat);
         currentProjection.set(projection);
@@ -838,14 +836,10 @@ public final class RenderPipeline {
         currentCameraY = camera.getPosition().y;
         currentCameraZ = camera.getPosition().z;
 
-        if (!msrThisFrame) {
-            // MSR path: pose captured, no jitter applied
-            poseCaptured = true;
-            return projection;
-        }
-
         if (!isUsableProjection(projection)) {
             resetHistory();
+            jitterX = 0.0F;
+            jitterY = 0.0F;
             if (!loggedProjectionGuard) {
                 loggedProjectionGuard = true;
                 ModernOPT.LOG.debug("[ModernOPT] skipping MSR on a degenerate projection matrix (first frame)");
@@ -853,7 +847,10 @@ public final class RenderPipeline {
             return projection;
         }
 
-        if (irisThisFrame) {
+        if (irisThisFrame && !msr2ThisFrame) {
+            // MSR + Iris: the pack may already run its own temporal AA, so do not add a second
+            // jitter. MSR2 is allowed to try jitter with a pack; if it doubles up, the quality
+            // gate will reject it before release.
             jitterX = 0.0F;
             jitterY = 0.0F;
             poseCaptured = true;
@@ -2217,6 +2214,8 @@ public final class RenderPipeline {
     private static void resetMsr2History() {
         msrHistoryValid = false;
         msrFrameIndex = 0;
+        previousJitterX = 0.0F;
+        previousJitterY = 0.0F;
         if (computeAvailable) {
             // A destroyed/invalidated history texture must not stay attached to image units.
             Msr2TemporalCompute.unbindImage(0, GL30C.GL_R11F_G11F_B10F);
@@ -2358,6 +2357,8 @@ public final class RenderPipeline {
             previousCameraX = currentCameraX;
             previousCameraY = currentCameraY;
             previousCameraZ = currentCameraZ;
+            previousJitterX = jitterX;
+            previousJitterY = jitterY;
         }
     }
 
@@ -2398,7 +2399,8 @@ public final class RenderPipeline {
 
             compute.setVec2("InputSize", (float) sourceWidth, (float) sourceHeight);
             compute.setVec2("OutputSize", (float) outWidth, (float) outHeight);
-            compute.setVec2("Jitter", 0.0F, 0.0F);
+            compute.setVec2("Jitter", jitterX, jitterY);
+            compute.setVec2("PrevJitter", previousJitterX, previousJitterY);
             compute.setFloat("VarianceScale", (float) cachedMsrVarianceScale);
             compute.setFloat("DepthThreshold", (float) cachedMsrDepthThreshold);
             compute.setFloat("HistoryWeight", (float) cachedMsrHistoryWeight);
