@@ -63,6 +63,14 @@ Key properties:
 - Dynamic resolution scaling (DRS) is available: render scale is lowered when FPS drops below
   the configured threshold and raised again when stable.
 
+### Temporal 42 % preset
+
+The Upscaling tab has a one-click **Temporal 42 %** preset: it selects MSR2 and sets the internal
+resolution to 42 %. In a controlled FSR 1 50 % comparison (Complementary, shadows every frame,
+512 shadow map) this ran at 146 fps vs 129 fps for FSR 1 50 %. The image is softer than FSR 1
+50 %, so this is a performance mode, not a free quality upgrade. The preset only writes the
+existing `renderScale.percent`, `msr2.enabled` and `upscaler` values; you can tune them afterwards.
+
 ### FP16 world target
 
 `renderScale.fp16ColorTarget` (default on) allocates the pre-upscale colour attachment as
