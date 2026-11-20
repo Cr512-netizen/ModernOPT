@@ -21,6 +21,7 @@ uniform usampler2D HistoryDepth;  // previous frame packed depth (R16UI)
 uniform vec2 InputSize;
 uniform vec2 OutputSize;
 uniform vec2 Jitter;
+uniform vec2 PrevJitter;
 uniform float VarianceScale;
 uniform float DepthThreshold;
 uniform float HistoryWeight;
@@ -92,8 +93,8 @@ void main() {
 
     vec2 uv = (vec2(pixel) + 0.5) / vec2(OutputSize);
 
-    // MSR does not jitter the projection matrix, but keep the uniform so a future jittered
-    // path does not need shader changes.
+    // Reproject the jittered current sample into the previous frame. Jitter is in clip space,
+    // so the UV offset is half of it.
     vec2 currentUv = clamp(uv + Jitter * 0.5, vec2(0.0), vec2(1.0));
 
     vec3 currentColor = texture(CurrentColor, currentUv).rgb;
@@ -127,8 +128,13 @@ void main() {
 
             if (previousClip.w > 1.0e-6) {
                 vec2 previousNdc = previousClip.xy / previousClip.w;
-                historyUv = previousNdc * 0.5 + 0.5;
+                // The previous frame was rasterised with its own sub-pixel jitter. Add that
+                // offset before sampling history; without it the accumulated image slowly
+                // smears by the difference between the two jitter phases.
+                historyUv = previousNdc * 0.5 + 0.5 + PrevJitter * 0.5;
+                float motionLen = length(historyUv - uv);
                 valid = valid
+                        && motionLen < 0.15
                         && all(greaterThanEqual(historyUv, vec2(0.0)))
                         && all(lessThanEqual(historyUv, vec2(1.0)));
             } else {
