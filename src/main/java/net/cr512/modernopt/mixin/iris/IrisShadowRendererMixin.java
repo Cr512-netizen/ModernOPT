@@ -115,10 +115,16 @@ public abstract class IrisShadowRendererMixin {
             if (modelView == null || projection == null) {
                 return;
             }
-            // Keep the exact shadow-space matrices of the drawn frame. Translating them with the
-            // camera moved the shadow lookup coordinates with the viewer, which made shadows swim;
-            // leaving them untouched keeps them anchored to the world.
-            modelView.set(modernopt$heldModelView);
+            // Keep the exact shadow-space projection of the drawn frame, but move the held light
+            // view with the camera. A player walking a fraction of a block while the map is held
+            // otherwise gets a shadow lookup that is offset from the current camera, which is what
+            // makes long shadows swim. Translation is clamped by shadowHoldCheckCamera before the
+            // frustum can leave the held map.
+            Vec3 current = minecraft.gameRenderer.getMainCamera().getPosition();
+            modelView.set(modernopt$heldModelView).translate(
+                    (float) (current.x - modernopt$heldX),
+                    (float) (current.y - modernopt$heldY),
+                    (float) (current.z - modernopt$heldZ));
             projection.set(modernopt$heldProjection);
         } catch (Throwable throwable) {
             ModernOPT.LOG.warn("[ModernOPT] could not hold the shadow matrices", throwable);
@@ -145,8 +151,7 @@ public abstract class IrisShadowRendererMixin {
             modernopt$heldX = position.x;
             modernopt$heldY = position.y;
             modernopt$heldZ = position.z;
-            RenderPipeline.shadowHoldSetCamera(position.x, position.y, position.z,
-                    camera.getYRot(), camera.getXRot());
+            RenderPipeline.shadowHoldSetCamera(position.x, position.y, position.z);
             RenderPipeline.shadowHoldSetWorldTime(minecraft.level == null ? Long.MIN_VALUE
                     : minecraft.level.getDayTime());
             RenderPipeline.shadowHoldCaptureEntities(minecraft.level, position.x, position.y, position.z);

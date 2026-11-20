@@ -192,6 +192,8 @@ sky and HUD were clean, and an idle camera test measured no visible frame-to-fra
 * `Video Settings -> ModernOPT` in Sodium (the full screen or the native `Settings` page), or
 * the `F10` keybind (in game).
 
+The full screen is split into **Upscaling**, **Anti-aliasing** and **Shadows** tabs.
+
 ### Scale whole window
 
 `renderScale.scaleWholeWindow` (off by default) renders the entire frame at the internal
@@ -236,15 +238,11 @@ win - see the benchmark notes below.
 
 ### Shadow update interval
 
-`shadows.updateInterval` (1-4, default 2) rebuilds the shadow map every N frames instead of every
+`shadows.updateInterval` (1-8, default 2) rebuilds the shadow map every N frames instead of every
 frame. The frames in between skip the whole second world pass from the sun and keep sampling the
-previous map with the exact matrices of the frame that drew it, so shadows stay anchored to the
-world. While the camera and nearby shadow casters are still the map is kept longer (up to eight
-frames); moving casters, a large camera move, **any camera rotation**, or **any sun/time change**
-force an immediate rebuild. Rotation used to be missed because the check only compared camera
-position: a player looking around in place was treated as "still", the stale matrices made long
-sunset shadows swim and flicker. Clears that target the shadow framebuffer are skipped while the
-map is being held, otherwise they would wipe it. With interval 1 the feature is a no-op.
+previous map. The held light matrix is translated with the camera so shadows stay attached to the
+world; a large camera move or a **sun/time jump** forces an immediate rebuild. Clears that target the shadow framebuffer are skipped while the map is being held,
+otherwise they would wipe it. With interval 1 the feature is a no-op.
 
 Measured in the same world with the pack's shadows enabled (render distance 16, simulation 5,
 1920x1080, 50 % world):

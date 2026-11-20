@@ -1,5 +1,8 @@
 {
   "modernopt.config.title": "ModernOPT",
+  "modernopt.tab.upscaling": "Апскейл",
+  "modernopt.tab.antialiasing": "Сглаживание",
+  "modernopt.tab.shadows": "Тени",
   "modernopt.option.enabled": "ModernOPT включён",
   "modernopt.option.disable": "Полностью выключить ModernOPT",
   "modernopt.option.enable": "Включить ModernOPT",
@@ -22,7 +25,7 @@
   "modernopt.option.logFps.tooltip": "Писать статистику FPS в лог раз в секунду.",
   "modernopt.option.enabled.tooltip": "Главный переключатель всех изменений рендера ModernOPT. При выключении игра возвращается к собственному рендеру.",
   "modernopt.option.disable.tooltip": "Полностью выключает ModernOPT: без подмены таргета, без апскейла и без изменений теней до повторного включения.",
-  "modernopt.option.shadowUpdateInterval.tooltip": "Перерисовывать карту теней каждый N-й кадр. 1 — обычное поведение; 2-4 пропускают проход теней на промежуточных кадрах.",
+  "modernopt.option.shadowUpdateInterval.tooltip": "Перерисовывать карту теней каждый N-й кадр. 1 — обычное поведение; 2-8 пропускают проход теней на промежуточных кадрах. Удерживаемая матрица сдвигается вместе с камерой, поэтому тени остаются на месте.",
   "modernopt.option.renderScale.tooltip": "Внутреннее разрешение мира. Чем ниже значение, тем меньше пикселей рендерится и затем растягивается.",
   "modernopt.option.upscaler.tooltip": "Фильтр, которым изображение восстанавливается до полного разрешения. MSR добавляет временнóе накопление и работает с шейдер-паками Iris; MSAA принудительно отключается.",
   "modernopt.option.shadowMapResolution.tooltip": "Абсолютное разрешение карты теней для шейдер-паков Iris (512/1024/2048/4096). Не зависит от масштаба рендера; при изменении пак перезагружается один раз.",
@@ -49,6 +52,7 @@
   "modernopt.sodium.group.general": "Общие",
   "modernopt.sodium.group.scaling": "Масштабирование",
   "modernopt.sodium.group.antialiasing": "Сглаживание",
+  "modernopt.sodium.group.shadows": "Тени",
   "modernopt.sodium.open": "Открыть настройки ModernOPT",
   "modernopt.sodium.open.tooltip": "Масштаб рендера, апскейлинг, MSAA, FXAA и SSAA",
   "key.modernopt.config": "Открыть настройки ModernOPT"

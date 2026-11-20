@@ -90,12 +90,11 @@ public final class ModernOptConfig {
                 .defineInRange("shadowMapResolution", 2048, 512, 4096);
         SHADOW_UPDATE_INTERVAL = b.comment(
                         "Rebuild the shadow map every N frames instead of every frame.",
-                        "1 keeps the pack's normal behaviour. 2-4 skip the whole world-from-the-sun pass on",
-                        "the frames in between and keep sampling the previous map with the exact matrices",
-                        "of the frame that drew it. While the camera and nearby casters are still,",
-                        "the map is held longer (up to eight frames); movement or a sun/time jump",
-                        "rebuilds it immediately.")
-                .defineInRange("updateInterval", 2, 1, 4);
+                        "1 keeps the pack's normal behaviour. 2-8 skip the whole world-from-the-sun pass on",
+                        "the frames in between and keep sampling the previous map. The held light matrix is",
+                        "translated with the camera so shadows stay attached to the world; a large camera",
+                        "move or a sun/time jump rebuilds the map immediately.")
+                .defineInRange("updateInterval", 2, 1, 8);
         b.pop();
 
         b.comment("Anti-aliasing.").push("antialiasing");

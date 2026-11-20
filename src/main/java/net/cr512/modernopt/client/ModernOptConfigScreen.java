@@ -12,11 +12,9 @@ import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.config.UpscalerType;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
-import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
@@ -24,19 +22,38 @@ import net.minecraft.network.chat.Component;
 /**
  * ModernOPT options screen, reachable from the keybind and from the Sodium options page.
  *
- * <p>Options are laid out in two columns and the content scrolls when it does not fit, so every
- * setting stays reachable on small GUI scales. Values are read from the live config after a
- * refresh, so changes made from the Sodium page are reflected here and vice versa.</p>
+ * <p>The screen is split into three tabs: upscaling, anti-aliasing and shadows. Each tab uses
+ * the same two-column layout and scrolls when it does not fit, so the controls stay reachable on
+ * small GUI scales. Values are read from the live config after a refresh, so changes made from
+ * the Sodium page are reflected here and vice versa.</p>
  */
 public class ModernOptConfigScreen extends Screen {
 
     private static final int COLUMN_WIDTH = 172;
     private static final int COLUMN_GAP = 8;
     private static final int ROW_HEIGHT = 24;
+    private static final int TAB_GAP = 4;
+
+    private enum Tab {
+        UPSCALING("modernopt.tab.upscaling"),
+        ANTIALIASING("modernopt.tab.antialiasing"),
+        SHADOWS("modernopt.tab.shadows");
+
+        private final String key;
+
+        Tab(String key) {
+            this.key = key;
+        }
+
+        private Component label() {
+            return Component.translatable(this.key);
+        }
+    }
 
     private final Screen parent;
     private final List<AbstractWidget> leftColumn = new ArrayList<>();
     private final List<AbstractWidget> rightColumn = new ArrayList<>();
+    private Tab tab = Tab.UPSCALING;
     private int scroll;
     private int contentHeight;
     private int viewportTop;
@@ -55,7 +72,10 @@ public class ModernOptConfigScreen extends Screen {
         this.rightColumn.clear();
         ModernOptSettings.refresh();
 
-        this.viewportTop = 58;
+        int totalWidth = COLUMN_WIDTH * 2 + COLUMN_GAP;
+        int leftX = this.width / 2 - totalWidth / 2;
+
+        this.viewportTop = 84;
         this.viewportBottom = this.height - 34;
 
         // Master switch, always visible: one click fully disables the mod.
@@ -68,9 +88,45 @@ public class ModernOptConfigScreen extends Screen {
                             // Rebuild so every control reflects the new state immediately.
                             this.rebuildWidgets();
                         })
-                .bounds(this.width / 2 - COLUMN_WIDTH - COLUMN_GAP / 2, 30, COLUMN_WIDTH * 2 + COLUMN_GAP, 20)
+                .bounds(leftX, 30, totalWidth, 20)
                 .build());
 
+        addTabButtons(leftX, 54, totalWidth);
+
+        switch (this.tab) {
+            case UPSCALING -> buildUpscalingTab();
+            case ANTIALIASING -> buildAntialiasingTab();
+            case SHADOWS -> buildShadowsTab();
+        }
+
+        this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
+                .bounds(leftX, this.height - 28, totalWidth, 20)
+                .build());
+
+        this.scroll = 0;
+        layoutColumns();
+    }
+
+    private void addTabButtons(int leftX, int y, int totalWidth) {
+        Tab[] tabs = Tab.values();
+        int tabWidth = (totalWidth - TAB_GAP * (tabs.length - 1)) / tabs.length;
+        for (int i = 0; i < tabs.length; i++) {
+            Tab candidate = tabs[i];
+            Button button = Button.builder(candidate.label(), pressed -> {
+                        if (this.tab != candidate) {
+                            this.tab = candidate;
+                            this.rebuildWidgets();
+                        }
+                    })
+                    .bounds(leftX + i * (tabWidth + TAB_GAP), y, tabWidth, 20)
+                    .build();
+            // The selected tab is disabled: it still shows its label, but cannot be clicked again.
+            button.active = this.tab != candidate;
+            this.addRenderableWidget(button);
+        }
+    }
+
+    private void buildUpscalingTab() {
         // --- left column: resolution and reconstruction ---
         addLeft(CycleButton.onOffBuilder(ModernOptSettings.enabled())
                 .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.enabled"),
@@ -142,56 +198,7 @@ public class ModernOptConfigScreen extends Screen {
                 },
                 value -> value + "%"));
 
-        addLeft(CycleButton.<MsaaLevel>builder(level -> Component.literal(level.label()))
-                .withValues(MsaaLevel.values())
-                .withInitialValue(ModernOptSettings.msaa())
-                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.msaa"),
-                        (button, value) -> {
-                            ModernOptConfig.MSAA.set(value);
-                            ModernOptSettings.refresh();
-                        }));
-
-        addLeft(CycleButton.onOffBuilder(ModernOptSettings.ssaa())
-                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.ssaa"),
-                        (button, value) -> {
-                            ModernOptConfig.SSAA.set(value);
-                            ModernOptSettings.refresh();
-                        }));
-
-        addLeft(CycleButton.onOffBuilder(ModernOptSettings.fxaa())
-                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.fxaa"),
-                        (button, value) -> {
-                            ModernOptConfig.FXAA.set(value);
-                            ModernOptSettings.refresh();
-                        }));
-
-        addLeft(CycleButton.onOffBuilder(ModernOptSettings.overlay())
-                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.overlay"),
-                        (button, value) -> {
-                            ModernOptConfig.SHOW_OVERLAY.set(value);
-                            ModernOptSettings.refresh();
-                        }));
-
-        // --- right column: shadows and MSR2 ---
-        int[] shadowSizes = ShadowMapResolution.allowedValues();
-        addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
-                Component.translatable("modernopt.option.shadowMapResolution"), 0, shadowSizes.length - 1,
-                shadowResolutionIndex(shadowSizes, ShadowMapResolution.desired()),
-                value -> {
-                    ModernOptConfig.SHADOW_MAP_RESOLUTION.set(shadowSizes[value]);
-                    ModernOptSettings.refresh();
-                },
-                value -> shadowSizes[value] + " x " + shadowSizes[value]));
-
-        addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
-                Component.translatable("modernopt.option.shadowUpdateInterval"), 1, 4,
-                ModernOptSettings.shadowUpdateInterval(),
-                value -> {
-                    ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(value);
-                    ModernOptSettings.refresh();
-                },
-                value -> value <= 1 ? "every frame" : "every " + value + " frames"));
-
+        // --- right column: temporal upscaler and diagnostics ---
         addRight(CycleButton.onOffBuilder(ModernOptSettings.msr2Enabled())
                 .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.msrEnabled"),
                         (button, value) -> {
@@ -242,6 +249,45 @@ public class ModernOptConfigScreen extends Screen {
                 },
                 value -> (value / 100.0) + ""));
 
+        addRight(CycleButton.onOffBuilder(ModernOptSettings.overlay())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.overlay"),
+                        (button, value) -> {
+                            ModernOptConfig.SHOW_OVERLAY.set(value);
+                            ModernOptSettings.refresh();
+                        }));
+
+        addRight(CycleButton.onOffBuilder(ModernOptConfig.LOG_FPS.get())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.logFps"),
+                        (button, value) -> {
+                            ModernOptConfig.LOG_FPS.set(value);
+                            ModernOptSettings.refresh();
+                        }));
+    }
+
+    private void buildAntialiasingTab() {
+        addLeft(CycleButton.<MsaaLevel>builder(level -> Component.literal(level.label()))
+                .withValues(MsaaLevel.values())
+                .withInitialValue(ModernOptSettings.msaa())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.msaa"),
+                        (button, value) -> {
+                            ModernOptConfig.MSAA.set(value);
+                            ModernOptSettings.refresh();
+                        }));
+
+        addLeft(CycleButton.onOffBuilder(ModernOptSettings.ssaa())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.ssaa"),
+                        (button, value) -> {
+                            ModernOptConfig.SSAA.set(value);
+                            ModernOptSettings.refresh();
+                        }));
+
+        addRight(CycleButton.onOffBuilder(ModernOptSettings.fxaa())
+                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.fxaa"),
+                        (button, value) -> {
+                            ModernOptConfig.FXAA.set(value);
+                            ModernOptSettings.refresh();
+                        }));
+
         addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.fp16"), 0, 1,
                 ModernOptSettings.fp16World() ? 1 : 0,
@@ -250,21 +296,27 @@ public class ModernOptConfigScreen extends Screen {
                     ModernOptSettings.refresh();
                 },
                 value -> value == 1 ? "on" : "off"));
+    }
 
-        addRight(CycleButton.onOffBuilder(ModernOptConfig.LOG_FPS.get())
-                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.logFps"),
-                        (button, value) -> {
-                            ModernOptConfig.LOG_FPS.set(value);
-                            ModernOptSettings.refresh();
-                        }));
+    private void buildShadowsTab() {
+        int[] shadowSizes = ShadowMapResolution.allowedValues();
+        addLeft(new IntSlider(0, 0, COLUMN_WIDTH, 20,
+                Component.translatable("modernopt.option.shadowMapResolution"), 0, shadowSizes.length - 1,
+                shadowResolutionIndex(shadowSizes, ShadowMapResolution.desired()),
+                value -> {
+                    ModernOptConfig.SHADOW_MAP_RESOLUTION.set(shadowSizes[value]);
+                    ModernOptSettings.refresh();
+                },
+                value -> shadowSizes[value] + " x " + shadowSizes[value]));
 
-        this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
-                .bounds(this.width / 2 - COLUMN_WIDTH - COLUMN_GAP / 2, this.height - 28,
-                        COLUMN_WIDTH * 2 + COLUMN_GAP, 20)
-                .build());
-
-        this.scroll = 0;
-        layoutColumns();
+        addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
+                Component.translatable("modernopt.option.shadowUpdateInterval"), 1, 8,
+                ModernOptSettings.shadowUpdateInterval(),
+                value -> {
+                    ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(value);
+                    ModernOptSettings.refresh();
+                },
+                value -> value <= 1 ? "every frame" : "every " + value + " frames"));
     }
 
     private static int shadowResolutionIndex(int[] sizes, int value) {
