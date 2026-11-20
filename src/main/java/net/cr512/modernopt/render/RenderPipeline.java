@@ -206,6 +206,22 @@ public final class RenderPipeline {
     private static int realWindowWidth;
     private static int realWindowHeight;
 
+    /** Camera-movement resolution scaling: 70% becomes 60% while the view changes. */
+    private static final float MOVING_RESOLUTION_FACTOR = 0.85F;
+    private static final int MOVING_RESOLUTION_STILL_FRAMES = 20;
+    private static final double MOVING_RESOLUTION_POS_SQ = 0.0025;
+    private static final float MOVING_RESOLUTION_ROT_DEG = 0.2F;
+    private static boolean movingResolutionPoseValid;
+    private static double movingResolutionLastX;
+    private static double movingResolutionLastY;
+    private static double movingResolutionLastZ;
+    private static float movingResolutionLastYaw;
+    private static float movingResolutionLastPitch;
+    private static boolean movingResolutionActive;
+    private static int movingResolutionStillFrames;
+    private static Object movingResolutionLevel;
+    private static int lastLoggedRenderScale = -1;
+
     /**
      * Set when the world was upscaled and Iris owns the hand pass. Iris draws the first-person
      * hand inside the world pipeline (it cancels vanilla's call), where it ends up in the gbuffer
@@ -347,6 +363,90 @@ public final class RenderPipeline {
         return currentView;
     }
 
+    /**
+     * Tracks whether the camera is moving and computes the resolution for this frame.
+     *
+     * <p>The drop is a single step, not a per-frame regulator: 70% becomes 60% while the view
+     * changes, and the configured value is restored after a short stillness period. A small
+     * hysteresis keeps a slow walk or a tiny mouse movement from resizing the target every frame.
+     * </p>
+     */
+    private static void updateMovingResolution(Minecraft minecraft) {
+        if (movingResolutionLevel != minecraft.level) {
+            movingResolutionLevel = minecraft.level;
+            movingResolutionPoseValid = false;
+            movingResolutionActive = false;
+            movingResolutionStillFrames = 0;
+        }
+        if (!ModernOptSettings.dynamicMovingResolution()) {
+            movingResolutionActive = false;
+            movingResolutionStillFrames = 0;
+            movingResolutionPoseValid = false;
+            lastLoggedRenderScale = -1;
+            return;
+        }
+        Camera camera = minecraft.gameRenderer == null ? null : minecraft.gameRenderer.getMainCamera();
+        if (camera == null) {
+            movingResolutionActive = false;
+            movingResolutionPoseValid = false;
+            return;
+        }
+        net.minecraft.world.phys.Vec3 position = camera.getPosition();
+        float yaw = camera.getYRot();
+        float pitch = camera.getXRot();
+        if (!movingResolutionPoseValid) {
+            movingResolutionPoseValid = true;
+            movingResolutionActive = false;
+            movingResolutionStillFrames = 0;
+        } else {
+            double dx = position.x - movingResolutionLastX;
+            double dy = position.y - movingResolutionLastY;
+            double dz = position.z - movingResolutionLastZ;
+            double distanceSq = dx * dx + dy * dy + dz * dz;
+            float dyaw = Math.abs(yaw - movingResolutionLastYaw);
+            if (dyaw > 180.0F) {
+                dyaw = 360.0F - dyaw;
+            }
+            float dpitch = Math.abs(pitch - movingResolutionLastPitch);
+            boolean moved = distanceSq > MOVING_RESOLUTION_POS_SQ
+                    || dyaw > MOVING_RESOLUTION_ROT_DEG
+                    || dpitch > MOVING_RESOLUTION_ROT_DEG;
+            if (moved) {
+                movingResolutionActive = true;
+                movingResolutionStillFrames = 0;
+            } else if (++movingResolutionStillFrames >= MOVING_RESOLUTION_STILL_FRAMES) {
+                movingResolutionActive = false;
+            }
+        }
+        movingResolutionLastX = position.x;
+        movingResolutionLastY = position.y;
+        movingResolutionLastZ = position.z;
+        movingResolutionLastYaw = yaw;
+        movingResolutionLastPitch = pitch;
+    }
+
+    /** Configured scale, reduced by 15% while the camera is moving. */
+    private static int effectiveRenderScale() {
+        if (!ModernOptSettings.dynamicMovingResolution() || !movingResolutionActive) {
+            return cachedRenderScale;
+        }
+        return Math.max(25, Math.round(cachedRenderScale * MOVING_RESOLUTION_FACTOR));
+    }
+
+    private static void logMovingResolution(int effective) {
+        if (!ModernOptSettings.dynamicMovingResolution()) {
+            lastLoggedRenderScale = -1;
+            return;
+        }
+        if (effective != lastLoggedRenderScale) {
+            if (lastLoggedRenderScale >= 0) {
+                ModernOPT.LOG.debug("[ModernOPT] dynamic resolution {}% -> {}%",
+                        lastLoggedRenderScale, effective);
+            }
+            lastLoggedRenderScale = effective;
+        }
+    }
+
     /** Called at the head of {@code GameRenderer#renderLevel}. */
     public static void beginWorldFrame() {
         WorldCpuProfiler.noteWorldFrame();
@@ -395,6 +495,7 @@ public final class RenderPipeline {
 
         // Fast settings cache - only refresh when actually changed
         cacheSettings();
+        updateMovingResolution(minecraft);
 
         if (cachedScaleWholeWindow) {
             beginWholeWindowFrame(minecraft);
@@ -419,6 +520,10 @@ public final class RenderPipeline {
             resetHistory();
             resetMsr2History();
             lastUpscaler = null;
+            // Do not compare the first camera pose of a new world with the previous dimension.
+            movingResolutionPoseValid = false;
+            movingResolutionActive = false;
+            movingResolutionStillFrames = 0;
         }
 
         UpscalerType requested = cachedUpscaler;
@@ -473,7 +578,9 @@ public final class RenderPipeline {
             }
         }
 
-        int[] size = RenderScaleMath.targetSize(windowWidth, windowHeight, cachedRenderScale,
+        int effectiveScale = effectiveRenderScale();
+        logMovingResolution(effectiveScale);
+        int[] size = RenderScaleMath.targetSize(windowWidth, windowHeight, effectiveScale,
                 cachedSsaa, RenderSystem.maxSupportedTextureSize());
 
         // MSR2 takes priority over other upscalers when enabled
@@ -1562,7 +1669,9 @@ public final class RenderPipeline {
         if (main == null) {
             return;
         }
-        int[] size = RenderScaleMath.targetSize(windowWidth, windowHeight, cachedRenderScale,
+        int effectiveScale = effectiveRenderScale();
+        logMovingResolution(effectiveScale);
+        int[] size = RenderScaleMath.targetSize(windowWidth, windowHeight, effectiveScale,
                 cachedSsaa, RenderSystem.maxSupportedTextureSize());
         if (size[0] >= windowWidth || size[1] >= windowHeight) {
             restoreWindowSizedMainTarget(minecraft);

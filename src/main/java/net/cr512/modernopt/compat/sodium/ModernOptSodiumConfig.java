@@ -39,6 +39,7 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
 
     private static final ResourceLocation ENABLED = id("enabled");
     private static final ResourceLocation RENDER_SCALE = id("render_scale");
+    private static final ResourceLocation DYNAMIC_MOVING_RESOLUTION = id("dynamic_moving_resolution");
     private static final ResourceLocation UPSCALER = id("upscaler");
     private static final ResourceLocation SOFTNESS = id("softness");
     private static final ResourceLocation FSR_EASU_SHARPNESS = id("fsr_easu_sharpness");
@@ -98,6 +99,11 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
                         ModernOptConfig.UPSCALER.getDefault(),
                         value -> { ModernOptConfig.UPSCALER.set(value); ModernOptSettings.refresh(); },
                         () -> ModernOptConfig.UPSCALER.get()))
+                .addOption(booleanOption(builder, DYNAMIC_MOVING_RESOLUTION,
+                        "modernopt.option.dynamicMovingResolution",
+                        ModernOptConfig.DYNAMIC_MOVING_RESOLUTION.getDefault(),
+                        value -> { ModernOptConfig.DYNAMIC_MOVING_RESOLUTION.set(value); ModernOptSettings.refresh(); },
+                        () -> ModernOptConfig.DYNAMIC_MOVING_RESOLUTION.get()))
                 .addOption(integerOption(builder, SOFTNESS, "modernopt.option.softness",
                         ModernOptConfig.SOFTNESS.getDefault(), 0, 100,
                         value -> { ModernOptConfig.SOFTNESS.set(value); ModernOptSettings.refresh(); },

@@ -194,6 +194,10 @@ sky and HUD were clean, and an idle camera test measured no visible frame-to-fra
 
 The full screen is split into **Upscaling**, **Anti-aliasing** and **Shadows** tabs.
 
+`renderScale.dynamicMovingResolution` lowers the configured internal resolution by 15% while the
+camera is moving or looking around (for example 70% -> 60%) and restores it after a short
+stillness period. The percent is rounded to a whole number.
+
 ### Scale whole window
 
 `renderScale.scaleWholeWindow` (off by default) renders the entire frame at the internal
