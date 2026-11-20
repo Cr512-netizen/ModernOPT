@@ -36,6 +36,7 @@ public final class ModernOptConfig {
     // MSR2 config
     public static final ModConfigSpec.BooleanValue MSR2_ENABLED;
     public static final ModConfigSpec.BooleanValue MSR2_LANCZOS;
+    public static final ModConfigSpec.BooleanValue MSR2_LANCZOS3;
     public static final ModConfigSpec.DoubleValue MSR2_VARIANCE_SCALE;
     public static final ModConfigSpec.BooleanValue MSR2_EDGE_AWARE;
     public static final ModConfigSpec.IntValue MSR2_SHARPNESS;
@@ -128,6 +129,11 @@ public final class ModernOptConfig {
                         "Sharper than bilinear on grass, foliage and block edges, but can ring on high-contrast edges.",
                         "Turn it off if the image shimmers or shows halos.")
                 .define("lanczos", true);
+        MSR2_LANCZOS3 = b.comment(
+                        "Use the wider Lanczos-3 kernel instead of Lanczos-2 for the current-frame reconstruction.",
+                        "More detail and sharper texture response, at the cost of 36 taps instead of 16 and more ringing.",
+                        "Only used when msr2.lanczos is on.")
+                .define("lanczos3", false);
         MSR2_VARIANCE_SCALE = b.comment("Variance clipping threshold multiplier for temporal pass. Higher = more aggressive history rejection.")
                 .defineInRange("varianceScale", 2.0, 0.5, 4.0);
         MSR2_EDGE_AWARE = b.comment("Enable edge-aware interpolation in spatial pass (preserves geometry edges).")

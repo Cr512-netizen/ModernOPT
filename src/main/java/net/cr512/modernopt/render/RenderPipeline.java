@@ -2402,6 +2402,7 @@ public final class RenderPipeline {
             compute.setVec2("Jitter", jitterX, jitterY);
             compute.setVec2("PrevJitter", previousJitterX, previousJitterY);
             compute.setInt("UseLanczos", ModernOptSettings.msr2Lanczos() ? 1 : 0);
+            compute.setInt("LanczosRadius", ModernOptSettings.msr2Lanczos3() ? 3 : 2);
             compute.setFloat("VarianceScale", (float) cachedMsrVarianceScale);
             compute.setFloat("DepthThreshold", (float) cachedMsrDepthThreshold);
             compute.setFloat("HistoryWeight", (float) cachedMsrHistoryWeight);

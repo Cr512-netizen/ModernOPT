@@ -61,11 +61,13 @@ Key properties:
   reading history, and rejects history that moves more than 15% of the screen in one frame. This
   is the temporal anti-aliasing part; MSR keeps jitter disabled under Iris, MSR2 can be tried
   with a pack and falls back to the normal image if it does not pass the quality check.
-- The low-resolution current frame is reconstructed with **Lanczos-2** before temporal
-  accumulation (toggle: `msr2.lanczos`, default on). The weighted sum is clamped to the source
-  neighbourhood, which removes the bright/dark halos from the negative lobes while keeping the
-  sharper in-band response. It noticeably reduces the soapy look on grass and foliage, costs about
-  2% FPS, and can still ring on very high-contrast block edges; turn it off if the image shimmers.
+- The low-resolution current frame is reconstructed with **depth-guided Lanczos-2** before
+  temporal accumulation (toggle: `msr2.lanczos`, default on). Each tap is weighted by depth
+  similarity, so the kernel does not mix foreground and background across block edges. The
+  weighted sum is clamped to the source neighbourhood, removing the bright/dark halos from the
+  negative lobes. It noticeably reduces the soapy look on grass and foliage and costs about 3%
+  FPS. `msr2.lanczos3` switches to the wider 6x6 Lanczos-3 kernel: sharper texture response,
+  about 7% FPS cost total, and more ringing on very high-contrast edges.
 - The fragment fallback remains for GPUs without compute, but a compute-capable driver is needed
   for the output-resolution history path.
 - Iris integration: shadow viewports are preserved, and if the Iris depth buffer cannot be

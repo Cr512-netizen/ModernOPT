@@ -426,6 +426,7 @@ public final class SelfTest {
         }
         ModernOptConfig.SCALE_WHOLE_WINDOW.set(name.contains("!wws"));
         ModernOptConfig.MSR2_LANCZOS.set(!name.contains("!nolanczos"));
+        ModernOptConfig.MSR2_LANCZOS3.set(name.contains("!lanczos3"));
         int shadowIndex = name.indexOf("!shadow");
         if (shadowIndex >= 0) {
             int shadowInterval = digits(name.substring(shadowIndex + 7));

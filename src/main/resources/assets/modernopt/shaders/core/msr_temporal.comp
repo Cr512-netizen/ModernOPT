@@ -33,6 +33,7 @@ uniform mat4 PrevProjection;
 uniform float HistoryValid;
 uniform float DepthValid;
 uniform int UseLanczos;
+uniform int LanczosRadius;
 
 // Image load/store outputs.
 layout(r11f_g11f_b10f, binding = 0) writeonly uniform image2D HistoryColorOut;
@@ -63,38 +64,54 @@ uint packDepth(float depth) {
 // recover edge contrast from the 42% input instead of just adding a sharpen halo afterwards.
 const float LANCZOS_PI = 3.14159265359;
 
-float lanczos2Weight(float x) {
+float lanczosWeight(float x, float radius) {
     x = abs(x);
     if (x < 1.0e-5) {
         return 1.0;
     }
-    if (x >= 2.0) {
+    if (x >= radius) {
         return 0.0;
     }
     float px = LANCZOS_PI * x;
-    return 2.0 * sin(px) * sin(px * 0.5) / (px * px);
+    return radius * sin(px) * sin(px / radius) / (px * px);
 }
 
-vec3 sampleCurrentLanczos(vec2 uv) {
+vec3 sampleCurrentLanczos(vec2 uv, float centerDepth) {
     vec2 source = uv * InputSize - 0.5;
     vec2 base = floor(source);
     vec2 fraction = source - base;
     ivec2 sourceSize = ivec2(InputSize);
     ivec2 basePixel = ivec2(base);
+    float radius = float(LanczosRadius);
     vec3 sum = vec3(0.0);
     float weightSum = 0.0;
     vec3 minColor = vec3(1.0e20);
     vec3 maxColor = vec3(-1.0e20);
 
-    for (int y = -1; y <= 2; y++) {
-        float wy = lanczos2Weight(float(y) - fraction.y);
-        for (int x = -1; x <= 2; x++) {
-            float wx = lanczos2Weight(float(x) - fraction.x);
+    for (int y = -2; y <= 3; y++) {
+        if (y < 1 - LanczosRadius || y > LanczosRadius) {
+            continue;
+        }
+        float wy = lanczosWeight(float(y) - fraction.y, radius);
+        for (int x = -2; x <= 3; x++) {
+            if (x < 1 - LanczosRadius || x > LanczosRadius) {
+                continue;
+            }
+            float wx = lanczosWeight(float(x) - fraction.x, radius);
             ivec2 pixel = clamp(basePixel + ivec2(x, y), ivec2(0), sourceSize - ivec2(1));
             float weight = wx * wy;
             vec3 color = texelFetch(CurrentColor, pixel, 0).rgb;
-            minColor = min(minColor, color);
-            maxColor = max(maxColor, color);
+            float tapDepth = texelFetch(CurrentDepth, pixel, 0).r;
+            // Do not mix samples from a different surface across a depth edge. The tolerance is
+            // relative to the centre depth so near and far surfaces get proportional slack.
+            float tolerance = max(0.0025, centerDepth * 0.03);
+            float depthWeight = 1.0 - smoothstep(tolerance, tolerance * 2.5,
+                    abs(tapDepth - centerDepth));
+            weight *= depthWeight;
+            if (depthWeight > 0.05) {
+                minColor = min(minColor, color);
+                maxColor = max(maxColor, color);
+            }
             sum += color * weight;
             weightSum += weight;
         }
@@ -144,10 +161,10 @@ void main() {
     // so the UV offset is half of it.
     vec2 currentUv = clamp(uv + Jitter * 0.5, vec2(0.0), vec2(1.0));
 
-    vec3 currentColor = UseLanczos != 0
-            ? sampleCurrentLanczos(currentUv)
-            : texture(CurrentColor, currentUv).rgb;
     float currentDepth = texture(CurrentDepth, currentUv).r;
+    vec3 currentColor = UseLanczos != 0
+            ? sampleCurrentLanczos(currentUv, currentDepth)
+            : texture(CurrentColor, currentUv).rgb;
 
     bool valid = HistoryValid > 0.5;
     bool depthValid = DepthValid > 0.5;

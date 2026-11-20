@@ -41,6 +41,7 @@
   "modernopt.option.logFps.tooltip": "Write FPS statistics to the log every second.",
   "modernopt.option.msrEnabled": "MSR2 (experimental)",
   "modernopt.option.msrLanczos": "MSR2 Lanczos reconstruction",
+  "modernopt.option.msrLanczos3": "MSR2 Lanczos-3 quality",
   "modernopt.option.msrVarianceScale": "MSR2 variance scale",
   "modernopt.option.msrEdgeAware": "MSR2 edge-aware interpolation",
   "modernopt.option.msrSharpness": "MSR2 sharpness",
