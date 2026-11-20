@@ -617,6 +617,8 @@ public final class RenderPipeline {
 
         // Reset temporal history before allocating/reallocating the MSR targets. Resetting after
         // ensureMSR2HistoryTargets() would destroy the freshly created ping-pong pair.
+        int outputWidth = minecraft.getMainRenderTarget().width;
+        int outputHeight = minecraft.getMainRenderTarget().height;
         boolean settingsChanged = requested != lastUpscaler
                 || cachedRenderScale != lastUpscalerPercent
                 || cachedSsaa != lastUpscalerSsaa;
@@ -631,9 +633,11 @@ public final class RenderPipeline {
             resetMsr2History();
         }
 
-        // Initialize MSR history targets if needed
+        // Initialize MSR history targets if needed. The colour/depth history now lives at the
+        // output resolution (R11G11B10F + R16UI), so the temporal pass does not throw away the
+        // detail it just accumulated when the spatial pass upsamples.
         if (cachedMsrEnabled) {
-            ensureMSR2HistoryTargets(size[0], size[1]);
+            ensureMSR2HistoryTargets(outputWidth, outputHeight);
             msr2ThisFrame = true;
             msrWanted = false;
         }
@@ -661,8 +665,6 @@ public final class RenderPipeline {
                 worldTarget.setFilterMode(filterMode);
             }
         }
-        int outputWidth = minecraft.getMainRenderTarget().width;
-        int outputHeight = minecraft.getMainRenderTarget().height;
         if (msrWanted && !msrUnsupported) {
             // The temporal history lives in output resolution. Allocate it here: switching to
             // MSR at runtime used to reach reconstructMsr() with null history targets and
@@ -795,32 +797,22 @@ public final class RenderPipeline {
         cachedMsrTemporalMinFps = ModernOptSettings.msr2TemporalMinFps();
         cachedMsrScaleStep = ModernOptSettings.msr2ScaleStep();
         cachedMsrMinScale = ModernOptSettings.msr2MinScale();
-        if (cachedMsrEnabled) {
-            // MSR2 needs per-entity motion vectors. Do not allocate or refresh the collector for
-            // spatial modes: the entity dispatcher calls this on every rendered entity, and an
-            // always-present collector made FSR 1 pay for temporal data it never reads.
-            if (!computeAvailable) {
-                try {
-                    computeAvailable = org.lwjgl.opengl.GL.getCapabilities().OpenGL43;
-                    if (computeAvailable) {
-                        ModernOPT.LOG.info("[ModernOPT] MSR: GL 4.3+ compute shaders available");
-                    } else {
-                        ModernOPT.LOG.info("[ModernOPT] MSR: GL 4.3+ not available, using fragment shader fallback");
-                    }
-                } catch (Throwable t) {
-                    computeAvailable = false;
-                    ModernOPT.LOG.warn("[ModernOPT] MSR: compute detection failed", t);
+        if (cachedMsrEnabled && !computeAvailable) {
+            try {
+                computeAvailable = org.lwjgl.opengl.GL.getCapabilities().OpenGL43;
+                if (computeAvailable) {
+                    ModernOPT.LOG.info("[ModernOPT] MSR: GL 4.3+ compute shaders available");
+                } else {
+                    ModernOPT.LOG.info("[ModernOPT] MSR: GL 4.3+ not available, using spatial fallback");
                 }
+            } catch (Throwable t) {
+                computeAvailable = false;
+                ModernOPT.LOG.warn("[ModernOPT] MSR: compute detection failed", t);
             }
-            if (computeAvailable && motionVectorCollector == null) {
-                motionVectorCollector = new MotionVectorCollector(true);
-            }
-            if (motionVectorCollector != null) {
-                motionVectorCollector.beginFrame();
-            }
-        } else {
-            motionVectorCollector = null;
         }
+        // The temporal shader is camera-only; the old per-entity collector was never read and
+        // made every rendered entity pay for an SSBO upload that the shader ignored.
+        motionVectorCollector = null;
     }
 
     /**
@@ -2266,14 +2258,14 @@ public final class RenderPipeline {
         if (msr2History == null) {
             throw new IllegalStateException("MSR history targets not allocated");
         }
-        if (msr2History.getWidth() != scaled.width || msr2History.getHeight() != scaled.height) {
-            // A resize slipped through beginWorldFrame (Alt+Enter, F11, window drag): recreate
-            // before anything samples a stale ping-pong pair.
-            ensureMSR2HistoryTargets(scaled.width, scaled.height);
-        }
-
         int outWidth = main.width;
         int outHeight = main.height;
+        if (msr2History.getWidth() != outWidth || msr2History.getHeight() != outHeight) {
+            // A resize slipped through beginWorldFrame (Alt+Enter, F11, window drag): recreate
+            // before anything samples a stale ping-pong pair.
+            ensureMSR2HistoryTargets(outWidth, outHeight);
+        }
+
         int sourceWidth = scaled.width;
         int sourceHeight = scaled.height;
         int sourceTexture = scaled.getColorTextureId();
@@ -2305,45 +2297,53 @@ public final class RenderPipeline {
         float upscale = (float) outWidth / (float) sourceWidth;
         boolean temporalWorthIt = upscale > 1.11F;
         boolean useCompute = temporalWorthIt && computeAvailable
-                && msrComputeProgram != null && motionVectorCollector != null;
+                && msrComputeProgram != null;
+        if (temporalWorthIt && !useCompute) {
+            // The output-resolution history path needs compute images and the motion-vector
+            // buffer. Keep the old spatial reconstruction as a safe fallback instead of
+            // feeding a source-resolution history into the output-resolution spatial pass.
+            reconstructSpatial(main, scaled);
+            return;
+        }
 
         if (temporalWorthIt) {
-            if (useCompute) {
-                runComputeTemporal(sourceWidth, sourceHeight, outWidth, outHeight,
-                        sourceTexture, depthTexture);
-            } else {
-                runFragmentTemporal(library, sourceWidth, sourceHeight, outWidth, outHeight,
-                        sourceTexture, depthTexture);
-            }
-            // The just-written ping-pong side becomes the read side for the spatial pass.
+            runComputeTemporal(sourceWidth, sourceHeight, outWidth, outHeight,
+                    sourceTexture, depthTexture);
+            // The just-written ping-pong side becomes the read side for the sharpen pass.
             msr2History.swap();
         }
 
         int temporalColor = temporalWorthIt ? msr2History.getReadColorTexture() : sourceTexture;
 
-        // ===== SPATIAL PASS (EASU + CAS) - always a fragment shader =====
+        // ===== SHARPEN / PRESENT =====
+        // History is already at output resolution, so this is an RCAS pass (or a plain copy
+        // when sharpening is off), not an EASU upsample. Keeping EASU here would blur the
+        // detail that the output-resolution history just preserved.
         ShaderLibrary.beginPassState();
         try {
-            // The final pass writes the real main target, so alpha must be written as well;
-            // beginPassState() disables alpha writes for the history passes.
             GlStateManager._colorMask(true, true, true, true);
-
-            // Native resolution viewport and the real game framebuffer. main.bindWrite() goes
-            // through GlStateManager, which now agrees with the FBO actually bound because
-            // MSR2HistoryTarget also uses GlStateManager.
             main.bindWrite(true);
-
-            library.msrSpatial.setSampler("TemporalColor", temporalColor);
-            library.msrSpatial.setSampler("DepthTexture", depthTexture);
-
-            setUniform2f(library.msrSpatial, "InputSize", (float) sourceWidth, (float) sourceHeight);
-            setUniform1f(library.msrSpatial, "Sharpness", cachedMsrSharpness / 100.0F);
-            setUniform1f(library.msrSpatial, "EdgeAwareStrength", cachedMsrEdgeAware ? 1.0F : 0.0F);
-            setUniform1f(library.msrSpatial, "DepthEdgeThreshold", (float) cachedMsrDepthThreshold);
-
-            library.msrSpatial.apply();
-            drawFullscreenQuad();
-            library.msrSpatial.clear();
+            if (temporalWorthIt) {
+                int outW = outWidth;
+                int outH = outHeight;
+                if (cachedMsrSharpness > 0) {
+                    ShaderLibrary.draw(library.rcas, temporalColor, outW, outH, outW, outH,
+                            cachedMsrSharpness / 100.0F, 0.0F);
+                } else {
+                    ShaderLibrary.draw(library.bilinear, temporalColor, outW, outH, outW, outH,
+                            0.0F, 0.0F);
+                }
+            } else {
+                library.msrSpatial.setSampler("TemporalColor", temporalColor);
+                library.msrSpatial.setSampler("DepthTexture", depthTexture);
+                setUniform2f(library.msrSpatial, "InputSize", (float) sourceWidth, (float) sourceHeight);
+                setUniform1f(library.msrSpatial, "Sharpness", cachedMsrSharpness / 100.0F);
+                setUniform1f(library.msrSpatial, "EdgeAwareStrength", cachedMsrEdgeAware ? 1.0F : 0.0F);
+                setUniform1f(library.msrSpatial, "DepthEdgeThreshold", (float) cachedMsrDepthThreshold);
+                library.msrSpatial.apply();
+                drawFullscreenQuad();
+                library.msrSpatial.clear();
+            }
         } finally {
             ShaderLibrary.endPassState();
             main.bindWrite(true);
@@ -2390,21 +2390,14 @@ public final class RenderPipeline {
             bindTextureUnit(GL13C.GL_TEXTURE0 + 6, historyColorRead);
             bindTextureUnit(GL13C.GL_TEXTURE0 + 7, historyDepthRead);
 
-            if (motionVectorCollector != null) {
-                motionVectorCollector.uploadToSsbo();
-                motionVectorCollector.bindSsbo(0);
-            }
-
             compute.bind();
             compute.setInt("CurrentColor", 4);
             compute.setInt("CurrentDepth", 5);
             compute.setInt("HistoryColor", 6);
             compute.setInt("HistoryDepth", 7);
-            // The shader loops over this instead of over the fixed 1024-entry pool.
-            compute.setInt("EntityCount", motionVectorCollector != null
-                    ? motionVectorCollector.getEntityCount() : 0);
 
             compute.setVec2("InputSize", (float) sourceWidth, (float) sourceHeight);
+            compute.setVec2("OutputSize", (float) outWidth, (float) outHeight);
             compute.setVec2("Jitter", 0.0F, 0.0F);
             compute.setFloat("VarianceScale", (float) cachedMsrVarianceScale);
             compute.setFloat("DepthThreshold", (float) cachedMsrDepthThreshold);
@@ -2425,9 +2418,10 @@ public final class RenderPipeline {
             compute.bindImage(0, historyColorWrite, GL30C.GL_R11F_G11F_B10F);
             compute.bindImage(1, historyDepthWrite, GL30C.GL_R16UI);
 
-            // Workgroup size in msr_temporal.comp is 8x8.
-            int groupsX = (sourceWidth + 7) / 8;
-            int groupsY = (sourceHeight + 7) / 8;
+            // Workgroup size in msr_temporal.comp is 8x8; the history and the dispatch are at the
+            // output resolution now.
+            int groupsX = (outWidth + 7) / 8;
+            int groupsY = (outHeight + 7) / 8;
             GL43.glDispatchCompute(groupsX, groupsY, 1);
 
             // Without this the spatial pass can sample the history before imageStore lands.
