@@ -84,8 +84,8 @@ Key properties:
 
 The Upscaling tab has a one-click **Temporal 42 %** preset: it selects MSR2 and sets the internal
 resolution to 42 %. It is **experimental and not recommended as a default yet**. In the controlled
-run below its mean was about 12 % above FSR 1 + Lanczos-2 at 50 %, with a comparable 1% low
-(94.2 vs 93.4 fps), but the image is softer; the output-resolution temporal pass costs most of
+run below its mean was about 11 % above FSR 1 + Lanczos-2 at 50 %, with a better 1% low
+(118.4 vs 106.7 fps), but the image is softer; the output-resolution temporal pass costs most of
 what the lower world resolution saves. The preset only writes the existing `renderScale.percent`
 and `upscaler` values, so it is easy to A/B in your own scene.
 
@@ -190,30 +190,34 @@ Key points:
 ## Testing
 
 The methodology, the two pinned mod stacks and the state suffixes are in
-[TESTING.md](TESTING.md). All README numbers below come from the same scene and the same harness:
+[TESTING.md](TESTING.md). `runClient` is a normal dev client; `runBench` is the explicit benchmark
+entry point. All README numbers below come from the same scene and the same harness:
 RTX 5060 Ti 16 GB / Ryzen 7 7800X3D, 1920x1080, Complementary Unbound r5.9.3, render distance 16,
 frozen time and weather, static camera, 512 shadow map, 60-tick warmup and 160-tick sample. The
 control stack is Minecraft 1.21.1, NeoForge 21.1.264, Sodium 0.8.13 and Iris 1.8.14-beta.1.
 
 | Mode | Mean FPS | 1% low | Shadow interval | Held share | Shadow ms (drawn / amortized) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Native (mod disabled, 100 %) | 99.3 | 82.7 | - | - | - |
-| FSR 1 + Lanczos-2, 50 % | 131.1 | 93.4 | 2 | 50 % | 2.52 / 1.26 |
-| FSR 1 + Lanczos-2, 50 % | 111.3 | 90.7 | 1 | 0 % | 2.56 / 2.56 |
-| FSR 1 EASU (Lanczos off), 50 % | 135.0 | 92.2 | 2 | 50 % | 2.49 / 1.25 |
-| MSR2, 50 % | 130.4 | 91.7 | 2 | 50 % | 2.49 / 1.25 |
-| MSR2, 42 % | 146.6 | 94.2 | 2 | 50 % | 2.50 / 1.25 |
+| Native (mod disabled, 100 %) | 102.1 | 96.5 | - | - | - |
+| FSR 1 + Lanczos-2, 50 % | 136.9 | 106.7 | 2 | 50 % | 2.56 / 1.28 |
+| FSR 1 + Lanczos-2, 50 % | 115.5 | 111.8 | 1 | 0 % | 2.56 / 2.56 |
+| FSR 1 EASU (Lanczos off), 50 % | 138.6 | 115.2 | 2 | 50 % | 2.53 / 1.27 |
+| MSR2, 50 % | 138.7 | 114.1 | 2 | 50 % | 2.53 / 1.27 |
+| MSR2, 42 % | 152.0 | 118.4 | 2 | 50 % | 2.55 / 1.28 |
 
 `Held share` is `held / (drawn + held)` for the same measurement window as the stage times; the
 interval is printed next to it because 50 % is the correct value for interval 2, not a defect.
-The 1% low is the mean of the slowest 1 % of frames after excluding the screenshot frame. Absolute
-FPS depends on GPU state; compare rows from this one run, not numbers from older releases.
+The 1% low is the mean of the slowest 1 % of frames after excluding the screenshot frame. Sampling
+pauses while the window is inactive; screenshots are taken outside the sample window, so OS focus
+drops and PNG writes cannot enter the numbers. Absolute FPS depends on GPU state; compare rows from
+this one run, not numbers from older releases.
 
-MSR2 50 % is within 1 % of FSR 1 in this CPU-limited scene. MSR2 42 % has a higher mean (about
-12 % over FSR 1 + Lanczos-2) and a comparable 1% low, but the image is softer; it remains an
-optional experimental preset, not the default. Lanczos-2 on FSR 1 is about 3 % slower than EASU
-but has a slightly better 1% low; disable it for the pure FSR 1 kernel. The shadow interval is the
-larger lever: interval 2 cuts the amortized shadow cost in half and is worth about 18 % mean FPS
+MSR2 50 % is within 0.1 % of FSR 1 EASU and 1.3 % above FSR 1 + Lanczos-2. MSR2 42 % has a higher
+mean (about 10 % over FSR 1 EASU, 11 % over FSR 1 + Lanczos-2) and the best 1% low here, but the
+image is softer; it remains an optional experimental preset, not the default. Lanczos-2 on FSR 1 is
+about 1 % slower than EASU in this run and its 1% low is lower (106.7 vs 115.2); disable it for the
+pure FSR 1 kernel, use it when you prefer the Lanczos reconstruction. The shadow interval is the
+larger lever: interval 2 cuts the amortized shadow cost in half and is worth about 18.5 % mean FPS
 here.
 
 `nvidia-smi` sampled during a separate run of the same scene with a 2048 px shadow map reported
@@ -304,8 +308,8 @@ Measured in the same scene as the table above (FSR 1, 50 %, 512 shadow map):
 
 | Interval | Mean FPS | 1% low | Held | Shadow amortized |
 | ---: | ---: | ---: | ---: | ---: |
-| 1 (every frame) | 111.3 | 90.7 | 0 % | 2.56 ms |
-| 2 | 131.1 | 93.4 | 50 % | 1.26 ms |
+| 1 (every frame) | 115.5 | 111.8 | 0 % | 2.56 ms |
+| 2 | 136.9 | 106.7 | 50 % | 1.28 ms |
 
 The full profile line reports both the drawn-frame cost and the amortized value, and the overlay
 shows `shadows held N/M (%) i=N`. With interval 1 the pass is still timed and counted as drawn.

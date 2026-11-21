@@ -16,6 +16,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
+import org.lwjgl.glfw.GLFW;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -73,6 +74,10 @@ public final class SelfTest {
     private static int finishedTick;
     private static long lastFrameNanos;
     private static boolean skipNextFrameSample;
+    private static int lastLoadedChunks = -1;
+    private static int stableChunkTicks;
+    private static int inactiveTicks;
+    private static boolean focusWarned;
     private static final List<Long> frameTimes = new ArrayList<>(4096);
     /** State name for the convergence screenshots, or {@code null} when not requested. */
     private static String convergenceState;
@@ -132,6 +137,13 @@ public final class SelfTest {
             }
         }
         long now = System.nanoTime();
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!minecraft.isWindowActive() || minecraft.isPaused()) {
+            // Do not record the OS-capped 60 fps frames while the window is in the background.
+            lastFrameNanos = 0L;
+            skipNextFrameSample = false;
+            return;
+        }
         long previous = lastFrameNanos;
         lastFrameNanos = now;
         if (screenshotTaken) {
@@ -193,6 +205,36 @@ public final class SelfTest {
             logIrisTargets();
         }
 
+        if (!minecraft.isWindowActive()) {
+            if (!focusWarned) {
+                focusWarned = true;
+                ModernOPT.LOG.warn("[BENCH] window is not focused; click it once. Sampling is "
+                        + "paused so the OS 60 fps background cap cannot enter the results");
+            }
+            if (++inactiveTicks % 100 == 0) {
+                focusBenchWindow(minecraft);
+            }
+            return;
+        }
+        if (focusWarned) {
+            focusWarned = false;
+            ModernOPT.LOG.info("[BENCH] window focused again after {} ticks", inactiveTicks);
+            inactiveTicks = 0;
+        }
+        inactiveTicks = 0;
+
+        // Let chunk streaming settle before the first measured state. Otherwise the first
+        // warmup runs while 1000+ chunks are still being uploaded and the FPS curve drops.
+        int loadedChunks = minecraft.level.getChunkSource().getLoadedChunksCount();
+        if (loadedChunks != lastLoadedChunks) {
+            lastLoadedChunks = loadedChunks;
+            stableChunkTicks = 0;
+            return;
+        }
+        if (++stableChunkTicks < 40) {
+            return;
+        }
+
         ticks++;
         int elapsed = ticks - START_TICK;
         if (elapsed < 0) {
@@ -251,18 +293,12 @@ public final class SelfTest {
                             client.player.getBlockX(), client.player.getBlockZ()));
             logIrisTargets();
             ModernOPT.LOG.info("[BENCH] gl {}", RenderPipeline.debugGlState());
-            pendingShotState = STATES[state];
-            pendingShotPhase = "start";
         } else if (offset == STATE_TICKS - 1) {
             sampling = false;
             convergenceState = null;
             logStats(STATES[state]);
             pendingShotState = STATES[state];
             pendingShotPhase = "end";
-        } else if (offset == WARMUP_TICKS + SAMPLE_TICKS / 2) {
-            // Mid-sample screenshot: proves what the measured frames actually showed.
-            pendingShotState = STATES[state];
-            pendingShotPhase = "mid";
         }
     }
 
@@ -273,14 +309,19 @@ public final class SelfTest {
      */
     private static void steerOnce(Minecraft minecraft) {
         try {
+            // The harness must compare the renderer, not an OS background cap or vsync.
+            minecraft.options.framerateLimit().set(260);
+            minecraft.options.enableVsync().set(false);
+            GLFW.glfwSwapInterval(0);
             if (BENCH_RENDER_DISTANCE > 0) {
                 minecraft.options.renderDistance().set(BENCH_RENDER_DISTANCE);
-                minecraft.options.save();
                 ModernOPT.LOG.info("[BENCH] render distance forced to {} chunks (client option)", BENCH_RENDER_DISTANCE);
             }
             if (minecraft.level != null) {
                 minecraft.options.pauseOnLostFocus = false;
             }
+            minecraft.options.save();
+            focusBenchWindow(minecraft);
             minecraft.level.setDayTime(1000L);
             minecraft.level.setRainLevel(0.0F);
             minecraft.level.setThunderLevel(0.0F);
@@ -313,6 +354,18 @@ public final class SelfTest {
             }
         } catch (Throwable throwable) {
             ModernOPT.LOG.warn("[BENCH] startup steering skipped: {}", throwable.toString());
+        }
+    }
+
+    /** Brings the benchmark window to the foreground; sampling waits until it is active. */
+    private static void focusBenchWindow(Minecraft minecraft) {
+        try {
+            long handle = minecraft.getWindow().getWindow();
+            GLFW.glfwShowWindow(handle);
+            GLFW.glfwFocusWindow(handle);
+            GLFW.glfwRequestWindowAttention(handle);
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.warn("[BENCH] could not focus the game window: {}", throwable.toString());
         }
     }
 

@@ -90,8 +90,16 @@ neoForge {
         client {
             client()
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
-            // The benchmark harness only runs in development; without this property the mod
-            // behaves like a normal client and SelfTest observes nothing.
+            // A normal dev launch stays a normal game. The benchmark harness is opt-in with
+            // -Pbench (or one of its -Pbench* options) so it cannot change FPS in the background.
+            def benchRequested = project.hasProperty('bench')
+                    || project.hasProperty('benchStates')
+                    || project.hasProperty('benchWarmup')
+                    || project.hasProperty('benchSample')
+                    || project.hasProperty('benchBaseline')
+                    || project.hasProperty('benchTolerance')
+                    || project.hasProperty('benchReference')
+            if (benchRequested) {
             systemProperty 'modernopt.bench', 'true'
             if (project.hasProperty('benchStates')) {
                 systemProperty 'modernopt.bench.states', project.benchStates
@@ -117,6 +125,31 @@ neoForge {
 
 
 
+            programArgument '--quickPlaySingleplayer'
+            programArgument 'ModernOPTTest'
+            }
+        }
+        bench {
+            client()
+            systemProperty 'modernopt.bench', 'true'
+            if (project.hasProperty('benchStates')) {
+                systemProperty 'modernopt.bench.states', project.benchStates
+            }
+            if (project.hasProperty('benchWarmup')) {
+                systemProperty 'modernopt.bench.warmup', project.benchWarmup
+            }
+            if (project.hasProperty('benchSample')) {
+                systemProperty 'modernopt.bench.sample', project.benchSample
+            }
+            if (project.hasProperty('benchBaseline')) {
+                systemProperty 'modernopt.bench.baseline', project.benchBaseline
+            }
+            if (project.hasProperty('benchTolerance')) {
+                systemProperty 'modernopt.bench.tolerance', project.benchTolerance
+            }
+            if (project.hasProperty('benchReference')) {
+                systemProperty 'modernopt.bench.reference', project.benchReference
+            }
             programArgument '--quickPlaySingleplayer'
             programArgument 'ModernOPTTest'
         }

@@ -48,10 +48,19 @@ credits ModernOPT with work another mod did.
 
 ## Run
 
+`runClient` is a normal development client: the benchmark harness is disabled unless a `-Pbench*`
+option is passed. `runBench` is the explicit benchmark entry point.
+
 ```bash
-./gradlew runClient -PbenchStates=FSR1-50!shadow2,MSR2-42!shadow2 \
+./gradlew runBench -PbenchStates=FSR1-50!shadow2,MSR2-42!shadow2 \
   -PbenchWarmup=60 -PbenchSample=160
 ```
+
+The harness focuses the fullscreen window and disables vsync/frame limiting before sampling. If
+Windows refuses the focus request, click the window once; sampling is paused while it is inactive so
+OS-capped background frames cannot enter the results. Chunk streaming must be stable for 40 ticks
+before the first state starts, and screenshots are taken before/after the sample window, never in
+the middle of it.
 
 State suffixes used by the harness:
 
@@ -78,7 +87,7 @@ frame for hundreds of milliseconds and would otherwise dominate the 1% low.
 ### Baselines
 
 ```bash
-./gradlew runClient -PbenchBaseline=bench-baseline.json \
+./gradlew runBench -PbenchBaseline=bench-baseline.json \
   -PbenchTolerance=0.03 -PbenchStates=...
 ```
 
