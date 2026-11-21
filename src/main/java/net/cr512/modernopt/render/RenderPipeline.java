@@ -185,7 +185,7 @@ public final class RenderPipeline {
     private static int cachedMsrScaleStep = 5;
     private static int cachedMsrMinScale = 50;
 
-    /** TEMPORARY DIAGNOSTIC counter for per-frame GL logging. */
+    /** Bench-only diagnostic counter for per-frame GL logging. */
     private static int dbgFrameCounter;
 
     /**
@@ -2030,7 +2030,7 @@ public final class RenderPipeline {
     }
 
     /**
-     * TEMPORARY DIAGNOSTIC: one-line snapshot of the GL viewport and the framebuffers involved in
+     * Bench-only diagnostic: one-line snapshot of the GL viewport and the framebuffers involved in
      * the scaled path. Remove once the scaled-path slowdown is understood.
      */
     public static String debugGlState() {

@@ -61,7 +61,7 @@ public final class GpuProfiler {
     private static int lastForcedCaster;
     private static boolean nestedWarningLogged;
 
-    /** TEMPORARY DIAGNOSTIC: CPU time spent submitting the world section. */
+    /** Bench-only diagnostic: CPU time spent submitting the world section. */
     private static long cpuWorldStart;
     private static double cpuWorldAccumMs;
     private static int cpuWorldSamples;
@@ -129,12 +129,12 @@ public final class GpuProfiler {
         pending[section]++;
     }
 
-    /** TEMPORARY DIAGNOSTIC: marks the start of the world section on the CPU timeline. */
+    /** Bench-only diagnostic: marks the start of the world section on the CPU timeline. */
     public static void beginCpuWorld() {
         cpuWorldStart = System.nanoTime();
     }
 
-    /** TEMPORARY DIAGNOSTIC: accumulates the CPU time spent submitting the world section. */
+    /** Bench-only diagnostic: accumulates the CPU time spent submitting the world section. */
     public static void endCpuWorld() {
         if (cpuWorldStart != 0) {
             cpuWorldAccumMs += (System.nanoTime() - cpuWorldStart) / 1_000_000.0;
