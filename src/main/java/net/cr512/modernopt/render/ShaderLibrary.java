@@ -40,14 +40,13 @@ public final class ShaderLibrary {
     /** {@code null} means this driver/program failed to link; MSR then falls back to FSR 1. */
     public final ShaderInstance temporal;
     
-    // MSR2 shaders (the temporal pass is a raw compute program, Msr2TemporalCompute)
+    // MSR2 spatial fallback shader (the temporal pass is a raw compute program)
     public final ShaderInstance msrSpatial;
-    public final ShaderInstance msrBlit;
 
     private ShaderLibrary(ShaderInstance bilinear, ShaderInstance nearest, ShaderInstance soft,
                           ShaderInstance box, ShaderInstance fxaa, ShaderInstance easu, ShaderInstance rcas,
                           ShaderInstance blit, ShaderInstance temporal,
-                          ShaderInstance msrSpatial, ShaderInstance msrBlit) {
+                          ShaderInstance msrSpatial) {
         this.bilinear = bilinear;
         this.nearest = nearest;
         this.soft = soft;
@@ -58,7 +57,6 @@ public final class ShaderLibrary {
         this.blit = blit;
         this.temporal = temporal;
         this.msrSpatial = msrSpatial;
-        this.msrBlit = msrBlit;
     }
 
     public static ShaderLibrary load(ResourceProvider resources) throws IOException {
@@ -71,17 +69,15 @@ public final class ShaderLibrary {
                     throwable);
         }
         
-        // MSR2 shaders
+        // MSR2 spatial fallback shader
         ShaderInstance msrSpatial = null;
-        ShaderInstance msrBlit = null;
         try {
             msrSpatial = create(resources, "msr_spatial");
-            msrBlit = create(resources, "blit");
         } catch (Throwable throwable) {
-            ModernOPT.LOG.error("[ModernOPT] MSR2 shaders failed to compile, MSR will be unavailable",
+            ModernOPT.LOG.error("[ModernOPT] MSR2 spatial shader failed to compile, MSR2 will be unavailable",
                     throwable);
         }
-        
+
         return new ShaderLibrary(
                 create(resources, "bilinear"),
                 create(resources, "nearest"),
@@ -92,8 +88,7 @@ public final class ShaderLibrary {
                 create(resources, "rcas"),
                 create(resources, "blit"),
                 temporal,
-                msrSpatial,
-                msrBlit);
+                msrSpatial);
     }
 
     private static ShaderInstance create(ResourceProvider resources, String name) throws IOException {
@@ -116,9 +111,6 @@ public final class ShaderLibrary {
         if (this.msrSpatial != null) {
             this.msrSpatial.close();
         }
-        if (this.msrBlit != null) {
-            this.msrBlit.close();
-        }
     }
 
     /** True when the temporal accumulation pass is available. */
@@ -128,7 +120,7 @@ public final class ShaderLibrary {
 
     /** True when MSR2 shaders are available. */
     public boolean hasMsr() {
-        return isProgram(this.msrSpatial) && isProgram(this.msrBlit);
+        return isProgram(this.msrSpatial);
     }
 
     /**
@@ -229,7 +221,6 @@ public final class ShaderLibrary {
                                     Matrix4f viewRotation, Matrix4f previousViewRotation,
                                     float cameraDeltaX, float cameraDeltaY, float cameraDeltaZ,
                                     float jitterX, float jitterY,
-                                    float previousJitterX, float previousJitterY,
                                     boolean historyValid, boolean depthValid, boolean irisDepth,
                                     float baseAlpha, float reactiveStrength, float depthTolerance) {
         RenderSystem.assertOnRenderThread();
@@ -241,7 +232,6 @@ public final class ShaderLibrary {
         setFloat2(shader, "InputSize", inputWidth, inputHeight);
         setFloat2(shader, "OutputSize", outputWidth, outputHeight);
         setFloat2(shader, "Jitter", jitterX, jitterY);
-        setFloat2(shader, "PrevJitter", previousJitterX, previousJitterY);
         setFloat3(shader, "CameraDelta", cameraDeltaX, cameraDeltaY, cameraDeltaZ);
         setMatrix(shader, "ViewRotation", viewRotation);
         setMatrix(shader, "PrevViewRotation", previousViewRotation);
