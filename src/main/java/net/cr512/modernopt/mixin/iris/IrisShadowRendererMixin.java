@@ -48,9 +48,12 @@ public abstract class IrisShadowRendererMixin {
     private static java.lang.reflect.Field modernopt$halfPlaneField;
     private static java.lang.reflect.Field modernopt$renderMulField;
     private static java.lang.reflect.Field modernopt$entityMulField;
+    private static java.lang.reflect.Field modernopt$compositeField;
     private static java.lang.reflect.Method modernopt$getDepthSourceFb;
     private static java.lang.reflect.Method modernopt$bind;
     private static java.lang.reflect.Method modernopt$getGlId;
+    private static java.lang.reflect.Method modernopt$renderAll;
+    private static boolean modernopt$compositeWarned;
     private static long modernopt$lastLog;
 
     @Inject(method = "renderShadows", at = @At("HEAD"), cancellable = true, require = 0, remap = false)
@@ -59,16 +62,17 @@ public abstract class IrisShadowRendererMixin {
         int interval = Math.max(1, ModernOptSettings.shadowUpdateInterval());
         boolean holdActive = interval > 1 && !ShadowClearRegistry.holdDisabled();
         if (!holdActive) {
-            // Every-frame shadows are plain Iris behaviour: no hold and no matrix swizzling, but
-            // still count the drawn frame and time the pass for the overlay/profiler.
+            // Every-frame shadows are plain Iris behaviour: no hold and no matrix swizzling.
+            // The matrices are still captured at RETURN so switching the interval to 2 later
+            // cannot hold a map whose matrices were never recorded.
             RenderPipeline.setShadowPassActive(true);
-            RenderPipeline.shadowHoldNoteDrawn();
             GpuProfiler.begin(GpuProfiler.SHADOW);
             return;
         }
         if (!RenderPipeline.shadowHoldShouldDraw(interval)) {
             RenderPipeline.shadowHoldNoteSkipped();
             modernopt$holdMatricesForThisCamera();
+            modernopt$renderShadowComposites(this);
             callbackInfo.cancel();
             return;
         }
@@ -90,12 +94,6 @@ public abstract class IrisShadowRendererMixin {
 
     @Inject(method = "renderShadows", at = @At("RETURN"), require = 0, remap = false)
     private void modernopt$endShadowPass(CallbackInfo callbackInfo) {
-        int interval = Math.max(1, ModernOptSettings.shadowUpdateInterval());
-        if (interval <= 1 || ShadowClearRegistry.holdDisabled()) {
-            RenderPipeline.setShadowPassActive(false);
-            GpuProfiler.end(GpuProfiler.SHADOW);
-            return;
-        }
         if (modernopt$rememberDrawnFrame(this)) {
             RenderPipeline.shadowHoldNoteDrawn();
         } else {
@@ -136,6 +134,35 @@ public abstract class IrisShadowRendererMixin {
             projection.set(modernopt$heldProjection);
         } catch (Throwable throwable) {
             ModernOPT.LOG.warn("[ModernOPT] could not hold the shadow matrices", throwable);
+        }
+    }
+
+    /**
+     * Re-runs Iris' shadow composite chain on a held frame. The shadow depth map is unchanged, but
+     * packs that derive shadowcolor/translucent buffers from it still expect those passes to run;
+     * skipping them left the main pass sampling the previous composite result. Packs without
+     * shadow composites pay nothing because the field is null or the method is cheap.
+     */
+    private static void modernopt$renderShadowComposites(Object shadowRenderer) {
+        try {
+            if (modernopt$compositeField == null) {
+                modernopt$compositeField = shadowRenderer.getClass().getDeclaredField("compositeRenderer");
+                modernopt$compositeField.setAccessible(true);
+            }
+            Object composite = modernopt$compositeField.get(shadowRenderer);
+            if (composite == null) {
+                return;
+            }
+            if (modernopt$renderAll == null) {
+                modernopt$renderAll = composite.getClass().getMethod("renderAll");
+            }
+            modernopt$renderAll.invoke(composite);
+        } catch (Throwable throwable) {
+            if (!modernopt$compositeWarned) {
+                modernopt$compositeWarned = true;
+                ModernOPT.LOG.warn("[ModernOPT] could not re-run Iris' shadow composites on a held "
+                        + "shadow frame; the pack will use its previous composite result", throwable);
+            }
         }
     }
 

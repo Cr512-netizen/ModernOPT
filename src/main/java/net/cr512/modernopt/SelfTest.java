@@ -267,10 +267,10 @@ public final class SelfTest {
             convergenceFrames = 0;
             GpuProfiler.reset();
             applyState(state);
-            ModernOPT.LOG.info("[BENCH] state {} | {} | {}x{} | MSAA {}",
+            ModernOPT.LOG.info("[BENCH] state {} | {} | {}x{} | MSAA {} | shadows {}",
                     STATES[state], RenderPipeline.activeUpscalerLabel(),
                     RenderPipeline.internalWidth(), RenderPipeline.internalHeight(),
-                    RenderPipeline.activeSamples());
+                    RenderPipeline.activeSamples(), ModernOptSettings.shadowUpdateInterval());
             return;
         }
 
@@ -341,12 +341,15 @@ public final class SelfTest {
             int surface = minecraft.level.getHeight(
                     net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, bx, bz);
             double y = Math.max(surface + 1.0, spawn.getY());
-            if (Boolean.getBoolean("modernopt.bench.teleport")) {
+            if (!Boolean.getBoolean("modernopt.bench.keepPosition")) {
+                // A !walk state moves the player and the position is saved with the world. Always
+                // reset to the same spawn pose so two runs compare the same scene instead of a
+                // field versus a village.
                 minecraft.player.setPos(bx + 0.5, y, bz + 0.5);
                 minecraft.player.setYRot(90.0F);
                 minecraft.player.setXRot(0.0F);
                 minecraft.player.setDeltaMovement(0.0, 0.0, 0.0);
-                ModernOPT.LOG.info("[BENCH] startup steering done at {} (spawn {}, surface {}) - player now has full control",
+                ModernOPT.LOG.info("[BENCH] startup steering done at {} (spawn {}, surface {})",
                         minecraft.player.position(), spawn, surface);
             } else {
                 ModernOPT.LOG.info("[BENCH] keeping the player where the world saved them: {}",

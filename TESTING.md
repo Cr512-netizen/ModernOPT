@@ -40,7 +40,9 @@ credits ModernOPT with work another mod did.
 ## Scene
 
 * 1920x1080 window, render distance 16, simulation distance 5 unless a state says otherwise.
-* World spawn, standing on the ground, fixed yaw/pitch.
+* World spawn, standing on the ground, fixed yaw/pitch. The harness teleports to spawn at the start
+  of every run, so a previous `!walk` state cannot leak its position into the next run; use
+  `-Dmodernopt.bench.keepPosition=true` only for manual inspection.
 * Time set to 6000, weather clear, `doDaylightCycle false`, `tick freeze`.
 * The camera stays still for throughput states. `!panN` rotates at N degrees per tick and `!walkN`
   moves forward at N/100 blocks per tick for motion states.

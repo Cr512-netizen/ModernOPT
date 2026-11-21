@@ -84,8 +84,8 @@ Key properties:
 
 The Upscaling tab has a one-click **Temporal 42 %** preset: it selects MSR2 and sets the internal
 resolution to 42 %. It is **experimental and not recommended as a default yet**. In the controlled
-run below its mean was about 11 % above FSR 1 + Lanczos-2 at 50 %, with a better 1% low
-(118.4 vs 106.7 fps), but the image is softer; the output-resolution temporal pass costs most of
+run below its mean was about 8 % above FSR 1 + Lanczos-2 at 50 %, but its 1% low was lower
+(122.2 vs 129.0 fps) and the image is softer; the output-resolution temporal pass costs most of
 what the lower world resolution saves. The preset only writes the existing `renderScale.percent`
 and `upscaler` values, so it is easy to A/B in your own scene.
 
@@ -198,27 +198,27 @@ control stack is Minecraft 1.21.1, NeoForge 21.1.264, Sodium 0.8.13 and Iris 1.8
 
 | Mode | Mean FPS | 1% low | Shadow interval | Held share | Shadow ms (drawn / amortized) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Native (mod disabled, 100 %) | 102.1 | 96.5 | - | - | - |
-| FSR 1 + Lanczos-2, 50 % | 136.9 | 106.7 | 2 | 50 % | 2.56 / 1.28 |
-| FSR 1 + Lanczos-2, 50 % | 115.5 | 111.8 | 1 | 0 % | 2.56 / 2.56 |
-| FSR 1 EASU (Lanczos off), 50 % | 138.6 | 115.2 | 2 | 50 % | 2.53 / 1.27 |
-| MSR2, 50 % | 138.7 | 114.1 | 2 | 50 % | 2.53 / 1.27 |
-| MSR2, 42 % | 152.0 | 118.4 | 2 | 50 % | 2.55 / 1.28 |
+| Native (mod disabled, 100 %) | 114.0 | 90.0 | - | - | - |
+| FSR 1 + Lanczos-2, 50 % | 143.3 | 129.0 | 2 | 50 % | 2.40 / 1.20 |
+| FSR 1 + Lanczos-2, 50 % | 130.2 | 115.5 | 1 | 0 % | 2.44 / 2.44 |
+| FSR 1 EASU (Lanczos off), 50 % | 145.1 | 131.2 | 2 | 50 % | 2.39 / 1.20 |
+| MSR2, 50 % | 145.7 | 131.7 | 2 | 50 % | 2.37 / 1.19 |
+| MSR2, 42 % | 156.6 | 122.2 | 2 | 50 % | 2.39 / 1.20 |
 
 `Held share` is `held / (drawn + held)` for the same measurement window as the stage times; the
 interval is printed next to it because 50 % is the correct value for interval 2, not a defect.
 The 1% low is the mean of the slowest 1 % of frames after excluding the screenshot frame. Sampling
 pauses while the window is inactive; screenshots are taken outside the sample window, so OS focus
-drops and PNG writes cannot enter the numbers. Absolute FPS depends on GPU state; compare rows from
-this one run, not numbers from older releases.
+drops and PNG writes cannot enter the numbers. The player is teleported to the same spawn pose at
+the start of every run. Absolute FPS depends on GPU state; compare rows from this one run, not
+numbers from older releases.
 
-MSR2 50 % is within 0.1 % of FSR 1 EASU and 1.3 % above FSR 1 + Lanczos-2. MSR2 42 % has a higher
-mean (about 10 % over FSR 1 EASU, 11 % over FSR 1 + Lanczos-2) and the best 1% low here, but the
-image is softer; it remains an optional experimental preset, not the default. Lanczos-2 on FSR 1 is
-about 1 % slower than EASU in this run and its 1% low is lower (106.7 vs 115.2); disable it for the
-pure FSR 1 kernel, use it when you prefer the Lanczos reconstruction. The shadow interval is the
-larger lever: interval 2 cuts the amortized shadow cost in half and is worth about 18.5 % mean FPS
-here.
+MSR2 50 % is within 0.4 % of FSR 1 EASU and 1.6 % above FSR 1 + Lanczos-2. MSR2 42 % has a higher
+mean (about 8 % over FSR 1 + Lanczos-2) but a lower 1% low (122.2 vs 129.0), and the image is
+softer; it remains an optional experimental preset, not the default. Lanczos-2 on FSR 1 is about
+1 % slower than EASU and its 1% low is slightly lower (129.0 vs 131.2); disable it for the pure
+FSR 1 kernel, use it when you prefer the Lanczos reconstruction. The shadow interval is worth about
+10 % mean FPS here with the block-boundary rebuild rule.
 
 `nvidia-smi` sampled during a separate run of the same scene with a 2048 px shadow map reported
 79-83 % GPU utilization while the frame rate was capped (2.7 GHz, ~95 W). That is below the 90 % threshold used for this project, so the render thread is
@@ -298,18 +298,25 @@ win - see the benchmark notes below.
 `shadows.updateInterval` (1-8, default 2) rebuilds the shadow map every N frames instead of every
 frame. The frames in between skip the whole second world pass from the sun and keep sampling the
 previous map. The held light matrices are the drawn frame's matrices, translated by the camera
-delta in world space before the light transform; a camera move above 1.5 blocks, a world-time jump
-above 40 ticks, or a tracked caster moving above 0.5 blocks forces an immediate rebuild. Drops,
-arrows and experience orbs are not tracked as casters, and the caster radius is the pack's own
-entity shadow distance rather than a fixed 128 blocks. If Iris ever stops tagging its shadow clear
-passes, the hold disables itself with a single warning instead of silently flickering.
+delta in world space before the light transform. A camera leaving the integer block it occupied
+when the map was drawn, a world-time jump above 40 ticks, a living caster moving above 0.1 blocks, a
+non-living caster moving above 0.5 blocks, or a caster entering/leaving the tracked radius forces an
+immediate rebuild. The first-person player is ignored because it is not drawn into the shadow map.
+Drops, arrows and experience orbs are not tracked; the caster radius is the pack's own entity
+shadow distance rather than a fixed 128 blocks. If Iris stopped tagging its shadow clear passes, the
+hold disables itself with a single warning instead of silently flickering. Shadow-composite passes
+are re-run on held frames, so packs that derive `shadowcolor` from the depth map keep a current
+result.
+
+The scheduler follows the same held-map idea as held-map (MIT, the original author), but it is an independent
+implementation: no held-map source code is included and held-map is not affiliated with ModernOPT.
 
 Measured in the same scene as the table above (FSR 1, 50 %, 512 shadow map):
 
 | Interval | Mean FPS | 1% low | Held | Shadow amortized |
 | ---: | ---: | ---: | ---: | ---: |
-| 1 (every frame) | 115.5 | 111.8 | 0 % | 2.56 ms |
-| 2 | 136.9 | 106.7 | 50 % | 1.28 ms |
+| 1 (every frame) | 130.2 | 115.5 | 0 % | 2.44 ms |
+| 2 | 143.3 | 129.0 | 50 % | 1.20 ms |
 
 The full profile line reports both the drawn-frame cost and the amortized value, and the overlay
 shows `shadows held N/M (%) i=N`. With interval 1 the pass is still timed and counted as drawn.

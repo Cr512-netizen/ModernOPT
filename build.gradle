@@ -125,6 +125,9 @@ neoForge {
 
 
 
+            if (project.hasProperty('benchKeepPosition')) {
+                systemProperty 'modernopt.bench.keepPosition', 'true'
+            }
             programArgument '--quickPlaySingleplayer'
             programArgument 'ModernOPTTest'
             }
@@ -149,6 +152,9 @@ neoForge {
             }
             if (project.hasProperty('benchReference')) {
                 systemProperty 'modernopt.bench.reference', project.benchReference
+            }
+            if (project.hasProperty('benchKeepPosition')) {
+                systemProperty 'modernopt.bench.keepPosition', 'true'
             }
             programArgument '--quickPlaySingleplayer'
             programArgument 'ModernOPTTest'
