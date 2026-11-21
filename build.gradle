@@ -93,6 +93,24 @@ neoForge {
             // The benchmark harness only runs in development; without this property the mod
             // behaves like a normal client and SelfTest observes nothing.
             systemProperty 'modernopt.bench', 'true'
+            if (project.hasProperty('benchStates')) {
+                systemProperty 'modernopt.bench.states', project.benchStates
+            }
+            if (project.hasProperty('benchWarmup')) {
+                systemProperty 'modernopt.bench.warmup', project.benchWarmup
+            }
+            if (project.hasProperty('benchSample')) {
+                systemProperty 'modernopt.bench.sample', project.benchSample
+            }
+            if (project.hasProperty('benchBaseline')) {
+                systemProperty 'modernopt.bench.baseline', project.benchBaseline
+            }
+            if (project.hasProperty('benchTolerance')) {
+                systemProperty 'modernopt.bench.tolerance', project.benchTolerance
+            }
+            if (project.hasProperty('benchReference')) {
+                systemProperty 'modernopt.bench.reference', project.benchReference
+            }
 
 
 
@@ -152,5 +170,80 @@ jar {
 jar {
     from('LICENSE') { into 'META-INF' }
     from('NOTICE') { into 'META-INF' }
+    from('THIRD-PARTY-NOTICES.txt') { into 'META-INF' }
+}
+
+// Validates every core shader with glslangValidator and, for the compute pass, spirv-val.
+// Set -PrequireShaderTools=true in CI so a missing tool is an error rather than a skip.
+tasks.register('validateShaders') {
+    group = 'verification'
+    description = 'Runs glslangValidator (and spirv-val for the compute shader) on core shaders.'
+    def shaderDirectory = file('src/main/resources/assets/modernopt/shaders/core')
+    def required = project.hasProperty('requireShaderTools')
+
+    doLast {
+        def runTool = { List<String> command ->
+            def process = new ProcessBuilder(command).redirectErrorStream(true).start()
+            def output = process.inputStream.getText('UTF-8')
+            def exit = process.waitFor()
+            return [exit, output]
+        }
+        def exists = { String tool ->
+            try {
+                def (int exit, String output) = runTool([tool, '--version'])
+                return output.toLowerCase().contains('glslang') || output.toLowerCase().contains('spirv')
+            } catch (Throwable ignored) {
+                return false
+            }
+        }
+        def glslang = [System.getenv('GLSLANG_VALIDATOR'), 'glslangValidator', 'glslang']
+                .findAll { it != null && !it.isBlank() }
+                .find { exists(it) }
+        if (glslang == null) {
+            if (required) {
+                throw new GradleException("glslangValidator is required but was not found (PATH or GLSLANG_VALIDATOR)")
+            }
+            logger.warn('glslangValidator not found; shader validation skipped')
+            return
+        }
+        def spirvVal = [System.getenv('SPIRV_VAL'), 'spirv-val']
+                .findAll { it != null && !it.isBlank() }
+                .find { exists(it) }
+
+        def temporaryDirectory = file("${buildDir}/shader-validation")
+        temporaryDirectory.mkdirs()
+        def failures = []
+        shaderDirectory.listFiles().findAll { it.name.endsWith('.vsh') || it.name.endsWith('.fsh') || it.name.endsWith('.comp') }
+                .sort { it.name }
+                .each { shader ->
+                    String stage = shader.name.endsWith('.vsh') ? 'vert'
+                            : shader.name.endsWith('.fsh') ? 'frag' : 'comp'
+                    def (int exit, String output) = runTool([glslang, '-S', stage, shader.absolutePath])
+                    if (exit != 0) {
+                        failures << "${shader.name} (glslang):\n${output}"
+                    }
+                    if (stage == 'comp') {
+                        def spirv = new File(temporaryDirectory, shader.name + '.spv')
+                        def (int compileExit, String compileOutput) = runTool([
+                                glslang, '-G', '--target-env', 'opengl',
+                                '-o', spirv.absolutePath, shader.absolutePath])
+                        if (compileExit != 0) {
+                            failures << "${shader.name} (spirv compile):\n${compileOutput}"
+                        } else if (exists(spirvVal)) {
+                            def (int validateExit, String validateOutput) = runTool([
+                                    spirvVal, '--target-env', 'opengl4.3', spirv.absolutePath])
+                            if (validateExit != 0) {
+                                failures << "${shader.name} (spirv-val):\n${validateOutput}"
+                            }
+                        } else if (required) {
+                            failures << 'spirv-val is required but was not found (PATH or SPIRV_VAL)'
+                        }
+                    }
+                }
+        if (!failures.isEmpty()) {
+            throw new GradleException("Shader validation failed:\n\n" + failures.join('\n\n'))
+        }
+        logger.lifecycle("Shader validation passed (${shaderDirectory.listFiles().count { it.name.endsWith('.vsh') || it.name.endsWith('.fsh') || it.name.endsWith('.comp') }} files)")
+    }
 }
 

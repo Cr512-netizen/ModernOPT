@@ -9,3 +9,7 @@ logs/
 .idea/
 *.iml
 .vscode/
+# Local reverse-engineering dumps; never part of a release.
+iris-*.txt
+minecraft-javap.txt
+gpu-util-*.csv

@@ -53,10 +53,16 @@ public final class PerformanceOverlay {
         if (ModernOptSettings.fxaa()) {
             builder.append(" | FXAA");
         }
+        net.cr512.modernopt.render.ShadowHoldStats shadows =
+                RenderPipeline.shadowHoldStats();
         builder.append(" | shadows held ")
-                .append(RenderPipeline.shadowHoldSkippedFrames())
+                .append(shadows.held())
                 .append('/')
-                .append(RenderPipeline.shadowHoldTotalFrames());
+                .append(shadows.total())
+                .append(" (")
+                .append(Math.round(shadows.heldShare() * 100.0))
+                .append("%) i=")
+                .append(shadows.interval());
 
         // The caller runs after the HUD has been submitted, so a flush here is cheap and makes
         // the line independent of whatever the HUD left in the shared buffer source.

@@ -293,9 +293,15 @@ public final class RenderPipeline {
 
     // Compute shader support (GL 4.3+)
     private static boolean computeAvailable = false;
-    private static MotionVectorCollector motionVectorCollector;
     private static Msr2TemporalCompute msrComputeProgram;
     private static boolean msrComputeFailed;
+
+    /** Polyphase Lanczos tables shared with {@code msr_temporal.comp} (65 phases, 6 taps). */
+    private static final int LANCZOS_PHASES = 65;
+    private static final int LANCZOS_TAPS = 6;
+    private static final float[] LANCZOS_WEIGHTS_2 = buildLanczosWeights(2);
+    private static final float[] LANCZOS_WEIGHTS_3 = buildLanczosWeights(3);
+    private static int lanczosTableTexture;
 
     private RenderPipeline() {
     }
@@ -346,11 +352,6 @@ public final class RenderPipeline {
     @Deprecated
     public static RenderTarget currentWorldTarget() {
         return redirectedWorldTarget();
-    }
-
-    /** Get the motion vector collector for entity motion recording. */
-    public static MotionVectorCollector getMotionVectorCollector() {
-        return motionVectorCollector;
     }
 
     /** Get the current projection matrix (captured during jitterProjection). */
@@ -451,7 +452,6 @@ public final class RenderPipeline {
     public static void beginWorldFrame() {
         WorldCpuProfiler.noteWorldFrame();
         WorldCpuProfiler.maybeLog();
-        shadowHoldNoteFrame();
         worldActive = false;
         msrThisFrame = false;
         msr2ThisFrame = false;
@@ -495,6 +495,11 @@ public final class RenderPipeline {
 
         // Fast settings cache - only refresh when actually changed
         cacheSettings();
+        int shadowInterval = ModernOptSettings.shadowUpdateInterval();
+        if (shadowInterval != shadowStatsInterval) {
+            shadowStatsInterval = shadowInterval;
+            shadowHoldResetStats();
+        }
         updateMovingResolution(minecraft);
 
         if (cachedScaleWholeWindow) {
@@ -524,6 +529,8 @@ public final class RenderPipeline {
             movingResolutionPoseValid = false;
             movingResolutionActive = false;
             movingResolutionStillFrames = 0;
+            // Do not carry a held shadow map across a dimension/world change.
+            shadowHoldResetTargets();
         }
 
         UpscalerType requested = cachedUpscaler;
@@ -634,7 +641,7 @@ public final class RenderPipeline {
         }
 
         // Initialize MSR history targets if needed. The colour/depth history now lives at the
-        // output resolution (R11G11B10F + R16UI), so the temporal pass does not throw away the
+        // output resolution (RGBA16F + R16UI), so the temporal pass does not throw away the
         // detail it just accumulated when the spatial pass upsamples.
         if (cachedMsrEnabled) {
             ensureMSR2HistoryTargets(outputWidth, outputHeight);
@@ -810,9 +817,7 @@ public final class RenderPipeline {
                 ModernOPT.LOG.warn("[ModernOPT] MSR: compute detection failed", t);
             }
         }
-        // The temporal shader is camera-only; the old per-entity collector was never read and
-        // made every rendered entity pay for an SSBO upload that the shader ignored.
-        motionVectorCollector = null;
+        // The temporal shader is camera-only; there is no per-entity motion-vector collector.
     }
 
     /**
@@ -968,10 +973,10 @@ public final class RenderPipeline {
             return;
         }
         hudActive = false;
-        GpuProfiler.end(GpuProfiler.HUD);
         RenderTarget hud = hudTarget;
         RenderTarget main = minecraft.getMainRenderTarget();
         if (hud == null || main == null) {
+            GpuProfiler.end(GpuProfiler.HUD);
             return;
         }
         main.bindWrite(true);
@@ -980,6 +985,8 @@ public final class RenderPipeline {
                 GL11C.GL_ONE, GL11C.GL_ONE_MINUS_SRC_ALPHA);
         hud.blitToScreen(main.width, main.height, false);
         GlStateManager._disableBlend();
+        // The composite blit is presentation work for the HUD and belongs in its section.
+        GpuProfiler.end(GpuProfiler.HUD);
     }
 
     /** True while the whole frame (world + HUD) is being rendered into the scaled target. */
@@ -998,29 +1005,42 @@ public final class RenderPipeline {
 
     private static int shadowHoldFrames;
     private static boolean shadowHoldHaveMap;
-    private static boolean shadowHoldHaveMatrices;
     private static int shadowHoldFramebuffer = -1;
     private static int shadowHoldDrawnFrames;
     private static int shadowHoldSkippedFrames;
+    private static int shadowHoldForcedCamera;
+    private static int shadowHoldForcedTime;
+    private static int shadowHoldForcedCaster;
+    private static int shadowHoldForceReasons;
+    private static int shadowStatsInterval = -1;
     private static double shadowHoldCameraX;
     private static double shadowHoldCameraY;
     private static double shadowHoldCameraZ;
     private static boolean shadowHoldForceDraw;
     private static long shadowHoldWorldTime = Long.MIN_VALUE;
-    private static double shadowHoldFrameMs = 8.0;
-    private static long shadowHoldLastFrameNanos;
+    private static double shadowHoldCasterRadius = 128.0;
     private static final java.util.Map<Integer, double[]> shadowHoldEntities = new java.util.HashMap<>();
+
+    private static final int SHADOW_FORCE_CAMERA = 1;
+    private static final int SHADOW_FORCE_TIME = 2;
+    private static final int SHADOW_FORCE_CASTER = 4;
 
     /** Further than this from the drawn frame's camera forces a rebuild (in blocks, squared). */
     private static final double SHADOW_HOLD_MOVE_LIMIT_SQ = 2.25;
-    /** A visible shadow caster moving more than this invalidates the held map (blocks, squared). */
-    private static final double SHADOW_HOLD_ENTITY_MOVE_SQ = 0.01;
+    /**
+     * A visible shadow caster moving more than this invalidates the held map (blocks, squared).
+     * 0.1 blocks was tight enough that ordinary mob AI forced a redraw almost every frame; half a
+     * block is still far below a visible shadow step for the one held frame at the default
+     * interval.
+     */
+    private static final double SHADOW_HOLD_ENTITY_MOVE_SQ = 0.25;
     /** A large sun/time jump forces a rebuild; normal daylight movement is handled by the interval. */
     private static final long SHADOW_HOLD_TIME_STEP = 40;
 
     /** Whether the shadow map has to be drawn on this frame. */
     public static boolean shadowHoldShouldDraw(int interval) {
-        if (!shadowHoldHaveMap || !shadowHoldHaveMatrices || interval <= 1 || shadowHoldForceDraw) {
+        if (!shadowHoldHaveMap || interval <= 1 || shadowHoldForceDraw
+                || net.cr512.modernopt.compat.ShadowClearRegistry.holdDisabled()) {
             return true;
         }
         // Hold exactly the configured number of frames, like a plain "update every N frames"
@@ -1051,6 +1071,7 @@ public final class RenderPipeline {
         double distanceSq = dx * dx + dy * dy + dz * dz;
         if (distanceSq > SHADOW_HOLD_MOVE_LIMIT_SQ) {
             shadowHoldForceDraw = true;
+            shadowHoldForceReasons |= SHADOW_FORCE_CAMERA;
         }
     }
 
@@ -1064,6 +1085,7 @@ public final class RenderPipeline {
             delta = Math.min(delta, 24000L - Math.min(delta, 24000L));
             if (delta > SHADOW_HOLD_TIME_STEP) {
                 shadowHoldForceDraw = true;
+                shadowHoldForceReasons |= SHADOW_FORCE_TIME;
             }
         }
     }
@@ -1072,16 +1094,22 @@ public final class RenderPipeline {
         shadowHoldWorldTime = worldTime;
     }
 
-    /** Feeds the smoothed frame time used by the shadow budget. Call once per world frame. */
-    public static void shadowHoldNoteFrame() {
-        long now = System.nanoTime();
-        if (shadowHoldLastFrameNanos != 0L) {
-            double ms = (now - shadowHoldLastFrameNanos) / 1_000_000.0;
-            if (ms > 0.0 && ms < 100.0) {
-                shadowHoldFrameMs = shadowHoldFrameMs * 0.9 + ms * 0.1;
-            }
+    /**
+     * Shadow distance from the active pack, in blocks. Iris computes separate terrain and entity
+     * culling distances; the entity one is what matters here because only entities are tracked
+     * for caster motion. Falls back to 128 when the pack value cannot be read.
+     */
+    public static void shadowHoldSetCasterRadius(double radius) {
+        if (Double.isFinite(radius) && radius >= 16.0) {
+            shadowHoldCasterRadius = Math.min(radius, 512.0);
         }
-        shadowHoldLastFrameNanos = now;
+    }
+
+    /** Entities that do not meaningfully contribute to the shadow map and move constantly. */
+    private static boolean shadowHoldCountsAsCaster(net.minecraft.world.entity.Entity entity) {
+        return !(entity instanceof net.minecraft.world.entity.item.ItemEntity)
+                && !(entity instanceof net.minecraft.world.entity.projectile.AbstractArrow)
+                && !(entity instanceof net.minecraft.world.entity.ExperienceOrb);
     }
 
     /** Remembers the casters that were visible when the map was drawn. */
@@ -1091,10 +1119,11 @@ public final class RenderPipeline {
         if (level == null || ModernOptSettings.shadowUpdateInterval() <= 1) {
             return;
         }
-        double radiusSq = 128.0 * 128.0;
+        double radius = shadowHoldCasterRadius;
+        double radiusSq = radius * radius;
         try {
             for (net.minecraft.world.entity.Entity entity : level.entitiesForRendering()) {
-                if (!entity.isAlive()) {
+                if (!entity.isAlive() || !shadowHoldCountsAsCaster(entity)) {
                     continue;
                 }
                 double dx = entity.getX() - cameraX;
@@ -1126,6 +1155,7 @@ public final class RenderPipeline {
             double dz = entity.getZ() - position[2];
             if (dx * dx + dy * dy + dz * dz > SHADOW_HOLD_ENTITY_MOVE_SQ) {
                 shadowHoldForceDraw = true;
+                shadowHoldForceReasons |= SHADOW_FORCE_CASTER;
                 return;
             }
         }
@@ -1141,17 +1171,37 @@ public final class RenderPipeline {
     public static void shadowHoldNoteDrawn() {
         shadowHoldFrames = 0;
         shadowHoldHaveMap = true;
-        shadowHoldHaveMatrices = true;
         shadowHoldForceDraw = false;
         shadowHoldDrawnFrames++;
+        if ((shadowHoldForceReasons & SHADOW_FORCE_CAMERA) != 0) {
+            shadowHoldForcedCamera++;
+        }
+        if ((shadowHoldForceReasons & SHADOW_FORCE_TIME) != 0) {
+            shadowHoldForcedTime++;
+        }
+        if ((shadowHoldForceReasons & SHADOW_FORCE_CASTER) != 0) {
+            shadowHoldForcedCaster++;
+        }
+        shadowHoldForceReasons = 0;
     }
 
-    /** Frames that actually redrew the shadow map since the last target reset. */
+    /** One shared snapshot for the profiler, the overlay and any future UI. */
+    public static ShadowHoldStats shadowHoldStats() {
+        int drawn = shadowHoldDrawnFrames;
+        int held = shadowHoldSkippedFrames;
+        boolean disabled = net.cr512.modernopt.compat.ShadowClearRegistry.holdDisabled();
+        int interval = disabled ? 1 : (shadowStatsInterval > 0
+                ? shadowStatsInterval : ModernOptSettings.shadowUpdateInterval());
+        return new ShadowHoldStats(drawn, held, drawn + held, interval,
+                shadowHoldForcedCamera, shadowHoldForcedTime, shadowHoldForcedCaster);
+    }
+
+    /** Frames that actually redrew the shadow map since the last stats reset. */
     public static int shadowHoldDrawnFrames() {
         return shadowHoldDrawnFrames;
     }
 
-    /** Frames that reused the held shadow map since the last target reset. */
+    /** Frames that reused the held shadow map since the last stats reset. */
     public static int shadowHoldSkippedFrames() {
         return shadowHoldSkippedFrames;
     }
@@ -1167,6 +1217,15 @@ public final class RenderPipeline {
         return total <= 0 ? 1.0 : (double) shadowHoldDrawnFrames / total;
     }
 
+    private static void shadowHoldResetStats() {
+        shadowHoldDrawnFrames = 0;
+        shadowHoldSkippedFrames = 0;
+        shadowHoldForcedCamera = 0;
+        shadowHoldForcedTime = 0;
+        shadowHoldForcedCaster = 0;
+        shadowHoldForceReasons = 0;
+    }
+
     /**
      * Forgets the held map when Iris recreates its shadow targets (pack reload, resolution
      * change). The old framebuffer id and clear passes are no longer valid, so the next frame must
@@ -1175,12 +1234,10 @@ public final class RenderPipeline {
     public static void shadowHoldResetTargets() {
         shadowHoldFrames = 0;
         shadowHoldHaveMap = false;
-        shadowHoldHaveMatrices = false;
         shadowHoldForceDraw = false;
         shadowHoldFramebuffer = -1;
         shadowHoldWorldTime = Long.MIN_VALUE;
-        shadowHoldDrawnFrames = 0;
-        shadowHoldSkippedFrames = 0;
+        shadowHoldResetStats();
         shadowHoldEntities.clear();
     }
 
@@ -1645,6 +1702,12 @@ public final class RenderPipeline {
         jitterIndex = 0;
     }
 
+    /** Drops every temporal history so the next frame starts from an unaccumulated image. */
+    public static void resetTemporalHistory() {
+        resetHistory();
+        resetMsr2History();
+    }
+
     private static void rememberUpscalerSettings(UpscalerType requested) {
         lastUpscaler = requested;
         lastUpscalerPercent = ModernOptSettings.renderScalePercent();
@@ -1811,8 +1874,7 @@ public final class RenderPipeline {
     }
 
     /** Installs the world target in the real {@code Minecraft.mainRenderTarget} field. */
-    private static void swapMainTarget(Minecraft minecraft, RenderTarget target) {
-        if (worldTargetSwapped || minecraft == null || target == null) {
+    private static void swapMainTarget(Minecraft minecraft, RenderTarget target) {        if (worldTargetSwapped || minecraft == null || target == null) {
             return;
         }
         net.cr512.modernopt.mixin.MinecraftAccessor accessor =
@@ -1826,9 +1888,30 @@ public final class RenderPipeline {
         worldTargetSwapped = true;
     }
 
+    /**
+     * Returns the last completed native frame when a screenshot is requested during the world
+     * pass. In fast mode the {@code mainRenderTarget} field points at the small world target for
+     * the duration of that pass, and in advanced mode the getter redirects to it, so a naive
+     * screenshot would capture a half-rendered, low-resolution image.
+     */
+    public static RenderTarget completedFrameTarget(RenderTarget requested) {
+        if (!worldActive || requested == null || frameWorldTarget == null) {
+            return requested;
+        }
+        if (requested != frameWorldTarget && requested != scaled) {
+            return requested;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) {
+            return requested;
+        }
+        RenderTarget real = ((net.cr512.modernopt.mixin.MinecraftAccessor) minecraft)
+                .modernopt$getMainRenderTargetField();
+        return real != null ? real : requested;
+    }
+
     /** Restores the real {@code mainRenderTarget} captured by {@link #swapMainTarget}. */
-    private static void restoreMainTarget() {
-        if (!worldTargetSwapped) {
+    private static void restoreMainTarget() {        if (!worldTargetSwapped) {
             return;
         }
         worldTargetSwapped = false;
@@ -2245,7 +2328,7 @@ public final class RenderPipeline {
         previousJitterY = 0.0F;
         if (computeAvailable) {
             // A destroyed/invalidated history texture must not stay attached to image units.
-            Msr2TemporalCompute.unbindImage(0, GL30C.GL_R11F_G11F_B10F);
+            Msr2TemporalCompute.unbindImage(0, MSR2HistoryTarget.COLOR_FORMAT);
             Msr2TemporalCompute.unbindImage(1, GL30C.GL_R16UI);
         }
         if (msr2History != null) {
@@ -2417,17 +2500,18 @@ public final class RenderPipeline {
             bindTextureUnit(GL13C.GL_TEXTURE0 + 5, depthTexture);
             bindTextureUnit(GL13C.GL_TEXTURE0 + 6, historyColorRead);
             bindTextureUnit(GL13C.GL_TEXTURE0 + 7, historyDepthRead);
+            bindTextureUnit(GL13C.GL_TEXTURE0 + 8, ensureLanczosTable());
 
             compute.bind();
             compute.setInt("CurrentColor", 4);
             compute.setInt("CurrentDepth", 5);
             compute.setInt("HistoryColor", 6);
             compute.setInt("HistoryDepth", 7);
+            compute.setInt("LanczosTable", 8);
 
             compute.setVec2("InputSize", (float) sourceWidth, (float) sourceHeight);
             compute.setVec2("OutputSize", (float) outWidth, (float) outHeight);
             compute.setVec2("Jitter", jitterX, jitterY);
-            compute.setVec2("PrevJitter", previousJitterX, previousJitterY);
             compute.setInt("UseLanczos", ModernOptSettings.msr2Lanczos() ? 1 : 0);
             compute.setInt("LanczosRadius", ModernOptSettings.msr2Lanczos3() ? 3 : 2);
             compute.setFloat("VarianceScale", (float) cachedMsrVarianceScale);
@@ -2446,7 +2530,7 @@ public final class RenderPipeline {
             compute.setFloat("DepthValid", depthTexture != 0 ? 1.0F : 0.0F);
 
             msr2History.bindWriteForCompute();
-            compute.bindImage(0, historyColorWrite, GL30C.GL_R11F_G11F_B10F);
+            compute.bindImage(0, historyColorWrite, MSR2HistoryTarget.COLOR_FORMAT);
             compute.bindImage(1, historyDepthWrite, GL30C.GL_R16UI);
 
             // Workgroup size in msr_temporal.comp is 8x8; the history and the dispatch are at the
@@ -2460,53 +2544,11 @@ public final class RenderPipeline {
                     | GL42.GL_TEXTURE_FETCH_BARRIER_BIT
                     | GL43.GL_SHADER_STORAGE_BARRIER_BIT);
 
-            Msr2TemporalCompute.unbindImage(0, GL30C.GL_R11F_G11F_B10F);
+            Msr2TemporalCompute.unbindImage(0, MSR2HistoryTarget.COLOR_FORMAT);
             Msr2TemporalCompute.unbindImage(1, GL30C.GL_R16UI);
             compute.unbind();
         } finally {
             GlStateManager._activeTexture(previousActive);
-        }
-    }
-
-    /** Fragment-shader fallback for GPUs without a usable GL 4.3 compute program. */
-    private static void runFragmentTemporal(ShaderLibrary library, int sourceWidth, int sourceHeight,
-            int outWidth, int outHeight, int sourceTexture, int depthTexture) {
-        int historyColorRead = msr2History.getReadColorTexture();
-        int historyDepthRead = msr2History.getReadDepthTexture();
-
-        ShaderLibrary.beginPassState();
-        try {
-            // Both MRT attachments (colour + R16UI depth) are written by this pass.
-            GlStateManager._colorMask(true, true, true, true);
-            msr2History.bindWrite();
-
-            library.msr2Temporal.setSampler("CurrentColor", sourceTexture);
-            library.msr2Temporal.setSampler("CurrentDepth", depthTexture);
-            library.msr2Temporal.setSampler("HistoryColor", historyColorRead);
-            library.msr2Temporal.setSampler("HistoryDepth", historyDepthRead);
-
-            setUniform2f(library.msr2Temporal, "InputSize", (float) sourceWidth, (float) sourceHeight);
-            setUniform2f(library.msr2Temporal, "Jitter", 0.0F, 0.0F);
-            setUniform1f(library.msr2Temporal, "VarianceScale", (float) cachedMsrVarianceScale);
-            setUniform1f(library.msr2Temporal, "DepthThreshold", (float) cachedMsrDepthThreshold);
-            setUniform1f(library.msr2Temporal, "HistoryWeight", (float) cachedMsrHistoryWeight);
-
-            tempVec3.set((float) (currentCameraX - previousCameraX),
-                    (float) (currentCameraY - previousCameraY),
-                    (float) (currentCameraZ - previousCameraZ));
-            setUniform3f(library.msr2Temporal, "CameraDelta", tempVec3.x, tempVec3.y, tempVec3.z);
-            setUniformMatrix4f(library.msr2Temporal, "ViewRotation", currentView);
-            setUniformMatrix4f(library.msr2Temporal, "PrevViewRotation", previousView);
-            setUniformMatrix4f(library.msr2Temporal, "InvProjection", inverseProjection);
-            setUniformMatrix4f(library.msr2Temporal, "PrevProjection", previousProjection);
-            setUniform1f(library.msr2Temporal, "HistoryValid", msrHistoryValid ? 1.0F : 0.0F);
-            setUniform1f(library.msr2Temporal, "DepthValid", depthTexture != 0 ? 1.0F : 0.0F);
-
-            library.msr2Temporal.apply();
-            drawFullscreenQuad();
-            library.msr2Temporal.clear();
-        } finally {
-            ShaderLibrary.endPassState();
         }
     }
 
@@ -2519,7 +2561,7 @@ public final class RenderPipeline {
             msrComputeProgram.unbind();
         }
         if (computeAvailable) {
-            Msr2TemporalCompute.unbindImage(0, GL30C.GL_R11F_G11F_B10F);
+            Msr2TemporalCompute.unbindImage(0, MSR2HistoryTarget.COLOR_FORMAT);
             Msr2TemporalCompute.unbindImage(1, GL30C.GL_R16UI);
         }
         if (msr2History != null) {
@@ -2534,6 +2576,67 @@ public final class RenderPipeline {
     private static void bindTextureUnit(int glTextureUnit, int texture) {
         GlStateManager._activeTexture(glTextureUnit);
         GlStateManager._bindTexture(texture);
+    }
+
+    /**
+     * Builds the polyphase Lanczos table: one row per 1/64-pixel phase, six taps at offsets
+     * -2..+3. This is the CPU twin of the table sampling in {@code msr_temporal.comp}; both use
+     * the same 65 entries, and the shader round-trips the fractional phase to the nearest one.
+     */
+    private static float[] buildLanczosWeights(int radius) {
+        float[] table = new float[LANCZOS_PHASES * LANCZOS_TAPS];
+        for (int phase = 0; phase < LANCZOS_PHASES; phase++) {
+            double fraction = phase / (double) (LANCZOS_PHASES - 1);
+            for (int tap = 0; tap < LANCZOS_TAPS; tap++) {
+                double x = (tap - 2) - fraction;
+                table[phase * LANCZOS_TAPS + tap] = (float) lanczosKernel(x, radius);
+            }
+        }
+        return table;
+    }
+
+    private static double lanczosKernel(double x, int radius) {
+        x = Math.abs(x);
+        if (x < 1.0e-5) {
+            return 1.0;
+        }
+        if (x >= radius) {
+            return 0.0;
+        }
+        double px = Math.PI * x;
+        return radius * Math.sin(px) * Math.sin(px / radius) / (px * px);
+    }
+
+    /**
+     * Lazily creates the 65x6x2 R32F polyphase texture. A texture is used rather than a uniform
+     * array because dynamically indexed uniform arrays made the NVIDIA compiler lower the whole
+     * table onto the local stack and fail with "invalid local parameter number".
+     */
+    private static int ensureLanczosTable() {
+        if (lanczosTableTexture != 0) {
+            return lanczosTableTexture;
+        }
+        int texture = GL11C.glGenTextures();
+        GlStateManager._bindTexture(texture);
+        GlStateManager._texParameter(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_MIN_FILTER, GL11C.GL_NEAREST);
+        GlStateManager._texParameter(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_MAG_FILTER, GL11C.GL_NEAREST);
+        GlStateManager._texParameter(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_WRAP_S, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
+        GlStateManager._texParameter(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_WRAP_T, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
+        GlStateManager._texParameter(GL30C.GL_TEXTURE_2D_ARRAY, org.lwjgl.opengl.GL12C.GL_TEXTURE_WRAP_R, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
+        java.nio.FloatBuffer data = org.lwjgl.system.MemoryUtil.memAllocFloat(
+                LANCZOS_PHASES * LANCZOS_TAPS * 2);
+        try {
+            data.put(LANCZOS_WEIGHTS_2);
+            data.put(LANCZOS_WEIGHTS_3);
+            data.flip();
+            GL30C.glTexImage3D(GL30C.GL_TEXTURE_2D_ARRAY, 0, GL30C.GL_R32F,
+                    LANCZOS_PHASES, LANCZOS_TAPS, 2, 0,
+                    GL11C.GL_RED, GL11C.GL_FLOAT, data);
+        } finally {
+            org.lwjgl.system.MemoryUtil.memFree(data);
+        }
+        lanczosTableTexture = texture;
+        return texture;
     }
 
     private static void drawFullscreenQuad() {

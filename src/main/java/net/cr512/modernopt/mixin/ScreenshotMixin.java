@@ -10,6 +10,7 @@ import net.minecraft.client.Screenshot;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
@@ -24,6 +25,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(Screenshot.class)
 public abstract class ScreenshotMixin {
+
+    @ModifyVariable(
+            method = "takeScreenshot(Lcom/mojang/blaze3d/pipeline/RenderTarget;)Lcom/mojang/blaze3d/platform/NativeImage;",
+            at = @At("HEAD"),
+            argsOnly = true,
+            ordinal = 0
+    )
+    private static RenderTarget modernopt$completedFrame(RenderTarget target) {
+        return RenderPipeline.completedFrameTarget(target);
+    }
 
     @Inject(
             method = "takeScreenshot(Lcom/mojang/blaze3d/pipeline/RenderTarget;)Lcom/mojang/blaze3d/platform/NativeImage;",

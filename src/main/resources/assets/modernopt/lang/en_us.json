@@ -9,7 +9,7 @@
   "modernopt.option.renderScale": "Internal resolution",
   "modernopt.option.dynamicMovingResolution": "Dynamic resolution while moving",
   "modernopt.option.upscaler": "Upscaler",
-  "modernopt.option.temporalPreset": "Temporal 42% preset",
+  "modernopt.option.temporalPreset": "Temporal 42% preset (experimental)",
   "modernopt.option.hudScale": "HUD resolution",
   "modernopt.option.scaleWholeWindow": "Scale whole window",
   "modernopt.option.shadowMapResolution": "Shadow map resolution",
