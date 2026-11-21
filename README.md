@@ -211,8 +211,8 @@ MSR2 50 % is within 1 % of FSR 1 in this CPU-limited scene. MSR2 42 % has a high
 The shadow interval is the larger lever: interval 2 cuts the amortized shadow cost in half and is
 worth about 17 % mean FPS here.
 
-`nvidia-smi` sampled during a separate run of the same scene reported 79-83 % GPU utilization
-while the frame rate was capped (2.7 GHz, ~95 W). That is below the 90 % threshold used for this project, so the render thread is
+`nvidia-smi` sampled during a separate run of the same scene with a 2048 px shadow map reported
+79-83 % GPU utilization while the frame rate was capped (2.7 GHz, ~95 W). That is below the 90 % threshold used for this project, so the render thread is
 the current floor in this scene: another GPU pass will not convert into FPS one-to-one. CPU-side
 work (draw submission, allocations, per-frame lookups) is the next priority, not more pixel work.
 The sampler itself adds hitches, so it is never run during a timing run.
