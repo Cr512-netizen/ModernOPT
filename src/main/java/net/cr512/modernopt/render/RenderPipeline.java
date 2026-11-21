@@ -1000,6 +1000,8 @@ public final class RenderPipeline {
     private static boolean shadowHoldHaveMap;
     private static boolean shadowHoldHaveMatrices;
     private static int shadowHoldFramebuffer = -1;
+    private static int shadowHoldDrawnFrames;
+    private static int shadowHoldSkippedFrames;
     private static double shadowHoldCameraX;
     private static double shadowHoldCameraY;
     private static double shadowHoldCameraZ;
@@ -1132,6 +1134,7 @@ public final class RenderPipeline {
     /** Marks a frame that skipped the shadow pass. */
     public static void shadowHoldNoteSkipped() {
         shadowHoldFrames++;
+        shadowHoldSkippedFrames++;
     }
 
     /** Marks a frame that drew the shadow map. */
@@ -1140,6 +1143,28 @@ public final class RenderPipeline {
         shadowHoldHaveMap = true;
         shadowHoldHaveMatrices = true;
         shadowHoldForceDraw = false;
+        shadowHoldDrawnFrames++;
+    }
+
+    /** Frames that actually redrew the shadow map since the last target reset. */
+    public static int shadowHoldDrawnFrames() {
+        return shadowHoldDrawnFrames;
+    }
+
+    /** Frames that reused the held shadow map since the last target reset. */
+    public static int shadowHoldSkippedFrames() {
+        return shadowHoldSkippedFrames;
+    }
+
+    /** Drawn + held frames, i.e. the denominator of the hold ratio. */
+    public static int shadowHoldTotalFrames() {
+        return shadowHoldDrawnFrames + shadowHoldSkippedFrames;
+    }
+
+    /** Fraction of frames that drew the shadow map (1.0 when no sample exists yet). */
+    public static double shadowHoldDrawnShare() {
+        int total = shadowHoldTotalFrames();
+        return total <= 0 ? 1.0 : (double) shadowHoldDrawnFrames / total;
     }
 
     /**
@@ -1154,6 +1179,8 @@ public final class RenderPipeline {
         shadowHoldForceDraw = false;
         shadowHoldFramebuffer = -1;
         shadowHoldWorldTime = Long.MIN_VALUE;
+        shadowHoldDrawnFrames = 0;
+        shadowHoldSkippedFrames = 0;
         shadowHoldEntities.clear();
     }
 

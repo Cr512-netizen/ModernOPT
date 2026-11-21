@@ -50,9 +50,11 @@ public abstract class IrisShadowRendererMixin {
     private void modernopt$beginShadowPass(CallbackInfo callbackInfo) {
         int interval = Math.max(1, ModernOptSettings.shadowUpdateInterval());
         if (interval <= 1) {
-            // Every-frame shadows are plain Iris behaviour: do not bind, query or reflect here.
-            // The hold machinery only exists for interval > 1.
-            RenderPipeline.setShadowPassActive(false);
+            // Every-frame shadows are plain Iris behaviour: no hold and no matrix swizzling, but
+            // still count the drawn frame and time the pass for the overlay/profiler.
+            RenderPipeline.setShadowPassActive(true);
+            RenderPipeline.shadowHoldNoteDrawn();
+            GpuProfiler.begin(GpuProfiler.SHADOW);
             return;
         }
         if (!modernopt$haveHeld) {
@@ -86,6 +88,7 @@ public abstract class IrisShadowRendererMixin {
         int interval = Math.max(1, ModernOptSettings.shadowUpdateInterval());
         if (interval <= 1) {
             RenderPipeline.setShadowPassActive(false);
+            GpuProfiler.end(GpuProfiler.SHADOW);
             return;
         }
         modernopt$rememberDrawnFrame();
