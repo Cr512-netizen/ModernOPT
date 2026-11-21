@@ -134,11 +134,14 @@ public final class ModernOptConfig {
                         "More detail and sharper texture response, at the cost of 36 taps instead of 16 and more ringing.",
                         "Only used when msr2.lanczos is on.")
                 .define("lanczos3", false);
-        MSR2_VARIANCE_SCALE = b.comment("Variance clipping threshold multiplier for temporal pass. Higher = more aggressive history rejection.")
+        MSR2_VARIANCE_SCALE = b.comment(
+                "Variance clipping threshold multiplier. Higher = wider acceptance box = more history",
+                "and less flicker, but more ghosting. In Lanczos mode the box is at least the sampled",
+                "neighbourhood extrema, so values below 2.0 behave as 2.0.")
                 .defineInRange("varianceScale", 2.0, 0.5, 4.0);
         MSR2_EDGE_AWARE = b.comment("Enable edge-aware interpolation in spatial pass (preserves geometry edges).")
                 .define("edgeAware", true);
-        MSR2_SHARPNESS = b.comment("MSR spatial sharpening strength (CAS), 0 = off, 100 = strong.")
+        MSR2_SHARPNESS = b.comment("MSR2 spatial sharpening strength (CAS), 0 = off, 100 = strong.")
                 .defineInRange("sharpness", 30, 0, 100);
         MSR2_DEPTH_THRESHOLD = b.comment("Depth difference threshold for temporal disocclusion detection.")
                 .defineInRange("depthThreshold", 0.02, 0.005, 0.1);
@@ -147,9 +150,10 @@ public final class ModernOptConfig {
         b.pop();
 
         b.comment("Dynamic Resolution Scaling (DRS) - auto-adjusts render scale based on FPS.").push("dynamicResolution");
-        MSR2_DYNAMIC_RES = b.comment("Enable dynamic resolution scaling for MSR. Automatically lowers render scale when FPS drops.")
+        MSR2_DYNAMIC_RES = b.comment("Enable dynamic resolution scaling for MSR2. Automatically lowers render scale when FPS drops.")
                 .define("enabled", true);
-        MSR2_TEMPORAL_MIN_FPS = b.comment("Minimum FPS threshold. Below this, temporal pass is disabled (falls back to spatial only).")
+        // Historical key name; this is the DRS target, not a temporal-pass cutoff.
+        MSR2_TEMPORAL_MIN_FPS = b.comment("Target FPS for dynamic resolution scaling. Below this, DRS lowers the render scale.")
                 .defineInRange("temporalMinFps", 40, 20, 60);
         MSR2_SCALE_STEP = b.comment("Step size for auto-scaling (percentage points per adjustment).")
                 .defineInRange("scaleStep", 5, 1, 20);
