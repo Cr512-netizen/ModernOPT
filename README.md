@@ -12,7 +12,7 @@ resolution.
 | Option | Values | What it does |
 | --- | --- | --- |
 | Render scale | 25 - 100 % | Internal world resolution. 75 % means roughly 56 % of the pixels. |
-| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `MSR`, `MSR2` | Filter used to present the internal image. `MSR` adds a temporal accumulation pass. `MSR2` is the newest upscaler, built on the same camera-reconstructed reprojection as MSR but with a 2-pass design (temporal + fused spatial) and R11G11B10F history buffers for half the VRAM bandwidth. |
+| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `MSR`, `MSR2` | Filter used to present the internal image. `MSR` adds a temporal accumulation pass. `MSR2` is the newest upscaler, built on the same camera-reconstructed reprojection as MSR but with an output-resolution RGBA16F history and a depth-guided Lanczos reconstruction. |
 | SoftScale softness | 0 - 100 % | Blur radius of the 9-tap tent filter (`Soft scale`). |
 | FSR sharpness | 0 - 100 % | RCAS strength applied after the FSR 1 EASU or MSR temporal upscale. |
 | MSAA | Off, 2x, 4x, 8x, 16x | Multisampling for the world pass (hardware, resolved before the upscale). |
@@ -21,7 +21,7 @@ resolution.
 | FP16 world target | On / Off | Render the pre-upscale image into RGBA16F (HDR) instead of RGBA8. |
 | Scale whole window | On / Off | Render the whole frame (world, HUD, presentation) at the internal resolution, including the HUD and the presentation. |
 | Shadow map resolution | 512, 1024, 2048, 4096 | Absolute size of the Iris shader pack's shadow map, independent of the render scale. |
-| Status overlay | On / Off | FPS, internal resolution, active filter, MSAA level. |
+| Status overlay | On / Off | FPS, internal resolution, active filter, MSAA level, shadow held ratio and interval. |
 
 Anti-aliasing order is always *world -> SSAA downsample -> reconstruction filter -> FXAA*, so the
 options compose instead of fighting each other.
@@ -47,27 +47,29 @@ pack's output and upscales it. MSAA is also forced off in MSR mode and that is l
 ### MSR2
 
 `MSR2` is the newest upscaler in ModernOPT. It uses the same camera-reconstructed motion vectors
-as MSR, but merges the passes: a temporal pass with variance clipping in YCoCg (3x3 mean +
-2-sigma rejection, much better ghosting suppression than the old 5-point clamp) followed by an
+as MSR, but merges the passes: a temporal pass with variance clipping in YCoCg followed by an
 RCAS sharpen pass.
 
 Key properties:
-- History is stored as **R11G11B10F colour + R16_UINT depth** (48 bits/px vs 64 for RGBA16F),
-  and it is allocated at the **output resolution**. The temporal pass therefore keeps the detail
-  it accumulates instead of throwing it away before the final upscale.
+- History is **RGBA16F colour + R16_UINT depth**, allocated at the **output resolution**. The
+  temporal pass therefore keeps the detail it accumulates instead of throwing it away before the
+  final upscale. At 1080p the colour pair is about 32 MiB and the depth pair about 8 MiB, so the
+  ping-pong history costs roughly 40 MiB.
 - The temporal pass runs as a compute shader on GL 4.3+ and dispatches one thread per output
   pixel; the final pass is RCAS, or a plain copy when sharpening is off.
-- MSR2 applies an R2 sub-pixel jitter, compensates for the previous frame's jitter phase when
-  reading history, and rejects history that moves more than 15% of the screen in one frame. This
-  is the temporal anti-aliasing part; MSR keeps jitter disabled under Iris, MSR2 can be tried
-  with a pack and falls back to the normal image if it does not pass the quality check.
+- MSR2 applies an R2 sub-pixel jitter and samples the history on the unjittered output grid, so
+  accumulated samples do not drift by the difference between jitter phases. History that moves more
+  than 15 % of the screen in one frame is rejected.
 - The low-resolution current frame is reconstructed with **depth-guided Lanczos-2** before
-  temporal accumulation (toggle: `msr2.lanczos`, default on). Each tap is weighted by depth
-  similarity, so the kernel does not mix foreground and background across block edges. The
-  weighted sum is clamped to the source neighbourhood, removing the bright/dark halos from the
-  negative lobes. It noticeably reduces the soapy look on grass and foliage and costs about 3%
-  FPS. `msr2.lanczos3` switches to the wider 6x6 Lanczos-3 kernel: sharper texture response,
-  about 7% FPS cost total, and more ringing on very high-contrast edges.
+  temporal accumulation (toggle: `msr2.lanczos`, default on). The kernel weights come from a
+  65-phase polyphase table in a small R32F texture, and the same taps supply the min/max box for
+  temporal acceptance, so the acceptance window is exactly as wide as the reconstruction
+  footprint. When scene depth is unavailable the per-tap depth fetch is skipped, not just its
+  weight.
+- Negative values and NaNs are clamped before `imageStore`, so one bad frame cannot poison the
+  ping-pong history.
+- `msr2.lanczos3` switches to the wider Lanczos-3 kernel: sharper texture response and more
+  ringing on very high-contrast edges.
 - The fragment fallback remains for GPUs without compute, but a compute-capable driver is needed
   for the output-resolution history path.
 - Iris integration: shadow viewports are preserved, and if the Iris depth buffer cannot be
@@ -79,11 +81,11 @@ Key properties:
 ### Temporal 42 % preset
 
 The Upscaling tab has a one-click **Temporal 42 %** preset: it selects MSR2 and sets the internal
-resolution to 42 %. In a controlled FSR 1 50 % comparison (Complementary, shadows every frame,
-512 shadow map) this ran at **149 fps** vs **133 fps** for FSR 1 50 %, with MSR2 at 50 % measuring
-**131 fps**. The image is softer than FSR 1 50 %, so this is a performance mode, not a free
-quality upgrade. The preset only writes the existing `renderScale.percent`, `msr2.enabled` and
-`upscaler` values; you can tune them afterwards.
+resolution to 42 %. It is **experimental and not recommended as a default yet**. In the controlled
+run below it was only about 4 % faster than FSR 1 at 50 % with the same shadow interval, and the
+image is softer; the output-resolution temporal pass costs most of what the lower world resolution
+saves. The preset only writes the existing `renderScale.percent`, `msr2.enabled` and `upscaler`
+values, so it is easy to A/B in your own scene.
 
 ### FP16 world target
 
@@ -92,9 +94,10 @@ quality upgrade. The preset only writes the existing `renderScale.percent`, `msr
 chain, so with an 8-bit buffer the image is quantised *before* the upscaler sees it - visible as
 banding in sky gradients and dark scenes, and as slightly harsher sharpening in the FSR/MSR upscalers.
 
-Measured cost on a 5060 Ti at 960x540: within run-to-run noise (98.6 fps vs 98.9 fps with the full
-Complementary config, 275.8 vs 273.2 fps with shadows off), because the buffer is the small,
-scaled one. The win is image quality: the upscaler now reads the same HDR range the pack rendered.
+The target doubles the bandwidth of the pre-upscale colour buffer. The buffer is the small, scaled
+one, so the cost is usually small, but it is scene- and GPU-dependent; measure it with the harness
+rather than assuming it is free. The win is image quality: the upscaler reads the same HDR range
+the pack rendered.
 
 ## How it works
 
@@ -170,7 +173,7 @@ Key points:
   but it means very low scales soften those effects too.
 * The upscalers are presentation filters. They cannot recover detail that was never rendered,
   which is why FSR 1 looks best at 67-85 % scale.
-* MSR uses camera-reconstructed motion vectors. It has no per-object velocities, so fast
+* MSR and MSR2 use camera-reconstructed motion vectors. They have no per-object velocities, so fast
   moving entities and particles can ghost briefly before the neighbourhood clamp rejects them.
   Under an Iris shader pack, depth is read from the pack's gbuffer when Iris exposes it; if it
   cannot be read, MSR falls back to rotation-only reprojection for that frame and logs a
@@ -184,27 +187,42 @@ Key points:
 
 ## Testing
 
-Verified in a NeoForge dev client with only **Sodium 0.8.13**, **Iris 1.8.14-beta.1** and
-**Complementary Unbound r5.9.3** installed: render scale 50-75 %, bilinear, FSR 1 and MSR,
-correct depth (no holes or LODs over the world), HUD at native resolution, first person hand and
-nearby entities visible in place under an active shader pack, and no OpenGL errors when the window
-is resized or the shader pipeline is rebuilt.
+The methodology, the two pinned mod stacks and the state suffixes are in
+[TESTING.md](TESTING.md). All README numbers below come from the same scene and the same harness:
+RTX 5060 Ti 16 GB / Ryzen 7 7800X3D, 1920x1080, Complementary Unbound r5.9.3, render distance 16,
+frozen time and weather, static camera, 512 shadow map, 60-tick warmup and 120-tick sample. The
+control stack is Minecraft 1.21.1, NeoForge 21.1.264, Sodium 0.8.13 and Iris 1.8.14-beta.1.
 
-MSR was also checked with shaders off, at 100 % (temporal AA + RCAS at native resolution) and
-under Complementary. With the pack active and the world loaded, the test scene at `300,63,300`
-measured on an RTX 5060 Ti 16 GB / Ryzen 7 7800X3D at 1920x1080, render distance 12:
+| Mode | Mean FPS | 1% low | Shadow interval | Held share | Shadow ms (drawn / amortized) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Native (mod disabled, 100 %) | 112.2 | 102.4 | - | - | - |
+| FSR 1, 50 % | 150.6 | 122.9 | 2 | 50 % | 2.33 / 1.16 |
+| FSR 1, 50 % | 127.8 | 119.2 | 1 | 0 % | 2.33 / 2.33 |
+| MSR2, 50 % | 143.9 | 122.3 | 2 | 50 % | 2.33 / 1.16 |
+| MSR2, 42 % | 156.6 | 126.5 | 2 | 50 % | 2.33 / 1.16 |
 
-| Mode | Frame rate | GPU |
-| --- | ---: | ---: |
-| Native (mod disabled) | 111 fps | 94 % |
-| MSR, 100 % | 94 fps | 96 % |
-| MSR, 75 % | 123 fps | 96 % |
-| MSR, 50 % | 197-198 fps | 94 % |
-| MSR, 25 % | 216 fps | 93 % |
+`Held share` is `held / (drawn + held)` for the same measurement window as the stage times; the
+interval is printed next to it because 50 % is the correct value for interval 2, not a defect.
+The 1% low is the mean of the slowest 1 % of frames after excluding the screenshot frame.
 
-The 50 % result is a real 1.78x over native. The small gain from 50 % to 25 % shows where the
-shader pack's fixed cost takes over; it is not an upscaler bug. Native 1:1 crops of the water,
-sky and HUD were clean, and an idle camera test measured no visible frame-to-frame shift.
+MSR2 is within a few FPS of FSR 1 in this CPU-limited scene, so the 42 % preset is not presented as
+a universal win. The shadow interval is the larger lever: interval 2 cuts the amortized shadow cost
+in half and is worth about 18 % mean FPS here.
+
+`nvidia-smi` sampled during a separate run of the same scene reported 79-83 % GPU utilization
+while the frame rate was capped (2.7 GHz, ~95 W). That is below the 90 % threshold used for this project, so the render thread is
+the current floor in this scene: another GPU pass will not convert into FPS one-to-one. CPU-side
+work (draw submission, allocations, per-frame lookups) is the next priority, not more pixel work.
+The sampler itself adds hitches, so it is never run during a timing run.
+
+Correctness checks that accompany these numbers: render scale 50-75 % with bilinear, FSR 1 and
+MSR2, correct depth (no holes or LODs over the world), HUD at native resolution, first-person hand
+and nearby entities in place under an active shader pack, no OpenGL errors on resize or pack
+reload, and a static-camera MSR2 run whose frame-10 to frame-60 MAE is 0.013-0.017. The residual is
+the 15 % current-frame term of the fixed 0.85 history blend, not divergence: it drops from frame 1
+to frame 10 and then stays flat, and the difference image shows per-pixel grass noise rather than a
+moving image. Motion runs (`!pan2`, `!walk`) are inspected for trails on mobs, flowers and
+contraptions.
 
 ## Configuration
 
@@ -227,13 +245,10 @@ resolution: the world, the hand, the HUD and Iris' composite chain all run at th
 real main render target is resized to the internal resolution, so vanilla's own present blit
 stretches it to the window - no extra copy pass. This is the standard full-frame approach.
 
-Measured in the same world, pack and shader options (Complementary Unbound, `SHADOW_QUALITY=0`,
-render distance 16, simulation 5, RTX 5060 Ti):
-
-| mode | FPS |
-|---|---|
-| world-only (default) | 123 - 140 |
-| scale whole window | 138 - 140 |
+This mode was verified functionally (world, hand, HUD and Iris composite at the internal size, then
+one present blit) and is included in the benchmark state list with the `!wws` suffix. Its throughput
+must be measured with the same harness as every other row; older numbers from a different scene are
+not reproduced here.
 
 Two things had to be handled for this mode: Iris cancels vanilla's hand pass, so the hand is drawn
 by ModernOPT (as in the scaled mode), and the viewport repair now also covers the small main
@@ -266,20 +281,24 @@ win - see the benchmark notes below.
 
 `shadows.updateInterval` (1-8, default 2) rebuilds the shadow map every N frames instead of every
 frame. The frames in between skip the whole second world pass from the sun and keep sampling the
-previous map. The held light matrix is translated with the camera so shadows stay attached to the
-world; a large camera move or a **sun/time jump** forces an immediate rebuild. Clears that target the shadow framebuffer are skipped while the map is being held,
-otherwise they would wipe it. With interval 1 the feature is a no-op.
+previous map. The held light matrices are the drawn frame's matrices, translated by the camera
+delta in world space before the light transform; a camera move above 1.5 blocks, a world-time jump
+above 40 ticks, or a tracked caster moving above 0.5 blocks forces an immediate rebuild. Drops,
+arrows and experience orbs are not tracked as casters, and the caster radius is the pack's own
+entity shadow distance rather than a fixed 128 blocks. If Iris ever stops tagging its shadow clear
+passes, the hold disables itself with a single warning instead of silently flickering.
 
-Measured in the same world with the pack's shadows enabled (render distance 16, simulation 5,
-1920x1080, 50 % world):
+Measured in the same scene as the table above (FSR 1, 50 %, 512 shadow map):
 
-| interval | FPS | frame |
-|---|---|---|
-| 1 (every frame) | 100-104 | 9.6-10.0 ms |
-| 2 | 140 | 7.2 ms |
-| 3 | 149-150 | 6.7 ms |
+| Interval | Mean FPS | 1% low | Held | Shadow amortized |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 (every frame) | 127.8 | 119.2 | 0 % | 2.33 ms |
+| 2 | 150.6 | 122.9 | 50 % | 1.16 ms |
 
-Screenshots at interval 1 and 3 show the same shadow placement; the remaining pixel differences
+The full profile line reports both the drawn-frame cost and the amortized value, and the overlay
+shows `shadows held N/M (%) i=N`. With interval 1 the pass is still timed and counted as drawn.
+
+Screenshots at interval 1 and 2 show the same shadow placement; the remaining pixel differences
 come from the pack's animated cloud shadows.
 
 ## Building
@@ -308,5 +327,9 @@ exactly this on every push and uploads the jar as an artifact.
 
 ## License
 
-ModernOPT is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+ModernOPT is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE), [NOTICE](NOTICE) and
+[THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt) (also shipped in the jar under `META-INF`).
+MSR2 is part of the same Apache-2.0 codebase: there is no separate grant to revoke later. That is a
+deliberate choice while the project is building adoption; a paid/closed split would have to start
+from a future, separately written component, not from code already released here.
 

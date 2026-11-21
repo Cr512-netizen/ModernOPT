@@ -2,7 +2,7 @@
 
 // MSR 2.0 Spatial Pass - fused edge-aware upsampling + CAS sharpening.
 //
-// Input : temporal history at source resolution (R11G11B10F), scene depth at source
+// Input : temporal history at output resolution (RGBA16F), scene depth at source
 //         resolution (DEPTH_COMPONENT).
 // Output: final image at native resolution.
 //

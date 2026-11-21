@@ -8,25 +8,26 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL12C;
 import org.lwjgl.opengl.GL30C;
-import org.lwjgl.opengl.GL33C;
 
 import java.nio.IntBuffer;
 
 /**
- * MSR2 History Target using memory-efficient formats:
- * - Color: R11G11B10F (32 bits/pixel, no alpha)
- * - Depth: R16_UINT (packed linear depth, 16 bits/pixel)
+ * MSR2 history target.
  *
- * Total: 48 bits/pixel vs 64 (RGBA16F) or 128 (RGBA32F)
- * At 1080p: ~12 MB for a ping-pong pair (color + depth).
+ * <ul>
+ *   <li>Colour: RGBA16F (64 bits/pixel). Alpha is unused; the extra precision is for temporal
+ *       accumulation, where R11G11B10F banded after a few frames.</li>
+ *   <li>Depth: R16_UINT (16 bits/pixel), packed linear depth.</li>
+ * </ul>
  *
- * <p>The target is allocated at the output resolution. The temporal pass dispatches one thread
- * per output pixel, so the history keeps the detail that the old source-resolution history threw
- * away before the spatial upscale.</p>
+ * <p>At 1080p each history set is about 20 MiB (16 MiB colour + 4 MiB depth), and the ping-pong
+ * pair is about 40 MiB. The target is allocated at the output resolution: the temporal pass
+ * dispatches one thread per output pixel, so the history keeps the detail that a
+ * source-resolution history threw away before the spatial upscale.</p>
  *
- * Ping-pong strategy eliminates read-after-write hazards:
+ * <p>Ping-pong strategy eliminates read-after-write hazards:
  * Frame N: read from A, write to B
- * Frame N+1: read from B, write to A
+ * Frame N+1: read from B, write to A</p>
  *
  * <p><b>Important:</b> every framebuffer bind goes through
  * {@link GlStateManager#_glBindFramebuffer(int, int)}, not raw
@@ -36,6 +37,13 @@ import java.nio.IntBuffer;
  * the real screen is never updated - the classic MSR black screen.</p>
  */
 public final class MSR2HistoryTarget {
+
+    /**
+     * Internal format of the colour history. Shared by the texture allocation, both image
+     * bindings in {@link RenderPipeline} and the {@code layout(...)} qualifier in
+     * {@code msr_temporal.comp}; changing one without the others makes the compute pass fail.
+     */
+    public static final int COLOR_FORMAT = GL30C.GL_RGBA16F;
 
     private int width;
     private int height;
@@ -64,7 +72,7 @@ public final class MSR2HistoryTarget {
 
         RenderSystem.assertOnRenderThreadOrInit();
 
-        // Create ping-pong FBOs with R11G11B10F color + R16_UINT depth
+        // Create ping-pong FBOs with RGBA16F color + R16_UINT depth
         for (int i = 0; i < 2; i++) {
             int fbo = GL30C.glGenFramebuffers();
             int colorTex = createColorTexture();
@@ -106,9 +114,9 @@ public final class MSR2HistoryTarget {
         GlStateManager._texParameter(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_WRAP_T, GL12C.GL_CLAMP_TO_EDGE);
         GlStateManager._texParameter(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_MIN_FILTER, GL11C.GL_LINEAR);
         GlStateManager._texParameter(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_MAG_FILTER, GL11C.GL_LINEAR);
-        // R11G11B10F = 32 bits, no alpha channel
-        GL30C.glTexImage2D(GL11C.GL_TEXTURE_2D, 0, GL30C.GL_R11F_G11F_B10F, width, height, 0,
-                GL11C.GL_RGB, GL33C.GL_UNSIGNED_INT_10F_11F_11F_REV, (IntBuffer) null);
+        // RGBA16F: 64 bits per pixel for temporal accumulation.
+        GL30C.glTexImage2D(GL11C.GL_TEXTURE_2D, 0, COLOR_FORMAT, width, height, 0,
+                GL11C.GL_RGBA, GL30C.GL_HALF_FLOAT, (IntBuffer) null);
         return tex;
     }
 

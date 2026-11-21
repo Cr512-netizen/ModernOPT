@@ -7,6 +7,7 @@ import net.cr512.modernopt.config.MsaaLevel;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.config.UpscalerType;
+import net.cr512.modernopt.render.GpuProfiler;
 import net.cr512.modernopt.render.RenderPipeline;
 import net.cr512.modernopt.render.RenderScaleMath;
 import net.minecraft.client.Minecraft;
@@ -18,9 +19,13 @@ import net.neoforged.neoforge.client.event.RenderFrameEvent;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Local benchmark harness: measures frame time per render state.
@@ -39,17 +44,13 @@ public final class SelfTest {
      */
     private static final boolean ENABLED = Boolean.getBoolean("modernopt.bench");
 
-    private static final String[] STATES = {
-            "BILINEAR-50",
-            "MSR-50",
-            "MSR2-50",
-            "BILINEAR-50-B",
-            "OFF-100"
-    };
+    private static final String[] STATES = parseStates(
+            System.getProperty("modernopt.bench.states",
+                    "BILINEAR-50,MSR-50,MSR2-50,BILINEAR-50-B,OFF-100"));
 
-    private static final int START_TICK = 160;
-    private static final int WARMUP_TICKS = 100;
-    private static final int SAMPLE_TICKS = 160;
+    private static final int START_TICK = Integer.getInteger("modernopt.bench.start", 160);
+    private static final int WARMUP_TICKS = Integer.getInteger("modernopt.bench.warmup", 100);
+    private static final int SAMPLE_TICKS = Integer.getInteger("modernopt.bench.sample", 160);
 
     /** Benchmark-only render distance override; 0 keeps the player's setting. */
     private static final int BENCH_RENDER_DISTANCE =
@@ -61,13 +62,25 @@ public final class SelfTest {
     private static int state = -1;
     /** Benchmark-only camera pitch ({@code NaN} keeps the default view). */
     private static float benchPitch = Float.NaN;
+    /** Benchmark-only constant yaw rotation, in degrees per tick ({@code 0} keeps the view). */
+    private static float benchPanDegreesPerTick;
+    /** Benchmark-only forward walk, in blocks per tick ({@code 0} keeps the player still). */
+    private static double benchWalkBlocksPerTick;
     private static boolean worldLogged;
     private static boolean sampling;
     private static boolean windowWarned;
     private static boolean finished;
     private static int finishedTick;
     private static long lastFrameNanos;
+    private static boolean skipNextFrameSample;
     private static final List<Long> frameTimes = new ArrayList<>(4096);
+    /** State name for the convergence screenshots, or {@code null} when not requested. */
+    private static String convergenceState;
+    private static int convergenceFrames;
+    private static final List<Map<String, Object>> stateResults = new ArrayList<>();
+    private static final Map<String, Map<String, Object>> imageMetrics = new LinkedHashMap<>();
+    private static final int[] lastShadowCounters = new int[5];
+    private static boolean reportWritten;
     /** Screenshot deferred to the end of the frame: at tick time the main target can still hold a
      *  partially composed image (the previous frame is presented, but the current one has not been
      *  finished), which made HUD-less screenshots. */
@@ -77,22 +90,62 @@ public final class SelfTest {
     private SelfTest() {
     }
 
+    private static String[] parseStates(String value) {
+        String[] parts = value.split(",");
+        List<String> states = new ArrayList<>(parts.length);
+        for (String part : parts) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                states.add(trimmed);
+            }
+        }
+        return states.toArray(new String[0]);
+    }
+
+    @SubscribeEvent
+    public static void onFrameStart(RenderFrameEvent.Pre event) {
+        if (ENABLED) {
+            GpuProfiler.begin(GpuProfiler.FRAME);
+        }
+    }
+
     @SubscribeEvent
     public static void onFrame(RenderFrameEvent.Post event) {
         if (!ENABLED) {
             return;
         }
+        GpuProfiler.end(GpuProfiler.FRAME);
+        boolean screenshotTaken = false;
         if (pendingShotState != null) {
             String stateName = pendingShotState;
             String phase = pendingShotPhase;
             pendingShotState = null;
             pendingShotPhase = null;
             saveScreenshot(Minecraft.getInstance(), stateName, phase);
+            screenshotTaken = true;
+        }
+        if (convergenceState != null) {
+            convergenceFrames++;
+            if (convergenceFrames == 1 || convergenceFrames == 10 || convergenceFrames == 60) {
+                saveScreenshot(Minecraft.getInstance(), convergenceState, "f" + convergenceFrames);
+                screenshotTaken = true;
+            }
         }
         long now = System.nanoTime();
         long previous = lastFrameNanos;
         lastFrameNanos = now;
+        if (screenshotTaken) {
+            // Writing a 1080p PNG stalls this frame for hundreds of milliseconds; it is a
+            // harness cost, not the renderer's, so the next interval (which contains it) is
+            // excluded from the FPS and 1% low statistics.
+            skipNextFrameSample = true;
+            return;
+        }
         if (!sampling || previous == 0L) {
+            return;
+        }
+        if (skipNextFrameSample) {
+            skipNextFrameSample = false;
             return;
         }
         long frameTime = now - previous;
@@ -120,6 +173,18 @@ public final class SelfTest {
         }
         smallWindowTicks = 0;
 
+        if (benchPanDegreesPerTick != 0.0F) {
+            minecraft.player.setYRot(minecraft.player.getYRot() + benchPanDegreesPerTick);
+        }
+        if (benchWalkBlocksPerTick != 0.0) {
+            net.minecraft.world.phys.Vec3 look = minecraft.player.getLookAngle();
+            minecraft.player.setPos(
+                    minecraft.player.getX() + look.x * benchWalkBlocksPerTick,
+                    minecraft.player.getY(),
+                    minecraft.player.getZ() + look.z * benchWalkBlocksPerTick);
+            minecraft.player.setDeltaMovement(0.0, 0.0, 0.0);
+        }
+
         if (!worldLogged) {
             worldLogged = true;
             ticks = 0;
@@ -142,6 +207,7 @@ public final class SelfTest {
             if (!finished) {
                 finished = true;
                 finishedTick = ticks;
+                writeBenchReport(minecraft);
                 ModernOPT.LOG.info("[BENCH] complete, closing the game automatically");
             } else if (ticks - finishedTick >= 60) {
                 ModernOPT.LOG.info("[BENCH] shutdown");
@@ -156,6 +222,9 @@ public final class SelfTest {
         }
         if (index != state) {
             state = index;
+            convergenceState = STATES[state].contains("!conv") ? STATES[state] : null;
+            convergenceFrames = 0;
+            GpuProfiler.reset();
             applyState(state);
             ModernOPT.LOG.info("[BENCH] state {} | {} | {}x{} | MSAA {}",
                     STATES[state], RenderPipeline.activeUpscalerLabel(),
@@ -313,6 +382,9 @@ public final class SelfTest {
                 java.nio.file.Path out = dir.resolve(name);
                 image.writeToFile(out);
                 ModernOPT.LOG.info("[BENCH] saved {}", name);
+                if (phase.equals("f60") && stateName.contains("!conv")) {
+                    measureConvergence(dir, stateName, image);
+                }
             } finally {
                 image.close();
             }
@@ -370,11 +442,316 @@ public final class SelfTest {
         double avgMs = sum / 1_000_000.0 / sorted.size();
         double minMs = sorted.get(0) / 1_000_000.0;
         double maxMs = sorted.get(sorted.size() - 1) / 1_000_000.0;
-        double p1Ms = sorted.get(Math.min(sorted.size() - 1, sorted.size() / 100)) / 1_000_000.0;
-        ModernOPT.LOG.info("[BENCH] {}: avg {}/{} fps, frame {}/{} ms, p1 {}, samples {}",
+        // 1% low = mean of the slowest 1% of frames, not the fastest 1%.
+        int worstCount = Math.max(1, sorted.size() / 100);
+        long worstSum = 0;
+        for (int i = sorted.size() - worstCount; i < sorted.size(); i++) {
+            worstSum += sorted.get(i);
+        }
+        double p1LowMs = worstSum / 1_000_000.0 / worstCount;
+        double p1LowFps = 1000.0 / p1LowMs;
+        int p99Index = Math.min(sorted.size() - 1, (int) (sorted.size() * 0.99));
+        double p99Ms = sorted.get(p99Index) / 1_000_000.0;
+        ModernOPT.LOG.info("[BENCH] {}: avg {}/{} fps, frame {}/{} ms, 1% low {}, worst {} ms, p99 {}, samples {}",
                 name, Math.round(1000.0 / avgMs), String.format("%.1f", 1000.0 / avgMs),
                 String.format("%.2f", avgMs), String.format("%.2f", minMs),
-                String.format("%.2f", p1Ms), sorted.size());
+                String.format("%.2f", p1LowFps), String.format("%.2f", maxMs),
+                String.format("%.2f", p99Ms), sorted.size());
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("state", name);
+        result.put("avgFps", round(1000.0 / avgMs, 2));
+        result.put("avgFrameMs", round(avgMs, 3));
+        result.put("minFrameMs", round(minMs, 3));
+        result.put("p1LowFps", round(p1LowFps, 2));
+        result.put("p1LowFrameMs", round(p1LowMs, 3));
+        result.put("p99FrameMs", round(p99Ms, 3));
+        result.put("worstFrameMs", round(maxMs, 3));
+        result.put("samples", sorted.size());
+        result.put("renderScalePercent", ModernOptSettings.renderScalePercent());
+        result.put("upscaler", ModernOptSettings.upscaler().name());
+        result.put("msr2Enabled", ModernOptSettings.msr2Enabled());
+        result.put("shadowMap", net.cr512.modernopt.compat.ShadowMapResolution.describe());
+        net.cr512.modernopt.render.ShadowHoldStats shadows =
+                RenderPipeline.shadowHoldStats();
+        int drawn = shadows.drawn() - lastShadowCounters[0];
+        int held = shadows.held() - lastShadowCounters[1];
+        int forcedCamera = shadows.forcedCamera() - lastShadowCounters[2];
+        int forcedTime = shadows.forcedTime() - lastShadowCounters[3];
+        int forcedCaster = shadows.forcedCaster() - lastShadowCounters[4];
+        if (drawn < 0 || held < 0) {
+            // Counters were reset by a dimension or interval change: use the part since reset.
+            drawn = shadows.drawn();
+            held = shadows.held();
+            forcedCamera = shadows.forcedCamera();
+            forcedTime = shadows.forcedTime();
+            forcedCaster = shadows.forcedCaster();
+        }
+        lastShadowCounters[0] = shadows.drawn();
+        lastShadowCounters[1] = shadows.held();
+        lastShadowCounters[2] = shadows.forcedCamera();
+        lastShadowCounters[3] = shadows.forcedTime();
+        lastShadowCounters[4] = shadows.forcedCaster();
+        result.put("shadowDrawn", drawn);
+        result.put("shadowHeld", held);
+        result.put("shadowTotal", drawn + held);
+        result.put("shadowInterval", shadows.interval());
+        result.put("shadowForcedCamera", forcedCamera);
+        result.put("shadowForcedTime", forcedTime);
+        result.put("shadowForcedCaster", forcedCaster);
+        result.put("stagesMs", GpuProfiler.snapshotStages());
+        result.put("stagesPerFrameMs", GpuProfiler.snapshotPerFrameStages());
+        Map<String, Object> image = imageMetrics.get(name);
+        if (image != null) {
+            result.put("image", image);
+        }
+        stateResults.add(result);
+    }
+
+    private static double round(double value, int digits) {
+        double scale = Math.pow(10.0, digits);
+        return Math.round(value * scale) / scale;
+    }
+
+    /**
+     * Static-camera convergence check: MAE between the first, tenth and sixtieth presented
+     * frames, plus a detail score (mean horizontal luma gradient) of the last one. A converged
+     * temporal image changes very little between frame 10 and 60; a broken history shows up as a
+     * large MAE or as a detail score far below the reference.
+     */
+    private static void measureConvergence(Path dir, String stateName,
+            com.mojang.blaze3d.platform.NativeImage frame60) {
+        try {
+            Path f1 = dir.resolve("bench-" + stateName + "-f1.png");
+            Path f10 = dir.resolve("bench-" + stateName + "-f10.png");
+            double mae1 = mae(f1, frame60);
+            double mae10 = mae(f10, frame60);
+            double detail = detail(frame60);
+            Map<String, Object> metrics = new LinkedHashMap<>();
+            metrics.put("maeFrame1To60", round(mae1, 5));
+            metrics.put("maeFrame10To60", round(mae10, 5));
+            metrics.put("detail", round(detail, 5));
+
+            String reference = System.getProperty("modernopt.bench.reference");
+            if (reference != null && !reference.isBlank()) {
+                Path referencePath = Path.of(reference);
+                if (!referencePath.isAbsolute()) {
+                    referencePath = Minecraft.getInstance().gameDirectory.toPath().resolve(referencePath);
+                }
+                if (Files.isRegularFile(referencePath)) {
+                    metrics.put("referenceMae", round(mae(referencePath, frame60), 5));
+                    try (java.io.InputStream input = Files.newInputStream(referencePath);
+                            com.mojang.blaze3d.platform.NativeImage image =
+                                    com.mojang.blaze3d.platform.NativeImage.read(input)) {
+                        metrics.put("referenceDetail", round(detail(image), 5));
+                    }
+                }
+            }
+            imageMetrics.put(stateName, metrics);
+            ModernOPT.LOG.info("[BENCH][IMAGE] {} {}", stateName, metrics);
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.warn("[BENCH][IMAGE] convergence metrics failed for {}: {}",
+                    stateName, throwable.toString());
+        }
+    }
+
+    private static double mae(Path path, com.mojang.blaze3d.platform.NativeImage current)
+            throws java.io.IOException {
+        try (java.io.InputStream input = Files.newInputStream(path);
+                com.mojang.blaze3d.platform.NativeImage reference =
+                        com.mojang.blaze3d.platform.NativeImage.read(input)) {
+            if (reference.getWidth() != current.getWidth()
+                    || reference.getHeight() != current.getHeight()) {
+                throw new java.io.IOException("reference size mismatch");
+            }
+            long sum = 0;
+            long count = 0;
+            int step = 2;
+            for (int y = 0; y < current.getHeight(); y += step) {
+                for (int x = 0; x < current.getWidth(); x += step) {
+                    sum += Math.abs(luma(reference.getPixelRGBA(x, y)) - luma(current.getPixelRGBA(x, y)));
+                    count++;
+                }
+            }
+            return count == 0 ? 0.0 : sum / (count * 255.0);
+        }
+    }
+
+    private static double detail(com.mojang.blaze3d.platform.NativeImage image) {
+        long sum = 0;
+        long count = 0;
+        for (int y = 0; y < image.getHeight(); y += 2) {
+            int previous = luma(image.getPixelRGBA(0, y));
+            for (int x = 2; x < image.getWidth(); x += 2) {
+                int next = luma(image.getPixelRGBA(x, y));
+                sum += Math.abs(next - previous);
+                previous = next;
+                count++;
+            }
+        }
+        return count == 0 ? 0.0 : sum / (count * 255.0);
+    }
+
+    private static int luma(int pixel) {
+        int r = pixel & 0xFF;
+        int g = (pixel >>> 8) & 0xFF;
+        int b = (pixel >>> 16) & 0xFF;
+        return (int) Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    }
+
+    /** Writes the machine-readable benchmark report and compares it with an optional baseline. */
+    private static void writeBenchReport(Minecraft minecraft) {
+        if (reportWritten) {
+            return;
+        }
+        reportWritten = true;
+        try {
+            ModernOptSettings.refresh();
+            Map<String, Object> root = new LinkedHashMap<>();
+            root.put("format", 1);
+            root.put("timestamp", java.time.Instant.now().toString());
+            root.put("fingerprint", fingerprint(minecraft));
+            root.put("states", stateResults);
+
+            Path directory = minecraft.gameDirectory.toPath();
+            String name = System.getProperty("modernopt.bench.json", "bench-results.json");
+            Path output = Path.of(name);
+            if (!output.isAbsolute()) {
+                output = directory.resolve(output);
+            }
+            Files.createDirectories(output.getParent());
+            String json = new com.google.gson.GsonBuilder().setPrettyPrinting().create()
+                    .toJson(root);
+            // Compare before writing: the baseline may be the same path the report overwrites.
+            compareBaseline(directory, root);
+            Files.writeString(output, json);
+            ModernOPT.LOG.info("[BENCH] report written to {}", output);
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.warn("[BENCH] could not write the JSON report: {}", throwable.toString());
+        }
+    }
+
+    private static Map<String, Object> fingerprint(Minecraft minecraft) {
+        Map<String, Object> fingerprint = new LinkedHashMap<>();
+        fingerprint.put("gpu", glString(org.lwjgl.opengl.GL11C.GL_RENDERER));
+        fingerprint.put("gpuVendor", glString(org.lwjgl.opengl.GL11C.GL_VENDOR));
+        fingerprint.put("glVersion", glString(org.lwjgl.opengl.GL11C.GL_VERSION));
+        fingerprint.put("minecraft", net.minecraft.SharedConstants.getCurrentVersion().getName());
+        fingerprint.put("mod", net.neoforged.fml.ModList.get()
+                .getModContainerById(ModernOPT.MOD_ID)
+                .map(container -> container.getModInfo().getVersion().toString())
+                .orElse("development"));
+        fingerprint.put("shaderPack", shaderPackName());
+        fingerprint.put("renderDistance", minecraft.options.getEffectiveRenderDistance());
+        fingerprint.put("window", minecraft.getWindow().getWidth() + "x" + minecraft.getWindow().getHeight());
+        fingerprint.put("renderScalePercent", ModernOptSettings.renderScalePercent());
+        fingerprint.put("upscaler", ModernOptSettings.upscaler().name());
+        fingerprint.put("ssaa", ModernOptSettings.ssaa());
+        fingerprint.put("fxaa", ModernOptSettings.fxaa());
+        fingerprint.put("msaa", ModernOptSettings.msaa().name());
+        fingerprint.put("fp16", ModernOptSettings.fp16World());
+        fingerprint.put("msr2", ModernOptSettings.msr2Enabled());
+        fingerprint.put("msr2Lanczos", ModernOptSettings.msr2Lanczos());
+        fingerprint.put("msr2Lanczos3", ModernOptSettings.msr2Lanczos3());
+        fingerprint.put("shadowMap", net.cr512.modernopt.compat.ShadowMapResolution.describe());
+        fingerprint.put("shadowInterval", ModernOptSettings.shadowUpdateInterval());
+        fingerprint.put("shadowHoldDisabled",
+                net.cr512.modernopt.compat.ShadowClearRegistry.holdDisabled());
+        return fingerprint;
+    }
+
+    private static String glString(int name) {
+        String value = org.lwjgl.opengl.GL11C.glGetString(name);
+        return value == null ? "unknown" : value;
+    }
+
+    private static String shaderPackName() {
+        try {
+            Class<?> iris = Class.forName("net.irisshaders.iris.Iris");
+            Object value = iris.getMethod("getCurrentPackName").invoke(null);
+            return value == null ? "none" : value.toString();
+        } catch (Throwable ignored) {
+            return "none";
+        }
+    }
+
+    private static void compareBaseline(Path directory, Map<String, Object> current) {
+        String baselineName = System.getProperty("modernopt.bench.baseline");
+        if (baselineName == null || baselineName.isBlank()) {
+            return;
+        }
+        try {
+            Path baselinePath = Path.of(baselineName);
+            if (!baselinePath.isAbsolute()) {
+                baselinePath = directory.resolve(baselinePath);
+            }
+            if (!Files.isRegularFile(baselinePath)) {
+                ModernOPT.LOG.warn("[BENCH] baseline {} does not exist", baselinePath);
+                return;
+            }
+            com.google.gson.JsonObject baseline =
+                    com.google.gson.JsonParser.parseString(Files.readString(baselinePath)).getAsJsonObject();
+            double tolerance = Double.parseDouble(
+                    System.getProperty("modernopt.bench.tolerance", "0.03"));
+            Map<String, com.google.gson.JsonObject> baselineStates = new LinkedHashMap<>();
+            for (com.google.gson.JsonElement element : baseline.getAsJsonArray("states")) {
+                com.google.gson.JsonObject state = element.getAsJsonObject();
+                baselineStates.put(state.get("state").getAsString(), state);
+            }
+
+            List<String> regressions = new ArrayList<>();
+            Map<?, ?> fingerprint = (Map<?, ?>) current.get("fingerprint");
+            com.google.gson.JsonObject baselineFingerprint =
+                    baseline.has("fingerprint") ? baseline.getAsJsonObject("fingerprint") : null;
+            if (baselineFingerprint != null && fingerprint != null) {
+                for (String key : new String[]{"gpu", "renderScalePercent", "upscaler", "shadowMap"}) {
+                    String expected = baselineFingerprint.has(key)
+                            ? baselineFingerprint.get(key).getAsString() : "?";
+                    String actual = String.valueOf(fingerprint.get(key));
+                    if (!expected.equals(actual)) {
+                        ModernOPT.LOG.warn("[BENCH] fingerprint differs from baseline: {} was {}, now {}",
+                                key, expected, actual);
+                    }
+                }
+            }
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> states = (List<Map<String, Object>>) current.get("states");
+            for (Map<String, Object> state : states) {
+                String name = String.valueOf(state.get("state"));
+                com.google.gson.JsonObject reference = baselineStates.get(name);
+                if (reference == null) {
+                    continue;
+                }
+                checkRegression(name, "avgFps", state, reference, tolerance, regressions);
+                checkRegression(name, "p1LowFps", state, reference, tolerance, regressions);
+            }
+            if (regressions.isEmpty()) {
+                ModernOPT.LOG.info("[BENCH] baseline comparison clean (tolerance {}%)",
+                        Math.round(tolerance * 100.0));
+            } else {
+                Path report = directory.resolve("bench-regression.txt");
+                Files.writeString(report, String.join(System.lineSeparator(), regressions));
+                ModernOPT.LOG.error("[BENCH][REGRESSION] {} entries written to {}",
+                        regressions.size(), report);
+            }
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.warn("[BENCH] baseline comparison failed: {}", throwable.toString());
+        }
+    }
+
+    private static void checkRegression(String state, String metric, Map<String, Object> current,
+            com.google.gson.JsonObject baseline, double tolerance, List<String> regressions) {
+        if (!baseline.has(metric) || !(current.get(metric) instanceof Number)) {
+            return;
+        }
+        double expected = baseline.get(metric).getAsDouble();
+        double actual = ((Number) current.get(metric)).doubleValue();
+        double floor = expected * (1.0 - tolerance);
+        if (expected > 0 && actual < floor) {
+            regressions.add(state + " " + metric + ": " + actual + " < " + floor
+                    + " (baseline " + expected + ", tolerance " + Math.round(tolerance * 100.0) + "%)");
+        }
     }
 
     /** First run of decimal digits in the string, or 0. */
@@ -436,6 +813,27 @@ public final class SelfTest {
         } else {
             ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(1);
         }
+        int panIndex = name.indexOf("!pan");
+        if (panIndex >= 0) {
+            int degrees = digits(name.substring(panIndex + 4));
+            benchPanDegreesPerTick = degrees > 0 ? degrees : 2.0F;
+        } else {
+            benchPanDegreesPerTick = 0.0F;
+        }
+        int walkIndex = name.indexOf("!walk");
+        if (walkIndex >= 0) {
+            int speed = digits(name.substring(walkIndex + 5));
+            benchWalkBlocksPerTick = speed > 0 ? speed / 100.0 : 0.04;
+        } else {
+            benchWalkBlocksPerTick = 0.0;
+        }
+        if (name.contains("!sunset")) {
+            Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft.player != null && minecraft.player.connection != null) {
+                minecraft.player.connection.sendCommand("gamerule doDaylightCycle false");
+                minecraft.player.connection.sendCommand("time set 13000");
+            }
+        }
         int hudIndex = name.indexOf("!hud");
         if (hudIndex >= 0) {
             int hudPercent = digits(name.substring(hudIndex + 4));
@@ -461,6 +859,9 @@ public final class SelfTest {
             default -> configure(percent, UpscalerType.BILINEAR, false);
         }
         ModernOptSettings.refresh();
+        if (name.contains("!conv") || name.contains("!pan") || name.contains("!walk")) {
+            RenderPipeline.resetTemporalHistory();
+        }
     }
 
     private static void configure(int percent, UpscalerType upscaler, boolean msr2Enabled) {

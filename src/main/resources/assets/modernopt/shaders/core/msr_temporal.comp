@@ -1,43 +1,50 @@
 #version 430
 
-// MSR 2.0 Compute Temporal Pass - variance clipping in YCoCg.
-// GL 4.3+ path. The fragment implementation in msr_temporal.fsh is the fallback.
+// MSR 2.0 compute temporal pass: variance clipping in YCoCg.
+// GL 4.3+ path; GPUs without compute use the spatial MSR2 fallback instead.
 //
-// History layouts (must match MSRHistoryTarget):
-//   colour : R11G11B10F (32 bit, no alpha)
-//   depth  : R16UI      (packed current depth, 16 bit)
+// History layouts (must match MSR2HistoryTarget):
+//   colour : RGBA16F (64 bit; alpha unused)
+//   depth  : R16UI   (packed current depth, 16 bit)
 //
 // The pass reads the current low-resolution frame plus the ping-pong history and writes the
 // accumulated result into the *other* history target. OutputSize is the output-resolution history
-// (R11G11B10F + R16UI); InputSize is the low-resolution world colour/depth.
+// (RGBA16F + R16UI); InputSize is the low-resolution world colour/depth.
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-uniform sampler2D CurrentColor;   // current frame, source resolution
-uniform sampler2D CurrentDepth;   // current depth buffer, source resolution
-uniform sampler2D HistoryColor;   // previous frame history colour
-uniform usampler2D HistoryDepth;  // previous frame packed depth (R16UI)
+// Explicit locations are required for non-opaque uniforms when the compute program is compiled to
+// SPIR-V for spirv-val; they also make the uniform layout independent of driver assignment.
+layout(binding = 4) uniform sampler2D CurrentColor;   // current frame, source resolution
+layout(binding = 5) uniform sampler2D CurrentDepth;   // current depth buffer, source resolution
+layout(binding = 6) uniform sampler2D HistoryColor;   // previous frame history colour
+layout(binding = 7) uniform usampler2D HistoryDepth;  // previous frame packed depth (R16UI)
 
-uniform vec2 InputSize;
-uniform vec2 OutputSize;
-uniform vec2 Jitter;
-uniform vec2 PrevJitter;
-uniform float VarianceScale;
-uniform float DepthThreshold;
-uniform float HistoryWeight;
-uniform vec3 CameraDelta;
-uniform mat4 ViewRotation;
-uniform mat4 PrevViewRotation;
-uniform mat4 InvProjection;
-uniform mat4 PrevProjection;
-uniform float HistoryValid;
-uniform float DepthValid;
-uniform int UseLanczos;
-uniform int LanczosRadius;
+layout(location = 0) uniform vec2 InputSize;
+layout(location = 1) uniform vec2 OutputSize;
+layout(location = 2) uniform vec2 Jitter;
+layout(location = 3) uniform float VarianceScale;
+layout(location = 4) uniform float DepthThreshold;
+layout(location = 5) uniform float HistoryWeight;
+layout(location = 6) uniform vec3 CameraDelta;
+layout(location = 7) uniform mat4 ViewRotation;
+layout(location = 8) uniform mat4 PrevViewRotation;
+layout(location = 9) uniform mat4 InvProjection;
+layout(location = 10) uniform mat4 PrevProjection;
+layout(location = 11) uniform float HistoryValid;
+layout(location = 12) uniform float DepthValid;
+layout(location = 13) uniform int UseLanczos;
+layout(location = 14) uniform int LanczosRadius;
+
+// Polyphase Lanczos table, uploaded once as a 65x6x2 R32F texture (layer 0 = radius 2,
+// layer 1 = radius 3). Entry p covers the fractional phase p/64; the six taps are offsets
+// -2..+3. A texture avoids dynamically indexed uniform arrays, which some drivers lower onto a
+// tiny local array and then fail to compile.
+layout(binding = 8) uniform sampler2DArray LanczosTable;
 
 // Image load/store outputs.
-layout(r11f_g11f_b10f, binding = 0) writeonly uniform image2D HistoryColorOut;
-layout(r16ui,           binding = 1) writeonly uniform uimage2D HistoryDepthOut;
+layout(rgba16f, binding = 0) writeonly uniform image2D HistoryColorOut;
+layout(r16ui,   binding = 1) writeonly uniform uimage2D HistoryDepthOut;
 
 vec3 rgbToYCoCg(vec3 rgb) {    return vec3(
         rgb.r * 0.25 + rgb.g * 0.5 + rgb.b * 0.25,
@@ -59,83 +66,93 @@ uint packDepth(float depth) {
     return uint(clamp(depth * 65535.0, 0.0, 65535.0));
 }
 
-// Lanczos-2 reconstruction of the low-resolution current frame. The temporal history is already
-// at output resolution, so this is the only place where a sharper spatial kernel can still
-// recover edge contrast from the 42% input instead of just adding a sharpen halo afterwards.
-const float LANCZOS_PI = 3.14159265359;
-
-float lanczosWeight(float x, float radius) {
-    x = abs(x);
-    if (x < 1.0e-5) {
-        return 1.0;
-    }
-    if (x >= radius) {
-        return 0.0;
-    }
-    float px = LANCZOS_PI * x;
-    return radius * sin(px) * sin(px / radius) / (px * px);
+ivec2 clampPixel(ivec2 pixel, ivec2 size) {
+    return clamp(pixel, ivec2(0), size - ivec2(1));
 }
 
-vec3 sampleCurrentLanczos(vec2 uv, float centerDepth) {
+// Lanczos reconstruction of the low-resolution current frame. The temporal history already lives
+// at output resolution, so this is the only place where a sharper spatial kernel can still
+// recover edge contrast from the reduced input. The same taps supply the min/max box used for
+// temporal acceptance, so the variance neighbourhood is never wider than the reconstruction one.
+const int LANCZOS_TAPS = 6;
+
+vec3 sampleCurrentLanczos(vec2 uv, float centerDepth,
+                          out vec3 minColor, out vec3 maxColor) {
     vec2 source = uv * InputSize - 0.5;
     vec2 base = floor(source);
-    vec2 fraction = source - base;
+    vec2 fraction = clamp(source - base, vec2(0.0), vec2(1.0));
+    int phaseX = int(fraction.x * 64.0 + 0.5);
+    int phaseY = int(fraction.y * 64.0 + 0.5);
+    bool radius3 = LanczosRadius >= 3;
+    int layer = radius3 ? 1 : 0;
     ivec2 sourceSize = ivec2(InputSize);
     ivec2 basePixel = ivec2(base);
-    float radius = float(LanczosRadius);
     vec3 sum = vec3(0.0);
     float weightSum = 0.0;
-    vec3 minColor = vec3(1.0e20);
-    vec3 maxColor = vec3(-1.0e20);
+    minColor = vec3(1.0e20);
+    maxColor = vec3(-1.0e20);
 
-    for (int y = -2; y <= 3; y++) {
-        if (y < 1 - LanczosRadius || y > LanczosRadius) {
+    for (int y = 0; y < LANCZOS_TAPS; y++) {
+        int offsetY = y - 2;
+        float wy = texelFetch(LanczosTable, ivec3(phaseY, y, layer), 0).r;
+        if (abs(wy) < 1.0e-6) {
             continue;
         }
-        float wy = lanczosWeight(float(y) - fraction.y, radius);
-        for (int x = -2; x <= 3; x++) {
-            if (x < 1 - LanczosRadius || x > LanczosRadius) {
+        for (int x = 0; x < LANCZOS_TAPS; x++) {
+            int offsetX = x - 2;
+            float wx = texelFetch(LanczosTable, ivec3(phaseX, x, layer), 0).r;
+            float weight = wx * wy;
+            if (abs(weight) < 1.0e-6) {
                 continue;
             }
-            float wx = lanczosWeight(float(x) - fraction.x, radius);
-            ivec2 pixel = clamp(basePixel + ivec2(x, y), ivec2(0), sourceSize - ivec2(1));
-            float weight = wx * wy;
+            ivec2 pixel = clampPixel(basePixel + ivec2(offsetX, offsetY), sourceSize);
             vec3 color = texelFetch(CurrentColor, pixel, 0).rgb;
-            float tapDepth = texelFetch(CurrentDepth, pixel, 0).r;
-            // Do not mix samples from a different surface across a depth edge. The tolerance is
-            // relative to the centre depth so near and far surfaces get proportional slack.
-            float tolerance = max(0.0025, centerDepth * 0.03);
-            float depthWeight = 1.0 - smoothstep(tolerance, tolerance * 2.5,
-                    abs(tapDepth - centerDepth));
-            weight *= depthWeight;
-            if (depthWeight > 0.05) {
-                minColor = min(minColor, color);
-                maxColor = max(maxColor, color);
+
+            // Depth guidance is optional: without a usable scene depth the fetch and the
+            // smoothstep are skipped entirely instead of being evaluated with a dummy depth.
+            if (DepthValid > 0.5) {
+                float tapDepth = texelFetch(CurrentDepth, pixel, 0).r;
+                float tolerance = max(0.0025, centerDepth * 0.03);
+                float depthWeight = 1.0 - smoothstep(tolerance, tolerance * 2.5,
+                        abs(tapDepth - centerDepth));
+                if (depthWeight <= 0.05) {
+                    continue;
+                }
+                weight *= depthWeight;
             }
+
             sum += color * weight;
             weightSum += weight;
+            minColor = min(minColor, color);
+            maxColor = max(maxColor, color);
         }
+    }
+
+    if (weightSum <= 1.0e-5 || minColor.x > maxColor.x) {
+        // Degenerate phase (all taps outside the surface): fall back to the nearest texel.
+        vec3 center = texelFetch(CurrentColor, clampPixel(basePixel, sourceSize), 0).rgb;
+        minColor = center;
+        maxColor = center;
+        return center;
     }
 
     // Lanczos has negative lobes; clamping the weighted sum to the source neighbourhood removes
     // the bright/dark halos without giving up the sharper in-band response.
-    return clamp(sum / max(weightSum, 1.0e-5), minColor, maxColor);
+    return clamp(sum / weightSum, minColor, maxColor);
 }
 
-// 3x3 neighbourhood mean/variance in YCoCg space (FSR 2 style variance clipping).
-//
-// This MUST sample the current frame. The previous version sampled HistoryColor, so the
-// acceptance window described the history itself: stale values always fell inside it and the
-// clipping never rejected anything, which is exactly what made moving-camera MSR ghost.
-void computeVariance(vec2 uv, vec2 texel,
+// 3x3 texelFetch neighbourhood mean/variance in YCoCg space (FSR 2 style variance clipping).
+// This is the path when Lanczos reconstruction is off; it uses exact source texels instead of a
+// bilinear average, which used to make the acceptance box narrower than the actual frame.
+void computeVariance(vec2 uv, ivec2 sourceSize,
                      out vec3 meanYCoCg, out vec3 varianceYCoCg) {
+    ivec2 center = ivec2(floor(uv * InputSize));
     meanYCoCg = vec3(0.0);
     vec3 meanSq = vec3(0.0);
 
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
-            vec2 sampleUv = clamp(uv + vec2(float(x), float(y)) * texel, vec2(0.0), vec2(1.0));
-            vec3 color = texture(CurrentColor, sampleUv).rgb;
+            vec3 color = texelFetch(CurrentColor, clampPixel(center + ivec2(x, y), sourceSize), 0).rgb;
             vec3 ycocg = rgbToYCoCg(color);
             meanYCoCg += ycocg;
             meanSq += ycocg * ycocg;
@@ -161,10 +178,28 @@ void main() {
     // so the UV offset is half of it.
     vec2 currentUv = clamp(uv + Jitter * 0.5, vec2(0.0), vec2(1.0));
 
-    float currentDepth = texture(CurrentDepth, currentUv).r;
-    vec3 currentColor = UseLanczos != 0
-            ? sampleCurrentLanczos(currentUv, currentDepth)
-            : texture(CurrentColor, currentUv).rgb;
+    // Sample depth at the unjittered output pixel: the jittered current colour at currentUv
+    // belongs to this world point, and the same convention is used when the history depth is
+    // written, so the disocclusion test compares like with like.
+    float currentDepth = texture(CurrentDepth, uv).r;
+    vec3 currentColor;
+    vec3 boxMin;
+    vec3 boxMax;
+    bool lanczos = UseLanczos != 0;
+    if (lanczos) {
+        currentColor = sampleCurrentLanczos(currentUv, currentDepth, boxMin, boxMax);
+    } else {
+        currentColor = texture(CurrentColor, currentUv).rgb;
+        boxMin = currentColor;
+        boxMax = currentColor;
+    }
+
+    // Never let a NaN or a negative value enter the ping-pong history: one bad frame would be
+    // accumulated into every following frame.
+    if (any(isnan(currentColor)) || any(isinf(currentColor))) {
+        currentColor = vec3(0.0);
+    }
+    currentColor = max(currentColor, vec3(0.0));
 
     bool valid = HistoryValid > 0.5;
     bool depthValid = DepthValid > 0.5;
@@ -175,7 +210,9 @@ void main() {
 
     // --- Reproject the current pixel into the previous frame (camera-only motion) ---
     if (valid && depthValid) {
-        vec2 ndc = currentUv * 2.0 - 1.0;
+        // uv is the output pixel centre in the unjittered grid. The jitter only selects which
+        // sub-pixel sample produced currentColor; it must not move the reprojection point.
+        vec2 ndc = uv * 2.0 - 1.0;
         vec4 clip = vec4(ndc, currentDepth * 2.0 - 1.0, 1.0);
         vec4 viewPosition = InvProjection * clip;
 
@@ -194,10 +231,9 @@ void main() {
 
             if (previousClip.w > 1.0e-6) {
                 vec2 previousNdc = previousClip.xy / previousClip.w;
-                // The previous frame was rasterised with its own sub-pixel jitter. Add that
-                // offset before sampling history; without it the accumulated image slowly
-                // smears by the difference between the two jitter phases.
-                historyUv = previousNdc * 0.5 + 0.5 + PrevJitter * 0.5;
+                // The history target is aligned to the output grid, not to the previous frame's
+                // jitter phase: sample the reprojected pixel centre directly.
+                historyUv = previousNdc * 0.5 + 0.5;
                 float motionLen = length(historyUv - uv);
                 valid = valid
                         && motionLen < 0.15
@@ -222,20 +258,36 @@ void main() {
         valid = abs(historyDepth - currentDepth) <= tolerance;
     }
 
-    vec2 texel = 1.0 / InputSize;
-    vec3 meanYCoCg;
-    vec3 varianceYCoCg;
-    computeVariance(currentUv, texel, meanYCoCg, varianceYCoCg);
-
     vec3 currentYCoCg = rgbToYCoCg(currentColor);
     vec3 historyYCoCg = rgbToYCoCg(historyColor);
+    ivec2 sourceSize = ivec2(InputSize);
+    vec3 lowerBound;
+    vec3 upperBound;
 
-    vec3 stdDev = sqrt(max(vec3(0.0), varianceYCoCg));
-    vec3 lowerBound = meanYCoCg - VarianceScale * stdDev;
-    vec3 upperBound = meanYCoCg + VarianceScale * stdDev;
+    if (lanczos) {
+        // The reconstruction taps already give the true neighbourhood extrema. Reusing them
+        // keeps the acceptance box as wide as the Lanczos footprint instead of narrowing it with
+        // a separate bilinear sample.
+        vec3 minY = rgbToYCoCg(boxMin);
+        vec3 maxY = rgbToYCoCg(boxMax);
+        vec3 center = (minY + maxY) * 0.5;
+        // At the default VarianceScale 2.0 the box is exactly the reconstruction extrema; higher
+        // values widen it, lower values cannot narrow it below the actual neighbourhood.
+        float boxScale = max(1.0, VarianceScale * 0.5);
+        vec3 halfRange = max((maxY - minY) * 0.5 * boxScale, vec3(1.0e-4));
+        lowerBound = center - halfRange;
+        upperBound = center + halfRange;
+    } else {
+        vec3 meanYCoCg;
+        vec3 varianceYCoCg;
+        computeVariance(currentUv, sourceSize, meanYCoCg, varianceYCoCg);
+        vec3 stdDev = sqrt(max(vec3(0.0), varianceYCoCg));
+        lowerBound = meanYCoCg - VarianceScale * stdDev;
+        upperBound = meanYCoCg + VarianceScale * stdDev;
+    }
 
-    // Clamp rather than reject: a slightly out-of-range history fades out smoothly instead of
-    // flickering between "full history" and "no history" on every frame.
+    // A slightly out-of-range history fades out smoothly instead of flickering between
+    // "full history" and "no history" on every frame.
     historyYCoCg = clamp(historyYCoCg, lowerBound, upperBound);
 
     float historyBlend = HistoryWeight;
@@ -244,7 +296,11 @@ void main() {
     }
 
     vec3 outputColor = yCoCgToRgb(mix(currentYCoCg, historyYCoCg, historyBlend));
+    if (any(isnan(outputColor)) || any(isinf(outputColor))) {
+        outputColor = currentColor;
+    }
+    outputColor = clamp(outputColor, vec3(0.0), vec3(65504.0));
 
-    imageStore(HistoryColorOut, pixel, vec4(outputColor, currentDepth));
+    imageStore(HistoryColorOut, pixel, vec4(outputColor, 1.0));
     imageStore(HistoryDepthOut, pixel, uvec4(packDepth(currentDepth), 0u, 0u, 0u));
 }

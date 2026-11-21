@@ -41,6 +41,12 @@ jobs:
       - name: Build
         run: ./gradlew build --no-daemon --stacktrace
 
+      - name: Install shader validation tools
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools spirv-tools
+
+      - name: Validate shaders
+        run: ./gradlew validateShaders -PrequireShaderTools=true --no-daemon --stacktrace
+
       - name: Upload jar
         uses: actions/upload-artifact@v4
         with:

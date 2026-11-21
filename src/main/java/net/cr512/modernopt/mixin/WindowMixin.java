@@ -38,6 +38,15 @@ public abstract class WindowMixin {
     /** Presents the whole-window-scaled frame just before the back buffer is swapped. */
     @Inject(method = "updateDisplay()V", at = @At("HEAD"))
     private void modernopt$presentWholeWindow(CallbackInfo callbackInfo) {
+        net.cr512.modernopt.render.GpuProfiler.beginPresent();
+        net.cr512.modernopt.render.GpuProfiler.begin(net.cr512.modernopt.render.GpuProfiler.PRESENT);
         RenderPipeline.endWholeWindowFrame();
+    }
+
+    /** Records the swap wait, which is CPU wall time rather than a GPU timestamp. */
+    @Inject(method = "updateDisplay()V", at = @At("RETURN"))
+    private void modernopt$finishPresent(CallbackInfo callbackInfo) {
+        net.cr512.modernopt.render.GpuProfiler.end(net.cr512.modernopt.render.GpuProfiler.PRESENT);
+        net.cr512.modernopt.render.GpuProfiler.endPresent();
     }
 }

@@ -40,15 +40,14 @@ public final class ShaderLibrary {
     /** {@code null} means this driver/program failed to link; MSR then falls back to FSR 1. */
     public final ShaderInstance temporal;
     
-    // MSR2 shaders
-    public final ShaderInstance msr2Temporal;
+    // MSR2 shaders (the temporal pass is a raw compute program, Msr2TemporalCompute)
     public final ShaderInstance msrSpatial;
     public final ShaderInstance msrBlit;
 
     private ShaderLibrary(ShaderInstance bilinear, ShaderInstance nearest, ShaderInstance soft,
                           ShaderInstance box, ShaderInstance fxaa, ShaderInstance easu, ShaderInstance rcas,
                           ShaderInstance blit, ShaderInstance temporal,
-                          ShaderInstance msr2Temporal, ShaderInstance msrSpatial, ShaderInstance msrBlit) {
+                          ShaderInstance msrSpatial, ShaderInstance msrBlit) {
         this.bilinear = bilinear;
         this.nearest = nearest;
         this.soft = soft;
@@ -58,7 +57,6 @@ public final class ShaderLibrary {
         this.rcas = rcas;
         this.blit = blit;
         this.temporal = temporal;
-        this.msr2Temporal = msr2Temporal;
         this.msrSpatial = msrSpatial;
         this.msrBlit = msrBlit;
     }
@@ -74,11 +72,9 @@ public final class ShaderLibrary {
         }
         
         // MSR2 shaders
-        ShaderInstance msr2Temporal = null;
         ShaderInstance msrSpatial = null;
         ShaderInstance msrBlit = null;
         try {
-            msr2Temporal = create(resources, "msr_temporal");
             msrSpatial = create(resources, "msr_spatial");
             msrBlit = create(resources, "blit");
         } catch (Throwable throwable) {
@@ -96,7 +92,6 @@ public final class ShaderLibrary {
                 create(resources, "rcas"),
                 create(resources, "blit"),
                 temporal,
-                msr2Temporal,
                 msrSpatial,
                 msrBlit);
     }
@@ -118,9 +113,6 @@ public final class ShaderLibrary {
         if (this.temporal != null) {
             this.temporal.close();
         }
-        if (this.msr2Temporal != null) {
-            this.msr2Temporal.close();
-        }
         if (this.msrSpatial != null) {
             this.msrSpatial.close();
         }
@@ -136,7 +128,7 @@ public final class ShaderLibrary {
 
     /** True when MSR2 shaders are available. */
     public boolean hasMsr() {
-        return isProgram(this.msr2Temporal) && isProgram(this.msrSpatial) && isProgram(this.msrBlit);
+        return isProgram(this.msrSpatial) && isProgram(this.msrBlit);
     }
 
     /**
