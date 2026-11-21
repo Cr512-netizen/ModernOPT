@@ -95,6 +95,18 @@ GPU, driver, pack and fingerprint; the report prints a warning when they differ.
   a large drop means the reconstruction is blurring real detail.
 * `referenceMae` and `referenceDetail` when `-PbenchReference=<png>` is supplied.
 
+The standalone comparator can be run on any pair of frames:
+
+```powershell
+powershell -File tools/compare-images.ps1 -Reference run/screenshots/native.png `
+  -Candidate run/screenshots/upscaled.png
+```
+
+It reports luma MAE for the full frame and for the region below the top 35 %, plus mean horizontal
+luma gradient and its ratio to the reference. The below-sky figure excludes animated clouds, which
+otherwise dominate the error. A detail ratio near or above 1 means the reconstruction did not
+throw away high-frequency content.
+
 For motion, `!pan2!conv` and `!walk4!conv` expose history rejection and ghosting. Inspect the saved
 frames for trails on mobs, flowers and contraptions; the metrics alone cannot prove the absence of
 ghosting.
