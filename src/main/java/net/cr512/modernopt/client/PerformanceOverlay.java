@@ -53,6 +53,10 @@ public final class PerformanceOverlay {
         if (ModernOptSettings.fxaa()) {
             builder.append(" | FXAA");
         }
+        builder.append(" | shadows held ")
+                .append(RenderPipeline.shadowHoldSkippedFrames())
+                .append('/')
+                .append(RenderPipeline.shadowHoldTotalFrames());
 
         // The caller runs after the HUD has been submitted, so a flush here is cheap and makes
         // the line independent of whatever the HUD left in the shared buffer source.

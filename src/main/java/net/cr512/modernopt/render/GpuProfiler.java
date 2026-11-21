@@ -133,11 +133,15 @@ public final class GpuProfiler {
         if (!active) {
             return;
         }
-        ModernOPT.LOG.info("[BENCH][GPU] world {} ms ({}), terrain {} ms ({}), sky {} ms ({}), shadow {} ms ({}) @{}, composite {} ms ({}), final {} ms ({}), upscale {} ms ({}), hud {} ms ({}), samples {}",
+        double shadowDrawnMs = samples[SHADOW] == 0 ? 0 : accumMs[SHADOW] / samples[SHADOW];
+        double shadowAmortizedMs = shadowDrawnMs * RenderPipeline.shadowHoldDrawnShare();
+        ModernOPT.LOG.info("[BENCH][GPU] world {} ms ({}), terrain {} ms ({}), sky {} ms ({}), shadow {} ms drawn, {} ms amortized ({} draws / {} frames) @{}, composite {} ms ({}), final {} ms ({}), upscale {} ms ({}), hud {} ms ({}), samples {}",
                 average(WORLD), samples[WORLD],
                 average(TERRAIN), samples[TERRAIN],
                 average(SKY), samples[SKY],
-                average(SHADOW), samples[SHADOW], net.cr512.modernopt.compat.ShadowMapResolution.describe(),
+                String.format("%.2f", shadowDrawnMs), String.format("%.2f", shadowAmortizedMs),
+                RenderPipeline.shadowHoldDrawnFrames(), RenderPipeline.shadowHoldTotalFrames(),
+                net.cr512.modernopt.compat.ShadowMapResolution.describe(),
                 average(COMPOSITE), samples[COMPOSITE],
                 average(FINAL), samples[FINAL],
                 average(UPSCALE), samples[UPSCALE],
