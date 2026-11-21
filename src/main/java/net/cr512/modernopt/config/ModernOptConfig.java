@@ -116,8 +116,8 @@ public final class ModernOptConfig {
         FP16_WORLD = b.comment(
                         "Render the internal (before-upscale) world image into a 16-bit float (RGBA16F) buffer.",
                         "Shader packs produce HDR colours, so this avoids quantising the image before the upscaler",
-                        "sees it (less banding in gradients). It doubles the bandwidth of that buffer: measured",
-                        "about 1.3 ms per frame at 960x540 with a typical shader pack, so it is off by default.")
+                        "sees it (less banding in gradients). It doubles the bandwidth of that buffer; measure",
+                        "the cost in your scene. Off by default.")
                 .define("fp16ColorTarget", false);
         b.pop();
 

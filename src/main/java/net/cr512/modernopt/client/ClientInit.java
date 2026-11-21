@@ -6,6 +6,9 @@ package net.cr512.modernopt.client;
 import com.mojang.blaze3d.platform.InputConstants;
 
 import net.cr512.modernopt.ModernOPT;
+import net.cr512.modernopt.FpsLogger;
+import net.cr512.modernopt.render.GpuProfiler;
+import net.cr512.modernopt.render.RenderPipeline;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
@@ -42,5 +45,13 @@ public final class ClientInit {
         if (pressed) {
             minecraft.setScreen(new ModernOptConfigScreen(null));
         }
+    }
+
+    /** Releases the GL targets and programs while the context is still current. */
+    @SubscribeEvent
+    public static void onGameShuttingDown(net.neoforged.neoforge.event.GameShuttingDownEvent event) {
+        RenderPipeline.shutdown();
+        GpuProfiler.shutdown();
+        FpsLogger.shutdown();
     }
 }

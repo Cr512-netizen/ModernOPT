@@ -287,6 +287,24 @@ public final class GpuProfiler {
         lastLogNanos = System.nanoTime();
     }
 
+    /** Deletes the GL query objects on shutdown. */
+    public static void shutdown() {
+        if (!active) {
+            return;
+        }
+        for (int section = 0; section < SECTIONS; section++) {
+            for (int i = 0; i < RING; i++) {
+                GL33C.glDeleteQueries(beginQueries[section][i]);
+                GL33C.glDeleteQueries(endQueries[section][i]);
+                beginQueries[section][i] = 0;
+                endQueries[section][i] = 0;
+            }
+            pending[section] = 0;
+            depth[section] = 0;
+        }
+        active = false;
+    }
+
     /** State-wide GPU stage averages for the benchmark JSON. */
     public static java.util.Map<String, Double> snapshotStages() {
         java.util.Map<String, Double> result = new java.util.LinkedHashMap<>();

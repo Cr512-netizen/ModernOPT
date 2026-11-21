@@ -189,7 +189,6 @@ public final class SelfTest {
             worldLogged = true;
             ticks = 0;
             ModernOPT.LOG.info("[BENCH] world loaded, player at {}", minecraft.player.position());
-            diagEntityScan(minecraft);
             steerOnce(minecraft);
             logIrisTargets();
         }
@@ -236,6 +235,7 @@ public final class SelfTest {
         if (offset == WARMUP_TICKS) {
             frameTimes.clear();
             sampling = true;
+            skipNextFrameSample = false;
             Minecraft client = Minecraft.getInstance();
             ModernOPT.LOG.info("[BENCH] sampling {} | screen={} noRender={} paused={} active={} window={}x{} internal={}x{} label={}",
                     STATES[state], client.screen == null ? "none" : client.screen.getClass().getSimpleName(),
@@ -255,6 +255,7 @@ public final class SelfTest {
             pendingShotPhase = "start";
         } else if (offset == STATE_TICKS - 1) {
             sampling = false;
+            convergenceState = null;
             logStats(STATES[state]);
             pendingShotState = STATES[state];
             pendingShotPhase = "end";
@@ -393,41 +394,6 @@ public final class SelfTest {
         }
     }
 
-    /**
-     * TEMPORARY DIAGNOSTIC for the "visually flying entities" report: dumps every loaded
-     * entity's server-truth position and the terrain height beneath it. Remove once the
-     * cause (world data vs render pipeline) is confirmed.
-     */
-    private static void diagEntityScan(Minecraft minecraft) {
-        try {
-            int counted = 0;
-            for (net.minecraft.world.entity.Entity entity : minecraft.level.entitiesForRendering()) {
-                double x = entity.getX();
-                double y = entity.getY();
-                double z = entity.getZ();
-                int bx = (int) Math.floor(x);
-                int bz = (int) Math.floor(z);
-                int surfaceY = minecraft.level.getHeight(
-                        net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, bx, bz);
-                double airGap = y - surfaceY;
-                ModernOPT.LOG.info("[BENCH][ENTDIAG] {} id={} at ({}, {}, {}), ground={}, airGap={}{}, camera at {}",
-                        entity.getType().toShortString(), entity.getId(),
-                        String.format("%.1f", x), String.format("%.1f", y), String.format("%.1f", z),
-                        surfaceY, String.format("%.1f", airGap),
-                        airGap > 1.5 ? "  <-- in the air" : "",
-                        minecraft.gameRenderer.getMainCamera().getPosition().toString());
-                counted++;
-                if (counted > 40) {
-                    ModernOPT.LOG.info("[BENCH][ENTDIAG] ...more entities omitted");
-                    break;
-                }
-            }
-            ModernOPT.LOG.info("[BENCH][ENTDIAG] scanned {} loaded entities", counted);
-        } catch (Throwable throwable) {
-            ModernOPT.LOG.warn("[BENCH][ENTDIAG] scan failed: {}", throwable.toString());
-        }
-    }
-
     private static void logStats(String name) {
         if (frameTimes.isEmpty()) {
             ModernOPT.LOG.info("[BENCH] {}: no frames sampled", name);
@@ -470,8 +436,16 @@ public final class SelfTest {
         result.put("samples", sorted.size());
         result.put("renderScalePercent", ModernOptSettings.renderScalePercent());
         result.put("upscaler", ModernOptSettings.upscaler().name());
+        result.put("ssaa", ModernOptSettings.ssaa());
+        result.put("fxaa", ModernOptSettings.fxaa());
+        result.put("msaa", ModernOptSettings.msaa().name());
+        result.put("fp16", ModernOptSettings.fp16World());
         result.put("msr2Enabled", ModernOptSettings.msr2Enabled());
+        result.put("msr2Lanczos", ModernOptSettings.msr2Lanczos());
+        result.put("msr2Lanczos3", ModernOptSettings.msr2Lanczos3());
         result.put("shadowMap", net.cr512.modernopt.compat.ShadowMapResolution.describe());
+        result.put("shadowHoldDisabled",
+                net.cr512.modernopt.compat.ShadowClearRegistry.holdDisabled());
         net.cr512.modernopt.render.ShadowHoldStats shadows =
                 RenderPipeline.shadowHoldStats();
         int drawn = shadows.drawn() - lastShadowCounters[0];
@@ -637,6 +611,10 @@ public final class SelfTest {
         fingerprint.put("gpuVendor", glString(org.lwjgl.opengl.GL11C.GL_VENDOR));
         fingerprint.put("glVersion", glString(org.lwjgl.opengl.GL11C.GL_VERSION));
         fingerprint.put("minecraft", net.minecraft.SharedConstants.getCurrentVersion().getName());
+        fingerprint.put("neoforge", net.neoforged.fml.ModList.get()
+                .getModContainerById("neoforge")
+                .map(container -> container.getModInfo().getVersion().toString())
+                .orElse("unknown"));
         fingerprint.put("mod", net.neoforged.fml.ModList.get()
                 .getModContainerById(ModernOPT.MOD_ID)
                 .map(container -> container.getModInfo().getVersion().toString())
@@ -644,19 +622,8 @@ public final class SelfTest {
         fingerprint.put("shaderPack", shaderPackName());
         fingerprint.put("renderDistance", minecraft.options.getEffectiveRenderDistance());
         fingerprint.put("window", minecraft.getWindow().getWidth() + "x" + minecraft.getWindow().getHeight());
-        fingerprint.put("renderScalePercent", ModernOptSettings.renderScalePercent());
-        fingerprint.put("upscaler", ModernOptSettings.upscaler().name());
-        fingerprint.put("ssaa", ModernOptSettings.ssaa());
-        fingerprint.put("fxaa", ModernOptSettings.fxaa());
-        fingerprint.put("msaa", ModernOptSettings.msaa().name());
-        fingerprint.put("fp16", ModernOptSettings.fp16World());
-        fingerprint.put("msr2", ModernOptSettings.msr2Enabled());
-        fingerprint.put("msr2Lanczos", ModernOptSettings.msr2Lanczos());
-        fingerprint.put("msr2Lanczos3", ModernOptSettings.msr2Lanczos3());
-        fingerprint.put("shadowMap", net.cr512.modernopt.compat.ShadowMapResolution.describe());
-        fingerprint.put("shadowInterval", ModernOptSettings.shadowUpdateInterval());
-        fingerprint.put("shadowHoldDisabled",
-                net.cr512.modernopt.compat.ShadowClearRegistry.holdDisabled());
+        // Resolution, upscaler, AA and shadow settings are per-state; see each state's record.
+        fingerprint.put("settingsArePerState", true);
         return fingerprint;
     }
 
@@ -704,7 +671,7 @@ public final class SelfTest {
             com.google.gson.JsonObject baselineFingerprint =
                     baseline.has("fingerprint") ? baseline.getAsJsonObject("fingerprint") : null;
             if (baselineFingerprint != null && fingerprint != null) {
-                for (String key : new String[]{"gpu", "renderScalePercent", "upscaler", "shadowMap"}) {
+                for (String key : new String[]{"gpu", "minecraft", "shaderPack", "renderDistance"}) {
                     String expected = baselineFingerprint.has(key)
                             ? baselineFingerprint.get(key).getAsString() : "?";
                     String actual = String.valueOf(fingerprint.get(key));
@@ -829,6 +796,11 @@ public final class SelfTest {
         }
         if (name.contains("!sunset")) {
             Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft.level != null) {
+                // Apply locally for the very first captured frames; the command makes it
+                // authoritative on the integrated server and is what persists after the state.
+                minecraft.level.setDayTime(13000L);
+            }
             if (minecraft.player != null && minecraft.player.connection != null) {
                 minecraft.player.connection.sendCommand("gamerule doDaylightCycle false");
                 minecraft.player.connection.sendCommand("time set 13000");

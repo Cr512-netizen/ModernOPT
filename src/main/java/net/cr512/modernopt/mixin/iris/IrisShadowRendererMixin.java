@@ -177,12 +177,22 @@ public abstract class IrisShadowRendererMixin {
     private static double modernopt$shadowDistance(Object shadowRenderer) {
         try {
             if (modernopt$halfPlaneField == null) {
-                modernopt$halfPlaneField = shadowRenderer.getClass().getDeclaredField("halfPlaneLength");
-                modernopt$halfPlaneField.setAccessible(true);
-                modernopt$renderMulField = shadowRenderer.getClass().getDeclaredField("renderDistanceMultiplier");
-                modernopt$renderMulField.setAccessible(true);
-                modernopt$entityMulField = shadowRenderer.getClass().getDeclaredField("entityShadowDistanceMultiplier");
-                modernopt$entityMulField.setAccessible(true);
+                try {
+                    modernopt$halfPlaneField = shadowRenderer.getClass().getDeclaredField("halfPlaneLength");
+                    modernopt$halfPlaneField.setAccessible(true);
+                    modernopt$renderMulField = shadowRenderer.getClass().getDeclaredField("renderDistanceMultiplier");
+                    modernopt$renderMulField.setAccessible(true);
+                    modernopt$entityMulField = shadowRenderer.getClass().getDeclaredField("entityShadowDistanceMultiplier");
+                    modernopt$entityMulField.setAccessible(true);
+                } catch (Throwable missing) {
+                    modernopt$halfPlaneField = null;
+                    modernopt$renderMulField = null;
+                    modernopt$entityMulField = null;
+                    return 128.0;
+                }
+            }
+            if (modernopt$renderMulField == null || modernopt$entityMulField == null) {
+                return 128.0;
             }
             float distance = modernopt$halfPlaneField.getFloat(shadowRenderer);
             float renderMul = modernopt$renderMulField.getFloat(shadowRenderer);

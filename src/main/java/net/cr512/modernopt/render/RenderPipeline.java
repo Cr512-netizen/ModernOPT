@@ -135,8 +135,6 @@ public final class RenderPipeline {
     private static double previousCameraZ;
     private static float jitterX;
     private static float jitterY;
-    private static float previousJitterX;
-    private static float previousJitterY;
     private static int jitterIndex;
 
     // R2 (Sobol) jitter sequence - better distribution than Halton, less clustering
@@ -854,8 +852,8 @@ public final class RenderPipeline {
 
         if (irisThisFrame && !msr2ThisFrame) {
             // MSR + Iris: the pack may already run its own temporal AA, so do not add a second
-            // jitter. MSR2 is allowed to try jitter with a pack; if it doubles up, the quality
-            // gate will reject it before release.
+            // jitter. MSR2 keeps its R2 jitter because the output-resolution temporal pass is
+            // the one that resolves it; the pack's TAA runs before that pass.
             jitterX = 0.0F;
             jitterY = 0.0F;
             poseCaptured = true;
@@ -1323,6 +1321,7 @@ public final class RenderPipeline {
             msrThisFrame = false;
             poseCaptured = false;
             msr2ThisFrame = false;
+            restoreProjection(jittered);
             GpuProfiler.end(GpuProfiler.UPSCALE);
             return;
         }
@@ -1339,9 +1338,8 @@ public final class RenderPipeline {
         if (msr2ThisFrame) {
             msr2ActiveThisFrame = true;
             msr2ThisFrame = false;
-            // MSR doesn't use jitter, but its temporal pass still needs the camera pose
-            // captured above (currentView / currentProjection / currentCamera*).
-            jittered = false; // MSR does not modify the projection matrix
+            // MSR2 jitters the projection as well; `jittered` was captured from poseCaptured
+            // above, so the hand and the GUI receive the unjittered matrix in the finally block.
         }
 
         Minecraft minecraft = Minecraft.getInstance();
@@ -1506,7 +1504,7 @@ public final class RenderPipeline {
                     sourceWidth, sourceHeight, outWidth, outHeight,
                     inverseProjection, previousProjection, currentView, previousView,
                     tempVec3.x, tempVec3.y, tempVec3.z,
-                    jitterX, jitterY, previousJitterX, previousJitterY,
+                    jitterX, jitterY,
                     useHistory, depthValid, irisThisFrame,
                     0.10F, 0.60F, 0.05F);
 
@@ -1538,8 +1536,6 @@ public final class RenderPipeline {
         previousCameraX = currentCameraX;
         previousCameraY = currentCameraY;
         previousCameraZ = currentCameraZ;
-        previousJitterX = jitterX;
-        previousJitterY = jitterY;
 
         if (outWidth != lastWidth || outHeight != lastHeight) {
             lastWidth = outWidth;
@@ -1905,8 +1901,11 @@ public final class RenderPipeline {
         if (minecraft == null) {
             return requested;
         }
-        RenderTarget real = ((net.cr512.modernopt.mixin.MinecraftAccessor) minecraft)
-                .modernopt$getMainRenderTargetField();
+        RenderTarget real = nativeMainTarget;
+        if (real == null) {
+            real = ((net.cr512.modernopt.mixin.MinecraftAccessor) minecraft)
+                    .modernopt$getMainRenderTargetField();
+        }
         return real != null ? real : requested;
     }
 
@@ -2313,6 +2312,10 @@ public final class RenderPipeline {
         msrFrameIndex = 0;
         destroyMsrCompute();
         msrComputeFailed = false;
+        if (lanczosTableTexture != 0) {
+            GL11C.glDeleteTextures(lanczosTableTexture);
+            lanczosTableTexture = 0;
+        }
         if (msr2History != null) {
             msr2History.destroy();
             msr2History = null;
@@ -2324,8 +2327,6 @@ public final class RenderPipeline {
     private static void resetMsr2History() {
         msrHistoryValid = false;
         msrFrameIndex = 0;
-        previousJitterX = 0.0F;
-        previousJitterY = 0.0F;
         if (computeAvailable) {
             // A destroyed/invalidated history texture must not stay attached to image units.
             Msr2TemporalCompute.unbindImage(0, MSR2HistoryTarget.COLOR_FORMAT);
@@ -2467,8 +2468,6 @@ public final class RenderPipeline {
             previousCameraX = currentCameraX;
             previousCameraY = currentCameraY;
             previousCameraZ = currentCameraZ;
-            previousJitterX = jitterX;
-            previousJitterY = jitterY;
         }
     }
 
@@ -2493,6 +2492,9 @@ public final class RenderPipeline {
         int historyDepthWrite = msr2History.getWriteDepthTexture();
 
         int previousActive = GlStateManager._getActiveTexture();
+        GlStateManager._activeTexture(GL13C.GL_TEXTURE0 + 8);
+        int previousArrayTexture = GL11C.glGetInteger(GL30C.GL_TEXTURE_BINDING_2D_ARRAY);
+        GlStateManager._activeTexture(previousActive);
         try {
             // Explicit texture units: the compute program's sampler uniforms are set to these
             // exact indices below, so it can never read a default/unbound unit.
@@ -2500,7 +2502,7 @@ public final class RenderPipeline {
             bindTextureUnit(GL13C.GL_TEXTURE0 + 5, depthTexture);
             bindTextureUnit(GL13C.GL_TEXTURE0 + 6, historyColorRead);
             bindTextureUnit(GL13C.GL_TEXTURE0 + 7, historyDepthRead);
-            bindTextureUnit(GL13C.GL_TEXTURE0 + 8, ensureLanczosTable());
+            bindTextureArrayUnit(GL13C.GL_TEXTURE0 + 8, ensureLanczosTable());
 
             compute.bind();
             compute.setInt("CurrentColor", 4);
@@ -2548,6 +2550,8 @@ public final class RenderPipeline {
             Msr2TemporalCompute.unbindImage(1, GL30C.GL_R16UI);
             compute.unbind();
         } finally {
+            GlStateManager._activeTexture(GL13C.GL_TEXTURE0 + 8);
+            GL11C.glBindTexture(GL30C.GL_TEXTURE_2D_ARRAY, previousArrayTexture);
             GlStateManager._activeTexture(previousActive);
         }
     }
@@ -2589,7 +2593,10 @@ public final class RenderPipeline {
             double fraction = phase / (double) (LANCZOS_PHASES - 1);
             for (int tap = 0; tap < LANCZOS_TAPS; tap++) {
                 double x = (tap - 2) - fraction;
-                table[phase * LANCZOS_TAPS + tap] = (float) lanczosKernel(x, radius);
+                // Texture layout is width = phase (x, fastest), height = tap (y). Uploading a
+                // phase-major array would transpose the table and turn the kernel into a
+                // horizontal smear at low render scales.
+                table[tap * LANCZOS_PHASES + phase] = (float) lanczosKernel(x, radius);
             }
         }
         return table;
@@ -2616,27 +2623,40 @@ public final class RenderPipeline {
         if (lanczosTableTexture != 0) {
             return lanczosTableTexture;
         }
+        int previousActive = GlStateManager._getActiveTexture();
+        int previousArrayTexture = GL11C.glGetInteger(GL30C.GL_TEXTURE_BINDING_2D_ARRAY);
         int texture = GL11C.glGenTextures();
-        GlStateManager._bindTexture(texture);
-        GlStateManager._texParameter(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_MIN_FILTER, GL11C.GL_NEAREST);
-        GlStateManager._texParameter(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_MAG_FILTER, GL11C.GL_NEAREST);
-        GlStateManager._texParameter(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_WRAP_S, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
-        GlStateManager._texParameter(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_WRAP_T, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
-        GlStateManager._texParameter(GL30C.GL_TEXTURE_2D_ARRAY, org.lwjgl.opengl.GL12C.GL_TEXTURE_WRAP_R, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
-        java.nio.FloatBuffer data = org.lwjgl.system.MemoryUtil.memAllocFloat(
-                LANCZOS_PHASES * LANCZOS_TAPS * 2);
         try {
-            data.put(LANCZOS_WEIGHTS_2);
-            data.put(LANCZOS_WEIGHTS_3);
-            data.flip();
-            GL30C.glTexImage3D(GL30C.GL_TEXTURE_2D_ARRAY, 0, GL30C.GL_R32F,
-                    LANCZOS_PHASES, LANCZOS_TAPS, 2, 0,
-                    GL11C.GL_RED, GL11C.GL_FLOAT, data);
+            GL11C.glBindTexture(GL30C.GL_TEXTURE_2D_ARRAY, texture);
+            GL11C.glTexParameteri(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_MIN_FILTER, GL11C.GL_NEAREST);
+            GL11C.glTexParameteri(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_MAG_FILTER, GL11C.GL_NEAREST);
+            GL11C.glTexParameteri(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_WRAP_S, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
+            GL11C.glTexParameteri(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_WRAP_T, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
+            GL11C.glTexParameteri(GL30C.GL_TEXTURE_2D_ARRAY, org.lwjgl.opengl.GL12C.GL_TEXTURE_WRAP_R, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
+            java.nio.FloatBuffer data = org.lwjgl.system.MemoryUtil.memAllocFloat(
+                    LANCZOS_PHASES * LANCZOS_TAPS * 2);
+            try {
+                data.put(LANCZOS_WEIGHTS_2);
+                data.put(LANCZOS_WEIGHTS_3);
+                data.flip();
+                GL30C.glTexImage3D(GL30C.GL_TEXTURE_2D_ARRAY, 0, GL30C.GL_R32F,
+                        LANCZOS_PHASES, LANCZOS_TAPS, 2, 0,
+                        GL11C.GL_RED, GL11C.GL_FLOAT, data);
+            } finally {
+                org.lwjgl.system.MemoryUtil.memFree(data);
+            }
+            lanczosTableTexture = texture;
+            return texture;
         } finally {
-            org.lwjgl.system.MemoryUtil.memFree(data);
+            GL11C.glBindTexture(GL30C.GL_TEXTURE_2D_ARRAY, previousArrayTexture);
+            GlStateManager._activeTexture(previousActive);
         }
-        lanczosTableTexture = texture;
-        return texture;
+    }
+
+    /** Binds a texture to the GL_TEXTURE_2D_ARRAY target on an explicit unit. */
+    private static void bindTextureArrayUnit(int glTextureUnit, int texture) {
+        GlStateManager._activeTexture(glTextureUnit);
+        GL11C.glBindTexture(GL30C.GL_TEXTURE_2D_ARRAY, texture);
     }
 
     private static void drawFullscreenQuad() {

@@ -178,16 +178,25 @@ void main() {
     // so the UV offset is half of it.
     vec2 currentUv = clamp(uv + Jitter * 0.5, vec2(0.0), vec2(1.0));
 
-    // Sample depth at the unjittered output pixel: the jittered current colour at currentUv
-    // belongs to this world point, and the same convention is used when the history depth is
-    // written, so the disocclusion test compares like with like.
+    // Depth at the unjittered output pixel is the value stored in the history and used for
+    // disocclusion. The Lanczos depth guidance uses the jittered sample position, so the centre
+    // of the filter and the reconstructed surface are the same point.
     float currentDepth = texture(CurrentDepth, uv).r;
+    if (!(currentDepth >= 0.0 && currentDepth <= 1.0)) {
+        // NaN, Inf or a driver returning garbage: treat it as the far plane rather than letting
+        // it poison the reprojection and the packed history depth.
+        currentDepth = 1.0;
+    }
+    float filterDepth = texture(CurrentDepth, currentUv).r;
+    if (!(filterDepth >= 0.0 && filterDepth <= 1.0)) {
+        filterDepth = currentDepth;
+    }
     vec3 currentColor;
     vec3 boxMin;
     vec3 boxMax;
     bool lanczos = UseLanczos != 0;
     if (lanczos) {
-        currentColor = sampleCurrentLanczos(currentUv, currentDepth, boxMin, boxMax);
+        currentColor = sampleCurrentLanczos(currentUv, filterDepth, boxMin, boxMax);
     } else {
         currentColor = texture(CurrentColor, currentUv).rgb;
         boxMin = currentColor;

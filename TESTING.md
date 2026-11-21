@@ -44,13 +44,13 @@ credits ModernOPT with work another mod did.
 * Time set to 6000, weather clear, `doDaylightCycle false`, `tick freeze`.
 * The camera stays still for throughput states. `!panN` rotates at N degrees per tick and `!walkN`
   moves forward at N/100 blocks per tick for motion states.
-* Shadow map size and interval are part of the fingerprint and are printed next to every result.
+* Shadow map size and interval are part of each state's record and are printed next to every result.
 
 ## Run
 
 ```bash
 ./gradlew runClient -PbenchStates=FSR1-50!shadow2,MSR2-42!shadow2 \
-  -PbenchWarmup=60 -PbenchSample=120
+  -PbenchWarmup=60 -PbenchSample=160
 ```
 
 State suffixes used by the harness:
@@ -65,10 +65,11 @@ State suffixes used by the harness:
 | `!lanczos3` | Uses the wider Lanczos-3 kernel. |
 | `!nolanczos` | Disables Lanczos reconstruction. |
 
-The harness writes `run/bench-results.json` with a fingerprint (GPU, driver/GL version, Minecraft,
-NeoForge, mod, shader pack, render distance, window, scale, upscaler, MSAA/SSAA/FXAA/FP16, MSR2,
-shadow map and interval), per-state mean FPS, 1% low, p99 and worst frame time, shadow drawn/held
-counts and force reasons, per-stage GPU times, and image metrics.
+The harness writes `run/bench-results.json` with an environment fingerprint (GPU, driver/GL
+version, Minecraft, NeoForge, mod, shader pack, render distance, window) and, for every state, the
+render scale, upscaler, MSAA/SSAA/FXAA/FP16, MSR2 and shadow settings, mean FPS, 1% low, p99 and
+worst frame time, shadow drawn/held counts and force reasons, per-stage GPU times, and image
+metrics.
 
 The screenshot frame is excluded from the frame-time statistics: writing a 1080p PNG stalls that
 frame for hundreds of milliseconds and would otherwise dominate the 1% low.

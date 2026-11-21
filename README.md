@@ -70,10 +70,10 @@ Key properties:
   ping-pong history.
 - `msr2.lanczos3` switches to the wider Lanczos-3 kernel: sharper texture response and more
   ringing on very high-contrast edges.
-- The fragment fallback remains for GPUs without compute, but a compute-capable driver is needed
-  for the output-resolution history path.
-- Iris integration: shadow viewports are preserved, and if the Iris depth buffer cannot be
-  read cleanly MSR falls back to a simplified spatial-only mode.
+- GPUs without a usable GL 4.3 compute program fall back to the spatial MSR2 shader; there is no
+  temporal accumulation on that path.
+- Iris integration: shadow viewports are preserved. If Iris does not expose its depth texture,
+  MSR2 uses the scaled target's depth for reprojection instead of disabling temporal history.
 - Falls back to FSR 1 / MSR automatically if the shaders fail to compile or the GPU errors.
 - Dynamic resolution scaling (DRS) is available: render scale is lowered when FPS drops below
   the configured threshold and raised again when stable.
@@ -82,14 +82,14 @@ Key properties:
 
 The Upscaling tab has a one-click **Temporal 42 %** preset: it selects MSR2 and sets the internal
 resolution to 42 %. It is **experimental and not recommended as a default yet**. In the controlled
-run below it was only about 4 % faster than FSR 1 at 50 % with the same shadow interval, and the
-image is softer; the output-resolution temporal pass costs most of what the lower world resolution
-saves. The preset only writes the existing `renderScale.percent`, `msr2.enabled` and `upscaler`
-values, so it is easy to A/B in your own scene.
+run below its mean was about 5 % above FSR 1 at 50 %, but its 1% low was lower (91.0 vs 98.6 fps)
+and the image is softer; the output-resolution temporal pass costs most of what the lower world
+resolution saves. The preset only writes the existing `renderScale.percent`, `msr2.enabled` and
+`upscaler` values, so it is easy to A/B in your own scene.
 
 ### FP16 world target
 
-`renderScale.fp16ColorTarget` (default on) allocates the pre-upscale colour attachment as
+`renderScale.fp16ColorTarget` (default off) allocates the pre-upscale colour attachment as
 `RGBA16F` instead of `RGBA8`. Shader packs produce HDR values and tonemap at the end of their own
 chain, so with an 8-bit buffer the image is quantised *before* the upscaler sees it - visible as
 banding in sky gradients and dark scenes, and as slightly harsher sharpening in the FSR/MSR upscalers.
@@ -106,7 +106,7 @@ GameRenderer#renderLevel (HEAD)
   plain modes (bilinear/nearest/soft/FSR 1)
                                        -> install a minimal colour+depth target in the real
                                           Minecraft#mainRenderTarget field, bind and clear it
-  advanced modes (MSAA/FP16/SSAA/MSR)  -> bind the scaled target and redirect
+  advanced modes (MSAA/FP16/SSAA/MSR/MSR2) -> bind the scaled target and redirect
                                           Minecraft#getMainRenderTarget to it
    world, entities, particles, weather -> drawn into the internal target
 GameRenderer#render before Gui#render   -> restore the real target / drop the redirect,
@@ -127,10 +127,10 @@ Key points:
   the depth buffer still finds one.
 * MSAA uses a separate multisampled framebuffer and resolves only the colour buffer; the depth
   buffer of the single-sampled target is what other code reads.
-* The upscaler shaders are ordinary Minecraft core shaders
+* The spatial upscaler shaders are ordinary Minecraft core shaders
   (`assets/modernopt/shaders/core/*.json`) created through `ShaderInstance`, so they are
-  reloaded with F3+T like any resource-pack shader. They are rebuilt lazily when the programs
-  vanish after a reload.
+  reloaded with F3+T like any resource-pack shader. The MSR2 temporal pass is a raw compute
+  program compiled once from the same resource tree, not a `ShaderInstance`.
 
 ## Compatibility
 
@@ -175,13 +175,13 @@ Key points:
   which is why FSR 1 looks best at 67-85 % scale.
 * MSR and MSR2 use camera-reconstructed motion vectors. They have no per-object velocities, so fast
   moving entities and particles can ghost briefly before the neighbourhood clamp rejects them.
-  Under an Iris shader pack, depth is read from the pack's gbuffer when Iris exposes it; if it
-  cannot be read, MSR falls back to rotation-only reprojection for that frame and logs a
-  warning once.
-* Under a heavy shader pack, MSR cannot make the pack's fixed full-resolution passes cheaper.
-  Complementary's shadow map, composite and post chain keep the GPU busy even at 25 % render
-  scale; the upscaler only scales the gbuffer/world pass. Reaching a much higher frame rate can
-  therefore require lowering the pack's shadow or post settings, not just the render scale.
+  Under an Iris shader pack, depth is read from the pack's gbuffer when Iris exposes it. MSR falls
+  back to rotation-only reprojection for that frame and logs a warning once; MSR2 uses the scaled
+  target's depth instead.
+* Under a heavy shader pack, MSR and MSR2 cannot make the pack's fixed full-resolution passes
+  cheaper. Complementary's shadow map, composite and post chain keep the GPU busy even at 25 %
+  render scale; the upscaler only scales the gbuffer/world pass. Reaching a much higher frame rate
+  can therefore require lowering the pack's shadow or post settings, not just the render scale.
 * The status overlay is hidden while the F3 debug screen is open, because both use the top-left
   corner; F3 already reports the frame rate.
 
@@ -190,24 +190,26 @@ Key points:
 The methodology, the two pinned mod stacks and the state suffixes are in
 [TESTING.md](TESTING.md). All README numbers below come from the same scene and the same harness:
 RTX 5060 Ti 16 GB / Ryzen 7 7800X3D, 1920x1080, Complementary Unbound r5.9.3, render distance 16,
-frozen time and weather, static camera, 512 shadow map, 60-tick warmup and 120-tick sample. The
+frozen time and weather, static camera, 512 shadow map, 60-tick warmup and 160-tick sample. The
 control stack is Minecraft 1.21.1, NeoForge 21.1.264, Sodium 0.8.13 and Iris 1.8.14-beta.1.
 
 | Mode | Mean FPS | 1% low | Shadow interval | Held share | Shadow ms (drawn / amortized) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Native (mod disabled, 100 %) | 112.2 | 102.4 | - | - | - |
-| FSR 1, 50 % | 150.6 | 122.9 | 2 | 50 % | 2.33 / 1.16 |
-| FSR 1, 50 % | 127.8 | 119.2 | 1 | 0 % | 2.33 / 2.33 |
-| MSR2, 50 % | 143.9 | 122.3 | 2 | 50 % | 2.33 / 1.16 |
-| MSR2, 42 % | 156.6 | 126.5 | 2 | 50 % | 2.33 / 1.16 |
+| Native (mod disabled, 100 %) | 97.2 | 76.4 | - | - | - |
+| FSR 1, 50 % | 130.1 | 98.6 | 2 | 50 % | 2.63 / 1.32 |
+| FSR 1, 50 % | 111.0 | 94.0 | 1 | 0 % | 2.58 / 2.58 |
+| MSR2, 50 % | 129.0 | 100.0 | 2 | 50 % | 2.62 / 1.31 |
+| MSR2, 42 % | 136.4 | 91.0 | 2 | 50 % | 2.62 / 1.31 |
 
 `Held share` is `held / (drawn + held)` for the same measurement window as the stage times; the
 interval is printed next to it because 50 % is the correct value for interval 2, not a defect.
-The 1% low is the mean of the slowest 1 % of frames after excluding the screenshot frame.
+The 1% low is the mean of the slowest 1 % of frames after excluding the screenshot frame. Absolute
+FPS depends on GPU state; compare rows from this one run, not numbers from older releases.
 
-MSR2 is within a few FPS of FSR 1 in this CPU-limited scene, so the 42 % preset is not presented as
-a universal win. The shadow interval is the larger lever: interval 2 cuts the amortized shadow cost
-in half and is worth about 18 % mean FPS here.
+MSR2 50 % is within 1 % of FSR 1 in this CPU-limited scene. MSR2 42 % has a higher mean (about
+5 %) but a lower 1% low (91.0 vs 98.6), so the 42 % preset is not presented as a universal win.
+The shadow interval is the larger lever: interval 2 cuts the amortized shadow cost in half and is
+worth about 17 % mean FPS here.
 
 `nvidia-smi` sampled during a separate run of the same scene reported 79-83 % GPU utilization
 while the frame rate was capped (2.7 GHz, ~95 W). That is below the 90 % threshold used for this project, so the render thread is
@@ -218,13 +220,13 @@ The sampler itself adds hitches, so it is never run during a timing run.
 Correctness checks that accompany these numbers: render scale 50-75 % with bilinear, FSR 1 and
 MSR2, correct depth (no holes or LODs over the world), HUD at native resolution, first-person hand
 and nearby entities in place under an active shader pack, no OpenGL errors on resize or pack
-reload, and a static-camera MSR2 run whose frame-10 to frame-60 MAE is 0.009-0.016. The residual is
+reload, and a static-camera MSR2 run whose frame-10 to frame-60 MAE is 0.009-0.012. The residual is
 the 15 % current-frame term of the fixed 0.85 history blend, not divergence: it drops from frame 1
 to frame 10 and then stays flat, and the difference image shows per-pixel grass noise rather than a
-moving image. Against a native-100 reference of the same frozen scene, MSR2 42 % measured MAE 0.066
-below the sky (the full-frame number includes moving clouds) and a detail ratio of 1.22, i.e. no
-loss of high-frequency detail. Motion runs (`!pan2`, `!walk`) are inspected for trails on mobs,
-flowers and contraptions.
+moving image. Against a native-100 reference of the same frozen scene, MSR2 42 % measured MAE 0.051
+below the sky (the full-frame number includes moving clouds) and a detail ratio of 0.71, i.e. the
+expected loss of high-frequency detail at a 42 % internal resolution. Motion runs (`!pan2`,
+`!walk`) are inspected for trails on mobs, flowers and contraptions.
 
 ## Configuration
 
@@ -294,8 +296,8 @@ Measured in the same scene as the table above (FSR 1, 50 %, 512 shadow map):
 
 | Interval | Mean FPS | 1% low | Held | Shadow amortized |
 | ---: | ---: | ---: | ---: | ---: |
-| 1 (every frame) | 127.8 | 119.2 | 0 % | 2.33 ms |
-| 2 | 150.6 | 122.9 | 50 % | 1.16 ms |
+| 1 (every frame) | 111.0 | 94.0 | 0 % | 2.58 ms |
+| 2 | 130.1 | 98.6 | 50 % | 1.32 ms |
 
 The full profile line reports both the drawn-frame cost and the amortized value, and the overlay
 shows `shadows held N/M (%) i=N`. With interval 1 the pass is still timed and counted as drawn.
