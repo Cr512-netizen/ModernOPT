@@ -218,11 +218,13 @@ The sampler itself adds hitches, so it is never run during a timing run.
 Correctness checks that accompany these numbers: render scale 50-75 % with bilinear, FSR 1 and
 MSR2, correct depth (no holes or LODs over the world), HUD at native resolution, first-person hand
 and nearby entities in place under an active shader pack, no OpenGL errors on resize or pack
-reload, and a static-camera MSR2 run whose frame-10 to frame-60 MAE is 0.013-0.017. The residual is
+reload, and a static-camera MSR2 run whose frame-10 to frame-60 MAE is 0.009-0.016. The residual is
 the 15 % current-frame term of the fixed 0.85 history blend, not divergence: it drops from frame 1
 to frame 10 and then stays flat, and the difference image shows per-pixel grass noise rather than a
-moving image. Motion runs (`!pan2`, `!walk`) are inspected for trails on mobs, flowers and
-contraptions.
+moving image. Against a native-100 reference of the same frozen scene, MSR2 42 % measured MAE 0.066
+below the sky (the full-frame number includes moving clouds) and a detail ratio of 1.22, i.e. no
+loss of high-frequency detail. Motion runs (`!pan2`, `!walk`) are inspected for trails on mobs,
+flowers and contraptions.
 
 ## Configuration
 
