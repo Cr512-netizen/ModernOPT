@@ -32,10 +32,3 @@ The optional FSR 2 mode (temporal jitter, EASU, reprojection, neighbourhood clam
 is an original implementation written for ModernOPT. It is inspired by the design of AMD's
 FidelityFX Super Resolution 2 but contains no code copied from the FSR 2 reference
 implementation; the MIT-licensed FSR 1 code above is used for the spatial EASU/RCAS passes.
-
-Design reference
-----------------
-The shadow-map hold scheduler was designed after observing the behaviour of held-map 1.1.3
-(MIT, the original author). No held-map source code is included or linked; the implementation in
-ModernOPT is original. held-map is not affiliated with ModernOPT.
-

@@ -8,7 +8,7 @@ import net.cr512.modernopt.ModernOPT;
 /**
  * Bench-only split of the world CPU time: how much is terrain layer submission, and how often the
  * render-target/viewport hooks run. It exists to compare ModernOPT's per-frame plumbing with a
- * plain main-target swap (a plain main-target swap) without guessing.
+ * plain main-target swap without guessing.
  */
 public final class WorldCpuProfiler {
 

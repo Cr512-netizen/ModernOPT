@@ -164,8 +164,6 @@ Key points:
   against it.
 * **Fabulous graphics** - MSAA is skipped (it needs a single-sampled depth buffer); render
   scaling itself still works.
-* **LOD renderer** - rendered through the same redirected target, so LODs scale together with
-  the rest of the world.
 
 ## Limitations (honest list)
 
@@ -189,9 +187,9 @@ Key points:
 
 ## Testing
 
-The methodology, the two pinned mod stacks and the state suffixes are in
-[TESTING.md](TESTING.md). `runClient` is a normal dev client; `runBench` is the explicit benchmark
-entry point. All README numbers below come from the same scene and the same harness:
+The methodology and the state suffixes are in [TESTING.md](TESTING.md). `runClient` is a normal dev
+client; `runBench` is the explicit benchmark entry point. All README numbers below come from the
+same scene and the same harness:
 RTX 5060 Ti 16 GB / Ryzen 7 7800X3D, 1920x1080, Complementary Unbound r5.9.3, render distance 16,
 frozen time and weather, static camera, 512 shadow map, 60-tick warmup and 160-tick sample. The
 control stack is Minecraft 1.21.1, NeoForge 21.1.264, Sodium 0.8.13 and Iris 1.8.14-beta.1.
@@ -307,9 +305,6 @@ shadow distance rather than a fixed 128 blocks. If Iris stopped tagging its shad
 hold disables itself with a single warning instead of silently flickering. Shadow-composite passes
 are re-run on held frames, so packs that derive `shadowcolor` from the depth map keep a current
 result.
-
-The scheduler follows the same held-map idea as held-map (MIT, the original author), but it is an independent
-implementation: no held-map source code is included and held-map is not affiliated with ModernOPT.
 
 Measured in the same scene as the table above (FSR 1, 50 %, 512 shadow map):
 

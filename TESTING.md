@@ -4,7 +4,7 @@ Every performance number in the README comes from this document. If a result was
 different scene, resolution, stack or ghosting policy, it is not comparable and does not belong in
 the README tables.
 
-## Named stacks
+## Control stack
 
 ### `control` (measured)
 
@@ -19,23 +19,6 @@ the README tables.
 
 This is the minimum stack in which the render target, Iris pipeline and shadow-hold hooks are
 actually exercised. Nothing else is installed.
-
-### `representative` (pinned, results pending)
-
-The control stack plus the common performance mods players run together:
-
-| Component | Version |
-| --- | --- |
-| performance mod | mc1.21.1-0.15.4-neoforge |
-| performance mod | 7.0.3-neoforge |
-| performance mod | 5.27.27+mc1.21.1 |
-| culling mod | 1.12.1 |
-| culling mod | 1.0.11 |
-| performance mod | 1.6.15+1.21.1-neoforge |
-
-Every feature that overlaps with one of these mods must be measured twice: once with ModernOPT and
-the overlapping mod enabled, and once with the mod disabled, in the same run. Otherwise the result
-credits ModernOPT with work another mod did.
 
 ## Scene
 
