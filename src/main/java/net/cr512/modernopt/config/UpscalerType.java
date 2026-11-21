@@ -19,8 +19,8 @@ public enum UpscalerType {
      */
     MSR("MSR", true),
     /**
-     * MSR2: variance-clipping temporal pass + fused EASU+RCAS+edge-aware spatial pass.
-     * Supports both compute shader (GL 4.3+) and fragment shader fallback paths.
+     * MSR2: output-resolution variance-clipping temporal pass followed by RCAS; falls back to the
+     * spatial MSR2 shader when compute is unavailable.
      */
     MSR2("MSR2", true);
 

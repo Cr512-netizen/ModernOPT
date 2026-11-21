@@ -62,8 +62,9 @@ State suffixes used by the harness:
 | `!panN` | Rotates the camera N degrees per tick (default 2). |
 | `!walkN` | Walks forward N/100 blocks per tick (default 0.04). |
 | `!sunset` | Sets the server time to 13000. |
-| `!lanczos3` | Uses the wider Lanczos-3 kernel. |
-| `!nolanczos` | Disables Lanczos reconstruction. |
+| `!reload` | Closes and rebuilds the mod's shader programs at state start. |
+| `!lanczos3` | Uses the wider Lanczos-3 kernel (all upscalers). |
+| `!nolanczos` | Disables Lanczos reconstruction (all upscalers). |
 
 The harness writes `run/bench-results.json` with an environment fingerprint (GPU, driver/GL
 version, Minecraft, NeoForge, mod, shader pack, render distance, window) and, for every state, the

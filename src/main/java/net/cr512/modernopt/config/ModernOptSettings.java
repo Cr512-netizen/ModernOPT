@@ -68,8 +68,9 @@ public final class ModernOptSettings {
         hudScalePercent = ModernOptConfig.HUD_SCALE_PERCENT.get();
         scaleWholeWindow = ModernOptConfig.SCALE_WHOLE_WINDOW.get();
 
-        // MSR2
-        msr2Enabled = ModernOptConfig.MSR2_ENABLED.get();
+        // MSR2 is selected by the upscaler dropdown; the old boolean is kept only so existing
+        // config files do not fail validation. It no longer overrides another upscaler.
+        msr2Enabled = upscaler == UpscalerType.MSR2;
         msr2Lanczos = ModernOptConfig.MSR2_LANCZOS.get();
         msr2Lanczos3 = ModernOptConfig.MSR2_LANCZOS3.get();
         msr2VarianceScale = ModernOptConfig.MSR2_VARIANCE_SCALE.get();

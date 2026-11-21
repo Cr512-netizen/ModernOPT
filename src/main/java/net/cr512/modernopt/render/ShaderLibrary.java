@@ -37,6 +37,8 @@ public final class ShaderLibrary {
     public final ShaderInstance easu;
     public final ShaderInstance rcas;
     public final ShaderInstance blit;
+    /** Generic Lanczos reconstruction, usable with any spatial upscaler. */
+    public final ShaderInstance lanczos;
     /** {@code null} means this driver/program failed to link; MSR then falls back to FSR 1. */
     public final ShaderInstance temporal;
     
@@ -45,7 +47,7 @@ public final class ShaderLibrary {
 
     private ShaderLibrary(ShaderInstance bilinear, ShaderInstance nearest, ShaderInstance soft,
                           ShaderInstance box, ShaderInstance fxaa, ShaderInstance easu, ShaderInstance rcas,
-                          ShaderInstance blit, ShaderInstance temporal,
+                          ShaderInstance blit, ShaderInstance lanczos, ShaderInstance temporal,
                           ShaderInstance msrSpatial) {
         this.bilinear = bilinear;
         this.nearest = nearest;
@@ -55,6 +57,7 @@ public final class ShaderLibrary {
         this.easu = easu;
         this.rcas = rcas;
         this.blit = blit;
+        this.lanczos = lanczos;
         this.temporal = temporal;
         this.msrSpatial = msrSpatial;
     }
@@ -69,6 +72,15 @@ public final class ShaderLibrary {
                     throwable);
         }
         
+        // Generic Lanczos reconstruction. A failure must not take the other upscalers down.
+        ShaderInstance lanczos = null;
+        try {
+            lanczos = create(resources, "lanczos");
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.error("[ModernOPT] Lanczos shader failed to compile; Lanczos will be unavailable",
+                    throwable);
+        }
+
         // MSR2 spatial fallback shader
         ShaderInstance msrSpatial = null;
         try {
@@ -87,6 +99,7 @@ public final class ShaderLibrary {
                 create(resources, "easu"),
                 create(resources, "rcas"),
                 create(resources, "blit"),
+                lanczos,
                 temporal,
                 msrSpatial);
     }
@@ -105,6 +118,9 @@ public final class ShaderLibrary {
         this.easu.close();
         this.rcas.close();
         this.blit.close();
+        if (this.lanczos != null) {
+            this.lanczos.close();
+        }
         if (this.temporal != null) {
             this.temporal.close();
         }
@@ -121,6 +137,11 @@ public final class ShaderLibrary {
     /** True when MSR2 shaders are available. */
     public boolean hasMsr() {
         return isProgram(this.msrSpatial);
+    }
+
+    /** True when the generic Lanczos reconstruction shader is available. */
+    public boolean hasLanczos() {
+        return isProgram(this.lanczos);
     }
 
     /**

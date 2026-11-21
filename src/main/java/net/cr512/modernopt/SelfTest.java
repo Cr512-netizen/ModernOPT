@@ -825,22 +825,24 @@ public final class SelfTest {
                 ModernOptConfig.ENABLED.set(false);
                 ModernOptConfig.SHOW_OVERLAY.set(false);
             }
-            case "MSR2" -> configure(percent, UpscalerType.MSR2, true);
-            case "MSR" -> configure(percent, UpscalerType.MSR, false);
-            case "FSR1" -> configure(percent, UpscalerType.FSR1, false);
-            default -> configure(percent, UpscalerType.BILINEAR, false);
+            case "MSR2" -> configure(percent, UpscalerType.MSR2);
+            case "MSR" -> configure(percent, UpscalerType.MSR);
+            case "FSR1" -> configure(percent, UpscalerType.FSR1);
+            default -> configure(percent, UpscalerType.BILINEAR);
         }
         ModernOptSettings.refresh();
+        if (name.contains("!reload")) {
+            RenderPipeline.reloadShaders();
+        }
         if (name.contains("!conv") || name.contains("!pan") || name.contains("!walk")) {
             RenderPipeline.resetTemporalHistory();
         }
     }
 
-    private static void configure(int percent, UpscalerType upscaler, boolean msr2Enabled) {
+    private static void configure(int percent, UpscalerType upscaler) {
         ModernOptConfig.ENABLED.set(true);
         ModernOptConfig.RENDER_SCALE_PERCENT.set(percent);
         ModernOptConfig.UPSCALER.set(upscaler);
-        ModernOptConfig.MSR2_ENABLED.set(msr2Enabled);
         ModernOptConfig.MSR2_DYNAMIC_RES.set(false);
         ModernOptConfig.FSR_EASU_SHARPNESS.set(0);
         ModernOptConfig.FSR_RCAS_SHARPNESS.set(25);

@@ -326,12 +326,20 @@ public final class RenderPipeline {
     public static String activeUpscalerLabel() {
         UpscalerType requested = ModernOptSettings.upscaler();
         if (requested == UpscalerType.MSR && !msrActiveThisFrame) {
-            return ModernOptSettings.ssaa() ? "MSR off (SSAA)" : "MSR off (FSR 1)";
+            return withLanczos(ModernOptSettings.ssaa() ? "MSR off (SSAA)" : "MSR off (FSR 1)");
         }
         if (requested == UpscalerType.MSR && !msrDepthValidThisFrame) {
-            return "MSR (no depth)";
+            return withLanczos("MSR (no depth)");
         }
-        return requested.label();
+        return withLanczos(requested.label());
+    }
+
+    /** Shows the shared Lanczos toggle in the overlay and benchmark state label. */
+    private static String withLanczos(String label) {
+        if (!ModernOptSettings.msr2Lanczos()) {
+            return label;
+        }
+        return label + (ModernOptSettings.msr2Lanczos3() ? " + L3" : " + L2");
     }
 
     /**
@@ -790,7 +798,7 @@ public final class RenderPipeline {
         cachedScaleWholeWindow = ModernOptSettings.scaleWholeWindow();
 
         // MSR2
-        cachedMsrEnabled = ModernOptSettings.msr2Enabled() || (cachedUpscaler == UpscalerType.MSR2);
+        cachedMsrEnabled = cachedUpscaler == UpscalerType.MSR2;
         cachedMsrVarianceScale = ModernOptSettings.msr2VarianceScale();
         cachedMsrEdgeAware = ModernOptSettings.msr2EdgeAware();
         cachedMsrSharpness = ModernOptSettings.msr2Sharpness();
@@ -1491,12 +1499,15 @@ public final class RenderPipeline {
         TextureTarget easu = ensureIntermediates(outWidth, outHeight, true);
         float rcasSharpness = cachedFsrRcasSharpness / 100.0F;
         boolean fxaa = cachedFxaa;
+        boolean useLanczos = ModernOptSettings.msr2Lanczos() && library.hasLanczos();
+        ShaderInstance primary = useLanczos ? library.lanczos : library.easu;
+        float primaryParam = useLanczos ? (ModernOptSettings.msr2Lanczos3() ? 3.0F : 2.0F) : 0.0F;
 
         ShaderLibrary.beginPassState();
         try {
             easu.bindWrite(true);
-            ShaderLibrary.draw(library.easu, sourceTexture, sourceWidth, sourceHeight,
-                    outWidth, outHeight, 0.0F, 0.0F);
+            ShaderLibrary.draw(primary, sourceTexture, sourceWidth, sourceHeight,
+                    outWidth, outHeight, primaryParam, 0.0F);
 
             write.bindWrite(true);
             ShaderLibrary.drawTemporal(library.temporal,
@@ -1561,12 +1572,17 @@ public final class RenderPipeline {
         boolean fxaa = cachedFxaa;
         ShaderLibrary library = shaders;
         UpscalerType upscaler = cachedUpscaler;
+        boolean useLanczos = ModernOptSettings.msr2Lanczos()
+                && library != null && library.hasLanczos();
+        float lanczosRadius = ModernOptSettings.msr2Lanczos3() ? 3.0F : 2.0F;
         boolean fsr1Path = !cachedSsaa
                 && (upscaler == UpscalerType.FSR1 || upscaler == UpscalerType.MSR);
 
         // At small upscale factors (~1.25x), EASU is slower than bilinear - use simpler filter
         float upscale = (float) outWidth / (float) sourceWidth;
-        boolean simpleUpscale = upscale < 1.11F && fsr1Path;
+        boolean simpleUpscale = upscale < 1.11F && fsr1Path && !useLanczos;
+        ShaderInstance fsrPrimary = useLanczos ? library.lanczos : library.easu;
+        float fsrPrimaryParam = useLanczos ? lanczosRadius : 0.0F;
 
         ShaderLibrary.beginPassState();
         try {
@@ -1589,13 +1605,13 @@ public final class RenderPipeline {
                     // The intermediate full-resolution buffer and the RCAS pass exist only to
                     // sharpen, so running them with a zero lobe was pure overhead.
                     main.bindWrite(true);
-                    ShaderLibrary.draw(library.easu, sourceTexture, sourceWidth, sourceHeight,
-                            outWidth, outHeight, 0.0F, 0.0F);
+                    ShaderLibrary.draw(fsrPrimary, sourceTexture, sourceWidth, sourceHeight,
+                            outWidth, outHeight, fsrPrimaryParam, 0.0F);
                 } else {
-                    // Full FSR 1 EASU + RCAS path
+                    // Full FSR 1 EASU (or generic Lanczos) + RCAS path
                     TextureTarget easu = ensureIntermediates(outWidth, outHeight, true);
                     easu.bindWrite(true);
-                    ShaderLibrary.draw(library.easu, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, 0.0F, 0.0F);
+                    ShaderLibrary.draw(fsrPrimary, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, fsrPrimaryParam, 0.0F);
 
                     if (fxaa) {
                         TextureTarget post = ensureIntermediates(outWidth, outHeight, false);
@@ -1609,16 +1625,18 @@ public final class RenderPipeline {
                     }
                 }
             } else {
-                ShaderInstance filter = cachedSsaa ? library.box : filterFor(library, upscaler);
+                ShaderInstance filter = useLanczos ? library.lanczos
+                        : cachedSsaa ? library.box : filterFor(library, upscaler);
+                float filterParam = useLanczos ? lanczosRadius : softness;
                 if (fxaa) {
                     TextureTarget post = ensureIntermediates(outWidth, outHeight, false);
                     post.bindWrite(true);
-                    ShaderLibrary.draw(filter, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, softness, 0.0F);
+                    ShaderLibrary.draw(filter, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, filterParam, 0.0F);
                     main.bindWrite(true);
                     ShaderLibrary.draw(library.fxaa, post.getColorTextureId(), outWidth, outHeight, outWidth, outHeight, 0.0F, 0.0F);
                 } else {
                     main.bindWrite(true);
-                    ShaderLibrary.draw(filter, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, softness, 0.0F);
+                    ShaderLibrary.draw(filter, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, filterParam, 0.0F);
                 }
             }
         } finally {
@@ -1942,6 +1960,30 @@ public final class RenderPipeline {
                     width, height, throwable);
             scaled = null;
         }
+    }
+
+    /**
+     * Closes the cached shader programs so the next frame rebuilds them from the current resource
+     * tree. Called when the options screen closes or the config is reloaded; the targets and
+     * history are left alone, and the rebuild is lazy.
+     */
+    public static void reloadShaders() {
+        if (shaders != null) {
+            try {
+                shaders.close();
+            } catch (Throwable throwable) {
+                ModernOPT.LOG.warn("[ModernOPT] could not close the shader library for reload", throwable);
+            }
+            shaders = null;
+        }
+        destroyMsrCompute();
+        msrComputeFailed = false;
+        shaderFailure = false;
+        msrShaderFailure = false;
+        // A changed reconstruction kernel must not be blended with history produced by the old
+        // one; both temporal histories restart on the next frame.
+        resetHistory();
+        resetMsr2History();
     }
 
     private static boolean ensureShaders(Minecraft minecraft) {

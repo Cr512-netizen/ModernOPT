@@ -13,6 +13,7 @@ resolution.
 | --- | --- | --- |
 | Render scale | 25 - 100 % | Internal world resolution. 75 % means roughly 56 % of the pixels. |
 | Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `MSR`, `MSR2` | Filter used to present the internal image. `MSR` adds a temporal accumulation pass. `MSR2` is the newest upscaler, built on the same camera-reconstructed reprojection as MSR but with an output-resolution RGBA16F history and a depth-guided Lanczos reconstruction. |
+| Lanczos reconstruction | On / Off | Replaces the spatial kernel with Lanczos-2 for any upscaler (EASU for FSR 1/MSR, the simple filter for bilinear/nearest/soft); MSR2 uses it inside the temporal pass. `Lanczos-3` switches the wider kernel. |
 | SoftScale softness | 0 - 100 % | Blur radius of the 9-tap tent filter (`Soft scale`). |
 | FSR sharpness | 0 - 100 % | RCAS strength applied after the FSR 1 EASU or MSR temporal upscale. |
 | MSAA | Off, 2x, 4x, 8x, 16x | Multisampling for the world pass (hardware, resolved before the upscale). |
@@ -60,12 +61,13 @@ Key properties:
 - MSR2 applies an R2 sub-pixel jitter and samples the history on the unjittered output grid, so
   accumulated samples do not drift by the difference between jitter phases. History that moves more
   than 15 % of the screen in one frame is rejected.
-- The low-resolution current frame is reconstructed with **depth-guided Lanczos-2** before
-  temporal accumulation (toggle: `msr2.lanczos`, default on). The kernel weights come from a
-  65-phase polyphase table in a small R32F texture, and the same taps supply the min/max box for
-  temporal acceptance, so the acceptance window is exactly as wide as the reconstruction
-  footprint. When scene depth is unavailable the per-tap depth fetch is skipped, not just its
-  weight.
+- The low-resolution current frame is reconstructed with **Lanczos-2**. The toggle is shared by
+  every upscaler: for FSR 1/MSR it replaces EASU, for bilinear/nearest/soft it replaces the
+  simple filter, and MSR2 uses it inside the temporal pass with depth-guided taps. The kernel
+  weights come from a 65-phase polyphase table in a small R32F texture. In MSR2 the same taps
+  supply the min/max box for temporal acceptance, so the acceptance window is exactly as wide as
+  the reconstruction footprint; when scene depth is unavailable the per-tap depth fetch is
+  skipped, not just its weight.
 - Negative values and NaNs are clamped before `imageStore`, so one bad frame cannot poison the
   ping-pong history.
 - `msr2.lanczos3` switches to the wider Lanczos-3 kernel: sharper texture response and more
@@ -82,10 +84,10 @@ Key properties:
 
 The Upscaling tab has a one-click **Temporal 42 %** preset: it selects MSR2 and sets the internal
 resolution to 42 %. It is **experimental and not recommended as a default yet**. In the controlled
-run below its mean was about 5 % above FSR 1 at 50 %, but its 1% low was lower (91.0 vs 98.6 fps)
-and the image is softer; the output-resolution temporal pass costs most of what the lower world
-resolution saves. The preset only writes the existing `renderScale.percent`, `msr2.enabled` and
-`upscaler` values, so it is easy to A/B in your own scene.
+run below its mean was about 12 % above FSR 1 + Lanczos-2 at 50 %, with a comparable 1% low
+(94.2 vs 93.4 fps), but the image is softer; the output-resolution temporal pass costs most of
+what the lower world resolution saves. The preset only writes the existing `renderScale.percent`
+and `upscaler` values, so it is easy to A/B in your own scene.
 
 ### FP16 world target
 
@@ -195,11 +197,12 @@ control stack is Minecraft 1.21.1, NeoForge 21.1.264, Sodium 0.8.13 and Iris 1.8
 
 | Mode | Mean FPS | 1% low | Shadow interval | Held share | Shadow ms (drawn / amortized) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Native (mod disabled, 100 %) | 97.2 | 76.4 | - | - | - |
-| FSR 1, 50 % | 130.1 | 98.6 | 2 | 50 % | 2.63 / 1.32 |
-| FSR 1, 50 % | 111.0 | 94.0 | 1 | 0 % | 2.58 / 2.58 |
-| MSR2, 50 % | 129.0 | 100.0 | 2 | 50 % | 2.62 / 1.31 |
-| MSR2, 42 % | 136.4 | 91.0 | 2 | 50 % | 2.62 / 1.31 |
+| Native (mod disabled, 100 %) | 99.3 | 82.7 | - | - | - |
+| FSR 1 + Lanczos-2, 50 % | 131.1 | 93.4 | 2 | 50 % | 2.52 / 1.26 |
+| FSR 1 + Lanczos-2, 50 % | 111.3 | 90.7 | 1 | 0 % | 2.56 / 2.56 |
+| FSR 1 EASU (Lanczos off), 50 % | 135.0 | 92.2 | 2 | 50 % | 2.49 / 1.25 |
+| MSR2, 50 % | 130.4 | 91.7 | 2 | 50 % | 2.49 / 1.25 |
+| MSR2, 42 % | 146.6 | 94.2 | 2 | 50 % | 2.50 / 1.25 |
 
 `Held share` is `held / (drawn + held)` for the same measurement window as the stage times; the
 interval is printed next to it because 50 % is the correct value for interval 2, not a defect.
@@ -207,9 +210,11 @@ The 1% low is the mean of the slowest 1 % of frames after excluding the screensh
 FPS depends on GPU state; compare rows from this one run, not numbers from older releases.
 
 MSR2 50 % is within 1 % of FSR 1 in this CPU-limited scene. MSR2 42 % has a higher mean (about
-5 %) but a lower 1% low (91.0 vs 98.6), so the 42 % preset is not presented as a universal win.
-The shadow interval is the larger lever: interval 2 cuts the amortized shadow cost in half and is
-worth about 17 % mean FPS here.
+12 % over FSR 1 + Lanczos-2) and a comparable 1% low, but the image is softer; it remains an
+optional experimental preset, not the default. Lanczos-2 on FSR 1 is about 3 % slower than EASU
+but has a slightly better 1% low; disable it for the pure FSR 1 kernel. The shadow interval is the
+larger lever: interval 2 cuts the amortized shadow cost in half and is worth about 18 % mean FPS
+here.
 
 `nvidia-smi` sampled during a separate run of the same scene with a 2048 px shadow map reported
 79-83 % GPU utilization while the frame rate was capped (2.7 GHz, ~95 W). That is below the 90 % threshold used for this project, so the render thread is
@@ -236,7 +241,10 @@ expected loss of high-frequency detail at a 42 % internal resolution. Motion run
 * `Video Settings -> ModernOPT` in Sodium (the full screen or the native `Settings` page), or
 * the `F10` keybind (in game).
 
-The full screen is split into **Upscaling**, **Anti-aliasing** and **Shadows** tabs.
+The full screen is split into **Upscaling**, **Anti-aliasing** and **Shadows** tabs. Closing the
+screen rebuilds ModernOPT's shader programs from the current resource tree and resets the temporal
+histories, so an upscaler or Lanczos change applies without F3+T. A shadow-map resolution change
+also reloads the Iris pack once.
 
 `renderScale.dynamicMovingResolution` lowers the configured internal resolution by 15% while the
 camera is moving or looking around (for example 70% -> 60%) and restores it after a short
@@ -296,8 +304,8 @@ Measured in the same scene as the table above (FSR 1, 50 %, 512 shadow map):
 
 | Interval | Mean FPS | 1% low | Held | Shadow amortized |
 | ---: | ---: | ---: | ---: | ---: |
-| 1 (every frame) | 111.0 | 94.0 | 0 % | 2.58 ms |
-| 2 | 130.1 | 98.6 | 50 % | 1.32 ms |
+| 1 (every frame) | 111.3 | 90.7 | 0 % | 2.56 ms |
+| 2 | 131.1 | 93.4 | 50 % | 1.26 ms |
 
 The full profile line reports both the drawn-frame cost and the amortized value, and the overlay
 shows `shadows held N/M (%) i=N`. With interval 1 the pass is still timed and counted as drawn.

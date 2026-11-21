@@ -11,6 +11,7 @@ import net.cr512.modernopt.config.MsaaLevel;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.config.UpscalerType;
+import net.cr512.modernopt.render.RenderPipeline;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
@@ -157,7 +158,6 @@ public class ModernOptConfigScreen extends Screen {
 
         addLeft(Button.builder(Component.translatable("modernopt.option.temporalPreset"), button -> {
                     ModernOptConfig.RENDER_SCALE_PERCENT.set(42);
-                    ModernOptConfig.MSR2_ENABLED.set(true);
                     ModernOptConfig.UPSCALER.set(UpscalerType.MSR2);
                     ModernOptSettings.refresh();
                     this.rebuildWidgets();
@@ -217,13 +217,6 @@ public class ModernOptConfigScreen extends Screen {
                 value -> value + "%"));
 
         // --- right column: temporal upscaler and diagnostics ---
-        addRight(CycleButton.onOffBuilder(ModernOptSettings.msr2Enabled())
-                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.msrEnabled"),
-                        (button, value) -> {
-                            ModernOptConfig.MSR2_ENABLED.set(value);
-                            ModernOptSettings.refresh();
-                        }));
-
         addRight(CycleButton.onOffBuilder(ModernOptSettings.msr2Lanczos())
                 .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.msrLanczos"),
                         (button, value) -> {
@@ -434,6 +427,9 @@ public class ModernOptConfigScreen extends Screen {
         if (ShadowMapResolution.needsReload()) {
             ShadowMapResolution.requestReload();
         }
+        // Rebuild the mod's own programs from the current resource tree. This is what makes a
+        // changed upscaler/Lanczos setting take effect without pressing F3+T.
+        RenderPipeline.reloadShaders();
         if (this.minecraft != null) {
             this.minecraft.setScreen(this.parent);
         }

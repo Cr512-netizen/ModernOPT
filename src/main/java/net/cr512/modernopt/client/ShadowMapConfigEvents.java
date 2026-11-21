@@ -34,5 +34,9 @@ public final class ShadowMapConfigEvents {
         if (ShadowMapResolution.needsReload()) {
             ShadowMapResolution.requestReload();
         }
+        net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
+        if (minecraft != null) {
+            minecraft.execute(net.cr512.modernopt.render.RenderPipeline::reloadShaders);
+        }
     }
 }

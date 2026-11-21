@@ -122,10 +122,12 @@ public final class ModernOptConfig {
         b.pop();
 
         b.comment("MSR2 - experimental temporal upscaler.").push("msr2");
-        MSR2_ENABLED = b.comment("Enable MSR2 upscaler (experimental). Overrides other upscalers when enabled.")
+        // Legacy key kept for config compatibility; the upscaler dropdown selects MSR2 now.
+        MSR2_ENABLED = b.comment("Legacy switch. MSR2 is selected through renderScale.upscaler; this value no longer overrides another upscaler.")
                 .define("enabled", false);
         MSR2_LANCZOS = b.comment(
-                        "Use Lanczos-2 to reconstruct the low-resolution current frame before temporal accumulation.",
+                        "Use Lanczos-2 to reconstruct the low-resolution current frame. Applies to every",
+                        "upscaler, not only MSR2; MSR2 uses it inside its temporal pass.",
                         "Sharper than bilinear on grass, foliage and block edges, but can ring on high-contrast edges.",
                         "Turn it off if the image shimmers or shows halos.")
                 .define("lanczos", true);

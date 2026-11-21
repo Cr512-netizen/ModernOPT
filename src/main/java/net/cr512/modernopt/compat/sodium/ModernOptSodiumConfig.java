@@ -224,6 +224,10 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
     private static void save() {
         ModernOptConfig.SPEC.save();
         ModernOptSettings.refresh();
+        if (net.cr512.modernopt.compat.ShadowMapResolution.needsReload()) {
+            net.cr512.modernopt.compat.ShadowMapResolution.requestReload();
+        }
+        net.cr512.modernopt.render.RenderPipeline.reloadShaders();
     }
 
     private static String version() {
