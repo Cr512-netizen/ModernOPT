@@ -6,11 +6,14 @@ package net.cr512.modernopt.mixin.iris;
 import net.cr512.modernopt.compat.ShadowClearRegistry;
 import net.cr512.modernopt.compat.ShadowImageRegistry;
 import net.cr512.modernopt.compat.ShadowMapResolution;
+import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.render.RenderPipeline;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Forces Iris' shadow targets to the resolution chosen in the ModernOPT config.
@@ -34,5 +37,23 @@ public abstract class IrisShadowRenderTargetsMixin {
         ShadowImageRegistry.clear();
         RenderPipeline.shadowHoldResetTargets();
         return ShadowMapResolution.apply(resolution);
+    }
+
+    @Inject(method = "flip(I)V", at = @At("HEAD"), require = 0, remap = false)
+    private void modernopt$noteFlip(int index, CallbackInfo callbackInfo) {
+        if (Boolean.getBoolean("modernopt.bench")
+                && !RenderPipeline.shadowHoldShouldDraw(ModernOptSettings.shadowUpdateInterval())) {
+            net.cr512.modernopt.ModernOPT.LOG.info(
+                    "[BENCH][SHADOWGL] shadow target {} flipped on a held frame", index);
+        }
+    }
+
+    @Inject(method = "onFullClear()V", at = @At("HEAD"), require = 0, remap = false)
+    private void modernopt$noteFullClear(CallbackInfo callbackInfo) {
+        if (Boolean.getBoolean("modernopt.bench")
+                && !RenderPipeline.shadowHoldShouldDraw(ModernOptSettings.shadowUpdateInterval())) {
+            net.cr512.modernopt.ModernOPT.LOG.info(
+                    "[BENCH][SHADOWGL] shadow targets requested a full clear on a held frame");
+        }
     }
 }

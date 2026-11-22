@@ -295,22 +295,25 @@ win - see the benchmark notes below.
 
 `shadows.updateInterval` (1-8, default 2) rebuilds the shadow map every N frames instead of every
 frame. The frames in between skip the whole second world pass from the sun and keep sampling the
-previous map. The held light matrices are the drawn frame's matrices, translated by the camera
-delta in world space before the light transform. A camera leaving the integer block it occupied
-when the map was drawn, a world-time jump above 40 ticks, a living caster moving above 0.1 blocks, a
-non-living caster moving above 0.5 blocks, or a caster entering/leaving the tracked radius forces an
-immediate rebuild. The first-person player is ignored because it is not drawn into the shadow map.
-Drops, arrows and experience orbs are not tracked; the caster radius is the pack's own entity
-shadow distance rather than a fixed 128 blocks. Iris clears the depth-source framebuffer directly
-and clears every custom image at the start of each level frame, before the shadow pass. The depth
-clear is suppressed through the level-start window, with the resolved `GlFramebuffer#getId` as a
-fallback; if neither is available, the hold disables itself instead of flickering. While Iris
-compiles the shadow programs, the hold records which custom images those programs declare (for
-example a voxel or reflection image). Only those images are kept on a reused frame; images the
-shadow pass does not write are still cleared normally, which avoids stale contents and black
-patches. The shadow composite chain is re-run on held frames when at least one such image exists,
-so packs that derive composite outputs from the shadow map stay current. If Iris stopped tagging
-its shadow clear passes, the hold also disables itself with a single warning.
+previous map. The shadow lookup matrix stays anchored to the frame that drew the map: Iris rebuilds
+it from the drawn camera and translates it by the current camera delta after the shadow-map snap.
+The drawn frame's sun angle is kept for the lookup as well, so a moving sun cannot rotate the
+shadow pattern between rebuilds. A camera leaving the integer block it occupied when the map was
+drawn forces an immediate rebuild.
+That is the only extra redraw, so a held sequence keeps a regular N-frame cadence; normal daylight
+motion and moving entities do not insert extra redraws between them. The first-person player is not
+drawn into the shadow map.
+
+Iris clears the depth-source framebuffer directly and clears every custom image at the start of
+each level frame, before the shadow pass. The depth clear is suppressed through the level-start
+window, with the resolved `GlFramebuffer#getId` as a fallback; if neither is available, the hold
+disables itself instead of flickering. While Iris compiles the shadow programs, the hold records
+which custom images those programs declare (for example a voxel or reflection image). Only those
+images are kept on a reused frame; images the shadow pass does not write are still cleared
+normally, which avoids stale contents and black patches. The shadow composite chain is re-run on
+held frames when at least one such image exists, so packs that derive composite outputs from the
+shadow map stay current. If Iris stopped tagging its shadow clear passes, the hold also disables
+itself with a single warning.
 
 Measured in the same scene as the table above (FSR 1, 50 %, 512 shadow map):
 

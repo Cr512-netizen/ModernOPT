@@ -124,13 +124,17 @@ public abstract class IrisPipelineShadowWindowMixin {
             remap = false
     )
     private void modernopt$keepShadowImages(int texture, int level, int format, int type, int[] data) {
-        int interval = Math.max(1, net.cr512.modernopt.config.ModernOptSettings.shadowUpdateInterval());
-        if (RenderPipeline.shadowHoldShouldDraw(interval)) {
+        if (!RenderPipeline.shadowHoldSkipFrame()) {
             ARBClearTexture.glClearTexImage(texture, level, format, type, data);
             return;
         }
         String name = modernopt$shadowImageName(texture);
         if (name == null) {
+            if (Boolean.getBoolean("modernopt.bench") && modernopt$clearedImages.add(texture)) {
+                net.cr512.modernopt.ModernOPT.LOG.info(
+                        "[BENCH][SHADOWGL] cleared custom image {} on a held frame",
+                        modernopt$rawImageName(texture));
+            }
             ARBClearTexture.glClearTexImage(texture, level, format, type, data);
             return;
         }
@@ -141,6 +145,7 @@ public abstract class IrisPipelineShadowWindowMixin {
     }
 
     private static final java.util.Set<Integer> modernopt$keptImages = new java.util.HashSet<>();
+    private static final java.util.Set<Integer> modernopt$clearedImages = new java.util.HashSet<>();
 
     private static Field modernopt$clearImagesField;
     private static Method modernopt$imageId;
@@ -148,6 +153,19 @@ public abstract class IrisPipelineShadowWindowMixin {
 
     /** Name of a clear image that belongs to the held shadow result, or null to clear it. */
     private String modernopt$shadowImageName(int texture) {
+        String text = modernopt$rawImageName(texture);
+        if (text == null) {
+            return null;
+        }
+        if (ShadowImageRegistry.learned()) {
+            // Precise path: keep exactly the images the shadow pass writes.
+            return ShadowImageRegistry.isShadowFed(text) ? text : null;
+        }
+        // Fallback for an Iris version without the program hook.
+        return text.toLowerCase(java.util.Locale.ROOT).contains("shadow") ? text : null;
+    }
+
+    private String modernopt$rawImageName(int texture) {
         try {
             if (modernopt$clearImagesField == null) {
                 modernopt$clearImagesField = getClass().getDeclaredField("clearImages");
@@ -168,17 +186,7 @@ public abstract class IrisPipelineShadowWindowMixin {
                 Object id = modernopt$imageId.invoke(image);
                 if (id instanceof Integer && (Integer) id == texture) {
                     Object name = modernopt$imageName.invoke(image);
-                    if (!(name instanceof String text)) {
-                        return null;
-                    }
-                    if (ShadowImageRegistry.learned()) {
-                        // Precise path: keep exactly the images the shadow pass writes. Clearing
-                        // an unrelated image that merely has "shadow" in its name used to leave
-                        // stale contents and produced black patches.
-                        return ShadowImageRegistry.isShadowFed(text) ? text : null;
-                    }
-                    // Fallback for an Iris version without the program hook.
-                    return text.toLowerCase(java.util.Locale.ROOT).contains("shadow") ? text : null;
+                    return name instanceof String text ? text : null;
                 }
             }
         } catch (Throwable ignored) {

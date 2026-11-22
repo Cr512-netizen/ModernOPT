@@ -459,6 +459,7 @@ public final class RenderPipeline {
         WorldCpuProfiler.noteWorldFrame();
         WorldCpuProfiler.maybeLog();
         shadowClearWindow = false;
+        shadowHoldSkipFrame = false;
         worldActive = false;
         msrThisFrame = false;
         msr2ThisFrame = false;
@@ -492,13 +493,10 @@ public final class RenderPipeline {
             return;
         }
 
-        if (minecraft.gameRenderer != null && minecraft.gameRenderer.getMainCamera() != null) {
-            net.minecraft.client.Camera shadowCam = minecraft.gameRenderer.getMainCamera();
-            net.minecraft.world.phys.Vec3 shadowCamera = shadowCam.getPosition();
-            shadowHoldCheckCamera(shadowCamera.x, shadowCamera.y, shadowCamera.z);
-            shadowHoldCheckWorldTime(minecraft.level.getDayTime());
-            shadowHoldCheckEntities(minecraft.level, shadowCamera.x, shadowCamera.y, shadowCamera.z);
-        }
+        // The hold decision is intentionally made only from the update interval and the camera
+        // block, checked again at beginLevelRendering after the current camera is installed.
+        // World time and entity motion do not force extra redraws: an irregular extra draw makes
+        // a held sequence look like flicker, while the interval already refreshes both.
 
         // Fast settings cache - only refresh when actually changed
         cacheSettings();
@@ -1026,6 +1024,7 @@ public final class RenderPipeline {
     private static boolean shadowHoldFboWarned;
     private static boolean shadowClearWindow;
     private static boolean shadowClearWindowLogged;
+    private static boolean shadowHoldSkipFrame;
     private static boolean shadowProbe;
     private static long shadowHoldBlockX;
     private static long shadowHoldBlockY;
@@ -1053,11 +1052,32 @@ public final class RenderPipeline {
 
     /** Marks the Iris level-start window, where direct shadow-target clears are issued. */
     public static void beginShadowClearWindow() {
+        // The frame-start camera check runs before GameRenderer#renderLevel installs the current
+        // camera, so it sees the previous frame's position. Check again here, after the camera is
+        // current and before the clear decision and the shadow pass are made. A block crossing
+        // must force the draw on this frame; otherwise a held map is translated by more than one
+        // block for a frame and the shadows visibly jump.
+        shadowHoldCheckCameraNow();
+        shadowHoldSkipFrame = !shadowHoldShouldDraw(
+                Math.max(1, ModernOptSettings.shadowUpdateInterval()));
         shadowClearWindow = true;
         if (Boolean.getBoolean("modernopt.bench") && !shadowClearWindowLogged) {
             shadowClearWindowLogged = true;
             ModernOPT.LOG.info("[BENCH][SHADOWGL] level-start clear window active");
         }
+    }
+
+    private static void shadowHoldCheckCameraNow() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.gameRenderer == null) {
+            return;
+        }
+        net.minecraft.client.Camera camera = minecraft.gameRenderer.getMainCamera();
+        if (camera == null) {
+            return;
+        }
+        net.minecraft.world.phys.Vec3 position = camera.getPosition();
+        shadowHoldCheckCamera(position.x, position.y, position.z);
     }
 
     public static void endShadowClearWindow() {
@@ -1075,6 +1095,11 @@ public final class RenderPipeline {
 
     public static boolean shadowProbeEnabled() {
         return shadowProbe;
+    }
+
+    /** Frame-global shadow decision, fixed before the clear passes and the shadow pass run. */
+    public static boolean shadowHoldSkipFrame() {
+        return shadowHoldSkipFrame;
     }
 
     /** Whether the shadow map has to be drawn on this frame. */
@@ -1114,6 +1139,12 @@ public final class RenderPipeline {
                 || blockZ != shadowHoldBlockZ) {
             shadowHoldForceDraw = true;
             shadowHoldForceReasons |= SHADOW_FORCE_CAMERA;
+            if (Boolean.getBoolean("modernopt.bench")) {
+                ModernOPT.LOG.info("[BENCH][SHADOWGL] camera left the drawn block: "
+                                + "({},{},{}) -> ({},{},{})",
+                        shadowHoldBlockX, shadowHoldBlockY, shadowHoldBlockZ,
+                        blockX, blockY, blockZ);
+            }
         }
     }
 

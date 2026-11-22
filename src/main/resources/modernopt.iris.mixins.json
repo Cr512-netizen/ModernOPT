@@ -11,6 +11,7 @@
     "IrisFinalPassRendererMixin",
     "IrisJcppProcessorMixin",
     "IrisPipelineShadowWindowMixin",
+    "IrisShadowMatricesMixin",
     "IrisShadowRendererMixin",
     "IrisShadowRenderTargetsMixin"
   ],

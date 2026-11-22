@@ -4,7 +4,6 @@
 package net.cr512.modernopt.mixin.iris;
 
 import net.cr512.modernopt.compat.ShadowClearRegistry;
-import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.render.RenderPipeline;
 import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Mixin;
@@ -23,23 +22,32 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(targets = "net.irisshaders.iris.targets.ClearPass", remap = false)
 public abstract class IrisClearPassMixin {
 
+    private static final java.util.Set<String> modernopt$loggedViewports = new java.util.HashSet<>();
+
     @Inject(method = "execute", at = @At("HEAD"), cancellable = true, require = 0, remap = false)
     private void modernopt$holdShadowMap(Vector4f color, CallbackInfo callbackInfo) {
-        int interval = Math.max(1, ModernOptSettings.shadowUpdateInterval());
-        if (RenderPipeline.shadowHoldShouldDraw(interval)) {
+        if (!RenderPipeline.shadowHoldSkipFrame()) {
             return;
         }
-        if (ShadowClearRegistry.isShadowPass(this)) {
+        boolean tagged = ShadowClearRegistry.isShadowPass(this);
+        boolean byFramebuffer = ShadowClearRegistry.clearsShadowFramebuffer(
+                this, RenderPipeline.shadowHoldFramebuffer());
+        boolean byViewport = ShadowClearRegistry.clearsShadowViewport(
+                this, net.cr512.modernopt.compat.ShadowMapResolution.applied());
+        if (tagged || byFramebuffer || byViewport) {
+            if (Boolean.getBoolean("modernopt.bench")) {
+                String key = tagged + "/" + byFramebuffer + "/" + byViewport;
+                if (modernopt$loggedViewports.add(key)) {
+                    net.cr512.modernopt.ModernOPT.LOG.info(
+                            "[BENCH][SHADOWGL] held clear pass cancelled: tagged={} fbo={} viewport={}",
+                            tagged, byFramebuffer, byViewport);
+                }
+            }
             callbackInfo.cancel();
-            return;
-        }
-        if (ShadowClearRegistry.clearsShadowFramebuffer(this, RenderPipeline.shadowHoldFramebuffer())) {
-            callbackInfo.cancel();
-            return;
-        }
-        if (ShadowClearRegistry.clearsShadowViewport(this,
-                net.cr512.modernopt.compat.ShadowMapResolution.applied())) {
-            callbackInfo.cancel();
+        } else if (Boolean.getBoolean("modernopt.bench")
+                && modernopt$loggedViewports.add("ran")) {
+            net.cr512.modernopt.ModernOPT.LOG.info(
+                    "[BENCH][SHADOWGL] held clear pass ran: tagged=false fbo=false viewport=false");
         }
     }
 }

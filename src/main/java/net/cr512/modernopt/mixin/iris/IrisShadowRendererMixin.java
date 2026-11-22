@@ -54,9 +54,9 @@ public abstract class IrisShadowRendererMixin {
     private static java.lang.reflect.Method modernopt$bind;
     private static java.lang.reflect.Method modernopt$getGlId;
     private static java.lang.reflect.Method modernopt$renderAll;
-    private static java.lang.reflect.Method modernopt$fullClearMethod;
     private static boolean modernopt$compositeWarned;
     private static boolean modernopt$framebufferLogged;
+    private static boolean modernopt$longTranslationLogged;
     private static long modernopt$lastLog;
 
     private static java.lang.reflect.Method modernopt$getDepthTexture;
@@ -80,20 +80,19 @@ public abstract class IrisShadowRendererMixin {
             GpuProfiler.begin(GpuProfiler.SHADOW);
             return;
         }
-        if (!RenderPipeline.shadowHoldShouldDraw(interval)) {
-            if (modernopt$fullClearRequired(this)) {
-                // Iris wants a full clear this frame; holding would leave the old map in place.
-                // Fall through to a real draw instead of cancelling.
-            } else {
-                RenderPipeline.shadowHoldNoteSkipped();
-                modernopt$holdMatricesForThisCamera();
-                if (modernopt$shouldRefreshShadowComposites()) {
-                    modernopt$renderShadowComposites(this);
-                }
-                modernopt$probeDepth(this, true);
-                callbackInfo.cancel();
-                return;
+        if (RenderPipeline.shadowHoldSkipFrame()) {
+            // The decision was fixed at beginLevelRendering, before the clear passes ran. Using
+            // the same flag here guarantees that a held frame never reaches the shadow pass and
+            // that a drawn frame always does, even when a clear pass or the interval counter has
+            // already moved on by the time this method is called.
+            RenderPipeline.shadowHoldNoteSkipped();
+            modernopt$holdMatricesForThisCamera();
+            if (modernopt$shouldRefreshShadowComposites()) {
+                modernopt$renderShadowComposites(this);
             }
+            modernopt$probeDepth(this, true);
+            callbackInfo.cancel();
+            return;
         }
 
         RenderPipeline.setShadowPassActive(true);
@@ -147,33 +146,20 @@ public abstract class IrisShadowRendererMixin {
                 return;
             }
             Vec3 current = minecraft.gameRenderer.getMainCamera().getPosition();
+            double dx = current.x - modernopt$heldX;
+            double dy = current.y - modernopt$heldY;
+            double dz = current.z - modernopt$heldZ;
+            if (Boolean.getBoolean("modernopt.bench") && !modernopt$longTranslationLogged
+                    && (Math.abs(dx) >= 1.0 || Math.abs(dy) >= 1.0 || Math.abs(dz) >= 1.0)) {
+                modernopt$longTranslationLogged = true;
+                ModernOPT.LOG.warn("[BENCH][SHADOWGL] held translation exceeds one block: "
+                        + "({}, {}, {})", dx, dy, dz);
+            }
             modelView.set(modernopt$heldModelView).translate(
-                    (float) (current.x - modernopt$heldX),
-                    (float) (current.y - modernopt$heldY),
-                    (float) (current.z - modernopt$heldZ));
+                    (float) dx, (float) dy, (float) dz);
             projection.set(modernopt$heldProjection);
         } catch (Throwable throwable) {
             ModernOPT.LOG.warn("[ModernOPT] could not hold the shadow matrices", throwable);
-        }
-    }
-
-    private static boolean modernopt$fullClearRequired(Object shadowRenderer) {
-        try {
-            if (modernopt$targetsField == null) {
-                modernopt$targetsField = shadowRenderer.getClass().getDeclaredField("targets");
-                modernopt$targetsField.setAccessible(true);
-            }
-            Object targets = modernopt$targetsField.get(shadowRenderer);
-            if (targets == null) {
-                return false;
-            }
-            if (modernopt$fullClearMethod == null) {
-                modernopt$fullClearMethod = modernopt$findMethod(targets.getClass(), "isFullClearRequired");
-            }
-            return modernopt$fullClearMethod != null
-                    && Boolean.TRUE.equals(modernopt$fullClearMethod.invoke(targets));
-        } catch (Throwable ignored) {
-            return false;
         }
     }
 
@@ -321,10 +307,6 @@ public abstract class IrisShadowRendererMixin {
             modernopt$heldY = position.y;
             modernopt$heldZ = position.z;
             RenderPipeline.shadowHoldSetCamera(position.x, position.y, position.z);
-            RenderPipeline.shadowHoldSetWorldTime(minecraft.level == null ? Long.MIN_VALUE
-                    : minecraft.level.getDayTime());
-            RenderPipeline.shadowHoldSetCasterRadius(modernopt$shadowDistance(shadowRenderer));
-            RenderPipeline.shadowHoldCaptureEntities(minecraft.level, position.x, position.y, position.z);
             return true;
         } catch (Throwable throwable) {
             ModernOPT.LOG.warn("[ModernOPT] could not remember the shadow matrices", throwable);

@@ -4,7 +4,6 @@
 package net.cr512.modernopt.mixin;
 
 import com.mojang.blaze3d.platform.GlStateManager;
-import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.render.RenderPipeline;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -55,8 +54,7 @@ public abstract class GlStateManagerMixin {
         if ((mask & org.lwjgl.opengl.GL11C.GL_DEPTH_BUFFER_BIT) == 0) {
             return;
         }
-        int interval = Math.max(1, ModernOptSettings.shadowUpdateInterval());
-        if (RenderPipeline.shadowHoldShouldDraw(interval)) {
+        if (!RenderPipeline.shadowHoldSkipFrame()) {
             return;
         }
         int bound = org.lwjgl.opengl.GL11C.glGetInteger(org.lwjgl.opengl.GL30C.GL_DRAW_FRAMEBUFFER_BINDING);
