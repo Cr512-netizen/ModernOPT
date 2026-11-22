@@ -144,7 +144,7 @@ and **Complementary Unbound r5.9.3**: render scale 25-100 %, FSR 1 and FSR 2, co
 holes or LODs over the world), HUD and first person hand at native resolution, and no OpenGL
 errors when the window is resized or the shader pipeline is rebuilt.
 
-The 0.3.1 Kappa validation used a fixed camera at `300.5,63,300.5`, yaw 90, day 6000, 1920x1080,
+The 5.3 Kappa validation used a fixed camera day 6000, 1920x1080,
 render distance 12, on an RTX 5060 Ti 16 GB / Ryzen 7 7800X3D:
 
 | Mode | Frame rate |
