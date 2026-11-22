@@ -5,6 +5,7 @@ package net.cr512.modernopt.mixin.iris;
 
 import net.cr512.modernopt.ModernOPT;
 import net.cr512.modernopt.compat.ShadowClearRegistry;
+import net.cr512.modernopt.compat.ShadowImageRegistry;
 import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.render.GpuProfiler;
 import net.cr512.modernopt.render.RenderPipeline;
@@ -48,10 +49,13 @@ public abstract class IrisShadowRendererMixin {
     private static java.lang.reflect.Field modernopt$halfPlaneField;
     private static java.lang.reflect.Field modernopt$renderMulField;
     private static java.lang.reflect.Field modernopt$entityMulField;
+    private static java.lang.reflect.Field modernopt$compositeField;
     private static java.lang.reflect.Method modernopt$getDepthSourceFb;
     private static java.lang.reflect.Method modernopt$bind;
     private static java.lang.reflect.Method modernopt$getGlId;
+    private static java.lang.reflect.Method modernopt$renderAll;
     private static java.lang.reflect.Method modernopt$fullClearMethod;
+    private static boolean modernopt$compositeWarned;
     private static boolean modernopt$framebufferLogged;
     private static long modernopt$lastLog;
 
@@ -83,6 +87,9 @@ public abstract class IrisShadowRendererMixin {
             } else {
                 RenderPipeline.shadowHoldNoteSkipped();
                 modernopt$holdMatricesForThisCamera();
+                if (modernopt$shouldRefreshShadowComposites()) {
+                    modernopt$renderShadowComposites(this);
+                }
                 modernopt$probeDepth(this, true);
                 callbackInfo.cancel();
                 return;
@@ -167,6 +174,43 @@ public abstract class IrisShadowRendererMixin {
                     && Boolean.TRUE.equals(modernopt$fullClearMethod.invoke(targets));
         } catch (Throwable ignored) {
             return false;
+        }
+    }
+
+    /**
+     * Packs whose shadow pass writes custom images need the shadow composite chain re-run from the
+     * held depth map. Packs that feed no custom images can reuse the complete previous result and
+     * skip the composite cost. When the program hook did not run, keep the conservative
+     * always-refresh behaviour rather than risk stale colour targets.
+     */
+    private static boolean modernopt$shouldRefreshShadowComposites() {
+        return ShadowImageRegistry.feedsShadowImages() || !ShadowImageRegistry.learned();
+    }
+
+    /**
+     * Re-runs Iris' shadow composite chain on a held frame, keeping custom image outputs derived
+     * from the shadow map current. The depth map itself is unchanged.
+     */
+    private static void modernopt$renderShadowComposites(Object shadowRenderer) {
+        try {
+            if (modernopt$compositeField == null) {
+                modernopt$compositeField = shadowRenderer.getClass().getDeclaredField("compositeRenderer");
+                modernopt$compositeField.setAccessible(true);
+            }
+            Object composite = modernopt$compositeField.get(shadowRenderer);
+            if (composite == null) {
+                return;
+            }
+            if (modernopt$renderAll == null) {
+                modernopt$renderAll = composite.getClass().getMethod("renderAll");
+            }
+            modernopt$renderAll.invoke(composite);
+        } catch (Throwable throwable) {
+            if (!modernopt$compositeWarned) {
+                modernopt$compositeWarned = true;
+                ModernOPT.LOG.warn("[ModernOPT] could not re-run Iris' shadow composites on a held "
+                        + "shadow frame; the pack will use its previous composite result", throwable);
+            }
         }
     }
 

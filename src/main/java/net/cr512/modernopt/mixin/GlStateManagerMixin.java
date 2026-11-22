@@ -10,6 +10,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Keeps the OpenGL viewport matched to the render scale target.
@@ -107,5 +108,18 @@ public abstract class GlStateManagerMixin {
     private static void modernopt$repairViewportOnBind(int target, int framebuffer, CallbackInfo callbackInfo) {
         net.cr512.modernopt.render.WorldCpuProfiler.noteFramebufferBind();
         RenderPipeline.onFramebufferBound(target, framebuffer);
+    }
+
+    /**
+     * Records custom-image uniforms declared by a shadow program while Iris compiles it. The
+     * lookup only returns a non-negative location when the shader actually declares that name.
+     */
+    @Inject(method = "_glGetUniformLocation", at = @At("RETURN"))
+    private static void modernopt$noteShadowCustomImage(int program, CharSequence name,
+            CallbackInfoReturnable<Integer> callbackInfo) {
+        if (callbackInfo.getReturnValueI() >= 0) {
+            net.cr512.modernopt.compat.ShadowImageRegistry.note(
+                    name == null ? null : name.toString());
+        }
     }
 }

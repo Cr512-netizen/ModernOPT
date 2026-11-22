@@ -302,12 +302,15 @@ non-living caster moving above 0.5 blocks, or a caster entering/leaving the trac
 immediate rebuild. The first-person player is ignored because it is not drawn into the shadow map.
 Drops, arrows and experience orbs are not tracked; the caster radius is the pack's own entity
 shadow distance rather than a fixed 128 blocks. Iris clears the depth-source framebuffer directly
-and clears its custom shadow images at the start of every level frame, before the shadow pass. Both
-the level-start window and the resolved `GlFramebuffer#getId` are used to suppress those clears on
-held frames; if neither the framebuffer id nor the window is available, the hold disables itself
-instead of flickering. If Iris stopped tagging its shadow clear passes, the hold also disables
-itself with a single warning. The depth map and the `shadowcolor` composite are held together, so a
-held frame samples one complete shadow result rather than a partly refreshed one.
+and clears every custom image at the start of each level frame, before the shadow pass. The depth
+clear is suppressed through the level-start window, with the resolved `GlFramebuffer#getId` as a
+fallback; if neither is available, the hold disables itself instead of flickering. While Iris
+compiles the shadow programs, the hold records which custom images those programs declare (for
+example a voxel or reflection image). Only those images are kept on a reused frame; images the
+shadow pass does not write are still cleared normally, which avoids stale contents and black
+patches. The shadow composite chain is re-run on held frames when at least one such image exists,
+so packs that derive composite outputs from the shadow map stay current. If Iris stopped tagging
+its shadow clear passes, the hold also disables itself with a single warning.
 
 Measured in the same scene as the table above (FSR 1, 50 %, 512 shadow map):
 

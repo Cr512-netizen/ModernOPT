@@ -4,6 +4,7 @@
 package net.cr512.modernopt.mixin.iris;
 
 import net.cr512.modernopt.compat.ShadowClearRegistry;
+import net.cr512.modernopt.compat.ShadowImageRegistry;
 import net.cr512.modernopt.compat.ShadowMapResolution;
 import net.cr512.modernopt.render.RenderPipeline;
 import org.spongepowered.asm.mixin.Mixin;
@@ -30,6 +31,7 @@ public abstract class IrisShadowRenderTargetsMixin {
             require = 0, remap = false)
     private static int modernopt$shadowMapResolution(int resolution) {
         ShadowClearRegistry.clear();
+        ShadowImageRegistry.clear();
         RenderPipeline.shadowHoldResetTargets();
         return ShadowMapResolution.apply(resolution);
     }
