@@ -301,12 +301,13 @@ when the map was drawn, a world-time jump above 40 ticks, a living caster moving
 non-living caster moving above 0.5 blocks, or a caster entering/leaving the tracked radius forces an
 immediate rebuild. The first-person player is ignored because it is not drawn into the shadow map.
 Drops, arrows and experience orbs are not tracked; the caster radius is the pack's own entity
-shadow distance rather than a fixed 128 blocks. The depth-source framebuffer is resolved through
-Iris' `GlFramebuffer#getId`; direct depth clears of that framebuffer are suppressed on held
-frames, and the hold disables itself instead of flickering if the id is unavailable. If Iris stopped
-tagging its shadow clear passes, the hold also disables itself with a single warning.
-Shadow-composite passes are re-run on held frames, so packs that derive `shadowcolor` from the
-depth map keep a current result.
+shadow distance rather than a fixed 128 blocks. Iris clears the depth-source framebuffer directly
+and clears its custom shadow images at the start of every level frame, before the shadow pass. Both
+the level-start window and the resolved `GlFramebuffer#getId` are used to suppress those clears on
+held frames; if neither the framebuffer id nor the window is available, the hold disables itself
+instead of flickering. If Iris stopped tagging its shadow clear passes, the hold also disables
+itself with a single warning. The depth map and the `shadowcolor` composite are held together, so a
+held frame samples one complete shadow result rather than a partly refreshed one.
 
 Measured in the same scene as the table above (FSR 1, 50 %, 512 shadow map):
 

@@ -31,6 +31,8 @@ public final class ShadowClearRegistry {
 
     private static java.lang.reflect.Method clearPassGetFramebuffer;
     private static java.lang.reflect.Method framebufferGetId;
+    private static java.lang.reflect.Field clearPassViewportX;
+    private static java.lang.reflect.Field clearPassViewportY;
 
     private ShadowClearRegistry() {
     }
@@ -67,6 +69,34 @@ public final class ShadowClearRegistry {
             }
             Object id = framebufferGetId.invoke(framebuffer);
             return id instanceof Integer && (Integer) id == shadowFramebuffer;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Fallback for passes that were recreated or never tagged: a clear pass whose viewport is
+     * exactly the shadow-map resolution belongs to the shadow pipeline. This is the same
+     * size-based rule used by the reference held-map implementation.
+     */
+    public static boolean clearsShadowViewport(Object clearPass, int shadowResolution) {
+        if (clearPass == null || shadowResolution <= 0) {
+            return false;
+        }
+        try {
+            if (clearPassViewportX == null) {
+                clearPassViewportX = clearPass.getClass().getDeclaredField("viewportX");
+                clearPassViewportX.setAccessible(true);
+                clearPassViewportY = clearPass.getClass().getDeclaredField("viewportY");
+                clearPassViewportY.setAccessible(true);
+            }
+            Object xSupplier = clearPassViewportX.get(clearPass);
+            Object ySupplier = clearPassViewportY.get(clearPass);
+            if (!(xSupplier instanceof java.util.function.IntSupplier x)
+                    || !(ySupplier instanceof java.util.function.IntSupplier y)) {
+                return false;
+            }
+            return x.getAsInt() == shadowResolution && y.getAsInt() == shadowResolution;
         } catch (Throwable ignored) {
             return false;
         }

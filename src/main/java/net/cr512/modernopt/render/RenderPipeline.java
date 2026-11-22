@@ -458,6 +458,7 @@ public final class RenderPipeline {
     public static void beginWorldFrame() {
         WorldCpuProfiler.noteWorldFrame();
         WorldCpuProfiler.maybeLog();
+        shadowClearWindow = false;
         worldActive = false;
         msrThisFrame = false;
         msr2ThisFrame = false;
@@ -1023,6 +1024,9 @@ public final class RenderPipeline {
     private static int shadowHoldForceReasons;
     private static int shadowStatsInterval = -1;
     private static boolean shadowHoldFboWarned;
+    private static boolean shadowClearWindow;
+    private static boolean shadowClearWindowLogged;
+    private static boolean shadowProbe;
     private static long shadowHoldBlockX;
     private static long shadowHoldBlockY;
     private static long shadowHoldBlockZ;
@@ -1046,6 +1050,32 @@ public final class RenderPipeline {
     private static final double SHADOW_HOLD_OTHER_MOVE_SQ = 0.25;
     /** A large sun/time jump forces a rebuild; normal daylight movement is handled by the interval. */
     private static final long SHADOW_HOLD_TIME_STEP = 40;
+
+    /** Marks the Iris level-start window, where direct shadow-target clears are issued. */
+    public static void beginShadowClearWindow() {
+        shadowClearWindow = true;
+        if (Boolean.getBoolean("modernopt.bench") && !shadowClearWindowLogged) {
+            shadowClearWindowLogged = true;
+            ModernOPT.LOG.info("[BENCH][SHADOWGL] level-start clear window active");
+        }
+    }
+
+    public static void endShadowClearWindow() {
+        shadowClearWindow = false;
+    }
+
+    public static boolean inShadowClearWindow() {
+        return shadowClearWindow;
+    }
+
+    /** Enables the shadow-depth readback used by the {@code !pairs} flicker diagnostic. */
+    public static void setShadowProbe(boolean enabled) {
+        shadowProbe = enabled;
+    }
+
+    public static boolean shadowProbeEnabled() {
+        return shadowProbe;
+    }
 
     /** Whether the shadow map has to be drawn on this frame. */
     public static boolean shadowHoldShouldDraw(int interval) {

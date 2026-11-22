@@ -24,6 +24,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(GlStateManager.class)
 public abstract class GlStateManagerMixin {
 
+    private static long modernopt$lastShadowClearLog;
+
     @Inject(method = "_viewport", at = @At("HEAD"), cancellable = true)
     private static void modernopt$clampWorldViewport(int x, int y, int width, int height, CallbackInfo callbackInfo) {
         net.cr512.modernopt.render.WorldCpuProfiler.noteViewport();
@@ -56,13 +58,42 @@ public abstract class GlStateManagerMixin {
         if (RenderPipeline.shadowHoldShouldDraw(interval)) {
             return;
         }
+        int bound = org.lwjgl.opengl.GL11C.glGetInteger(org.lwjgl.opengl.GL30C.GL_DRAW_FRAMEBUFFER_BINDING);
+        boolean log = Boolean.getBoolean("modernopt.bench");
+        if (log) {
+            long now = System.nanoTime();
+            log = now - modernopt$lastShadowClearLog > 1_000_000_000L;
+            if (log) {
+                modernopt$lastShadowClearLog = now;
+            }
+        }
+        // Iris clears the shadow depth target directly at the start of the level, outside the
+        // tagged ClearPass objects. The level-start window is the reliable place to catch it,
+        // even if the framebuffer id could not be resolved.
+        if (RenderPipeline.inShadowClearWindow()) {
+            if (log) {
+                net.cr512.modernopt.ModernOPT.LOG.info(
+                        "[BENCH][SHADOWCLEAR] held frame: bound={} shadow={} window=true suppressed",
+                        bound, RenderPipeline.shadowHoldFramebuffer());
+            }
+            callbackInfo.cancel();
+            return;
+        }
         int shadowFramebuffer = RenderPipeline.shadowHoldFramebuffer();
         if (shadowFramebuffer <= 0) {
             return;
         }
-        int bound = org.lwjgl.opengl.GL11C.glGetInteger(org.lwjgl.opengl.GL30C.GL_DRAW_FRAMEBUFFER_BINDING);
         if (bound == shadowFramebuffer) {
+            if (log) {
+                net.cr512.modernopt.ModernOPT.LOG.info(
+                        "[BENCH][SHADOWCLEAR] held frame: bound={} shadow={} id suppressed",
+                        bound, shadowFramebuffer);
+            }
             callbackInfo.cancel();
+        } else if (log) {
+            net.cr512.modernopt.ModernOPT.LOG.info(
+                    "[BENCH][SHADOWCLEAR] held frame: bound={} shadow={} NOT suppressed",
+                    bound, shadowFramebuffer);
         }
     }
 

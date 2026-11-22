@@ -48,15 +48,20 @@ public abstract class IrisShadowRendererMixin {
     private static java.lang.reflect.Field modernopt$halfPlaneField;
     private static java.lang.reflect.Field modernopt$renderMulField;
     private static java.lang.reflect.Field modernopt$entityMulField;
-    private static java.lang.reflect.Field modernopt$compositeField;
     private static java.lang.reflect.Method modernopt$getDepthSourceFb;
     private static java.lang.reflect.Method modernopt$bind;
     private static java.lang.reflect.Method modernopt$getGlId;
-    private static java.lang.reflect.Method modernopt$renderAll;
     private static java.lang.reflect.Method modernopt$fullClearMethod;
-    private static boolean modernopt$compositeWarned;
     private static boolean modernopt$framebufferLogged;
     private static long modernopt$lastLog;
+
+    private static java.lang.reflect.Method modernopt$getDepthTexture;
+    private static java.lang.reflect.Method modernopt$getTextureId;
+    private static long modernopt$probeFrame;
+    private static long modernopt$probeDrawnHash;
+    private static int modernopt$probeDrawnFar;
+    private static boolean modernopt$probeHaveDrawn;
+    private static boolean modernopt$probeFailed;
 
     @Inject(method = "renderShadows", at = @At("HEAD"), cancellable = true, require = 0, remap = false)
     private void modernopt$beginShadowPass(CallbackInfo callbackInfo) {
@@ -78,7 +83,7 @@ public abstract class IrisShadowRendererMixin {
             } else {
                 RenderPipeline.shadowHoldNoteSkipped();
                 modernopt$holdMatricesForThisCamera();
-                modernopt$renderShadowComposites(this);
+                modernopt$probeDepth(this, true);
                 callbackInfo.cancel();
                 return;
             }
@@ -101,6 +106,7 @@ public abstract class IrisShadowRendererMixin {
 
     @Inject(method = "renderShadows", at = @At("RETURN"), require = 0, remap = false)
     private void modernopt$endShadowPass(CallbackInfo callbackInfo) {
+        modernopt$probeDepth(this, false);
         if (modernopt$rememberDrawnFrame(this)) {
             RenderPipeline.shadowHoldNoteDrawn();
         } else {
@@ -165,31 +171,90 @@ public abstract class IrisShadowRendererMixin {
     }
 
     /**
-     * Re-runs Iris' shadow composite chain on a held frame. The shadow depth map is unchanged, but
-     * packs that derive shadowcolor/translucent buffers from it still expect those passes to run;
-     * skipping them left the main pass sampling the previous composite result. Packs without
-     * shadow composites pay nothing because the field is null or the method is cheap.
+     * Diagnostic for {@code !pairs}: hashes the shadow depth texture each frame and reports
+     * whether a held frame still contains the exact map the last drawn frame wrote. A cleared or
+     * partially cleared map changes the hash immediately, without depending on screenshot
+     * comparison or on the pack's animated cloud shadows.
      */
-    private static void modernopt$renderShadowComposites(Object shadowRenderer) {
+    private static void modernopt$probeDepth(Object shadowRenderer, boolean held) {
+        if (!RenderPipeline.shadowProbeEnabled() || modernopt$probeFailed) {
+            return;
+        }
         try {
-            if (modernopt$compositeField == null) {
-                modernopt$compositeField = shadowRenderer.getClass().getDeclaredField("compositeRenderer");
-                modernopt$compositeField.setAccessible(true);
+            if (modernopt$targetsField == null) {
+                modernopt$targetsField = shadowRenderer.getClass().getDeclaredField("targets");
+                modernopt$targetsField.setAccessible(true);
             }
-            Object composite = modernopt$compositeField.get(shadowRenderer);
-            if (composite == null) {
+            Object targets = modernopt$targetsField.get(shadowRenderer);
+            if (targets == null) {
                 return;
             }
-            if (modernopt$renderAll == null) {
-                modernopt$renderAll = composite.getClass().getMethod("renderAll");
+            if (modernopt$getDepthTexture == null) {
+                modernopt$getDepthTexture = modernopt$findMethod(targets.getClass(), "getDepthTexture");
             }
-            modernopt$renderAll.invoke(composite);
+            Object depthTexture = modernopt$getDepthTexture.invoke(targets);
+            if (depthTexture == null) {
+                modernopt$probeFailed = true;
+                ModernOPT.LOG.warn("[BENCH][PROBE] Iris exposes no shadow depth texture");
+                return;
+            }
+            if (modernopt$getTextureId == null) {
+                modernopt$getTextureId = modernopt$findMethod(depthTexture.getClass(), "getTextureId");
+            }
+            int texture = (Integer) modernopt$getTextureId.invoke(depthTexture);
+
+            int previousActive = org.lwjgl.opengl.GL11C.glGetInteger(
+                    org.lwjgl.opengl.GL13C.GL_ACTIVE_TEXTURE);
+            org.lwjgl.opengl.GL13C.glActiveTexture(org.lwjgl.opengl.GL13C.GL_TEXTURE0);
+            int previousBinding = org.lwjgl.opengl.GL11C.glGetInteger(
+                    org.lwjgl.opengl.GL11C.GL_TEXTURE_BINDING_2D);
+            try {
+                org.lwjgl.opengl.GL11C.glBindTexture(org.lwjgl.opengl.GL11C.GL_TEXTURE_2D, texture);
+                int width = org.lwjgl.opengl.GL11C.glGetTexLevelParameteri(
+                        org.lwjgl.opengl.GL11C.GL_TEXTURE_2D, 0, org.lwjgl.opengl.GL11C.GL_TEXTURE_WIDTH);
+                int height = org.lwjgl.opengl.GL11C.glGetTexLevelParameteri(
+                        org.lwjgl.opengl.GL11C.GL_TEXTURE_2D, 0, org.lwjgl.opengl.GL11C.GL_TEXTURE_HEIGHT);
+                if (width <= 0 || height <= 0) {
+                    throw new IllegalStateException("depth texture has no size");
+                }
+                java.nio.FloatBuffer pixels = org.lwjgl.BufferUtils.createFloatBuffer(width * height);
+                org.lwjgl.opengl.GL11C.glGetTexImage(org.lwjgl.opengl.GL11C.GL_TEXTURE_2D, 0,
+                        org.lwjgl.opengl.GL11C.GL_DEPTH_COMPONENT, org.lwjgl.opengl.GL11C.GL_FLOAT, pixels);
+                int error = org.lwjgl.opengl.GL11C.glGetError();
+                if (error != org.lwjgl.opengl.GL11C.GL_NO_ERROR) {
+                    throw new IllegalStateException("glGetTexImage failed: 0x"
+                            + Integer.toHexString(error));
+                }
+                long hash = 0xcbf29ce484222325L;
+                int covered = 0;
+                for (int index = 0; index < pixels.limit(); index++) {
+                    float depth = pixels.get(index);
+                    if (depth < 1.0F) {
+                        covered++;
+                    }
+                    hash ^= Math.round(depth * 1_000_000.0);
+                    hash *= 0x100000001b3L;
+                }
+                modernopt$probeFrame++;
+                boolean matches = held && modernopt$probeHaveDrawn
+                        && hash == modernopt$probeDrawnHash;
+                ModernOPT.LOG.info("[BENCH][PROBE] frame={} held={} hash={} covered={} drawnHash={} "
+                                + "drawnCovered={} matchesDrawn={}",
+                        modernopt$probeFrame, held, Long.toHexString(hash), covered,
+                        modernopt$probeHaveDrawn ? Long.toHexString(modernopt$probeDrawnHash) : "-",
+                        modernopt$probeHaveDrawn ? modernopt$probeDrawnFar : -1, matches);
+                if (!held) {
+                    modernopt$probeDrawnHash = hash;
+                    modernopt$probeDrawnFar = covered;
+                    modernopt$probeHaveDrawn = true;
+                }
+            } finally {
+                org.lwjgl.opengl.GL11C.glBindTexture(org.lwjgl.opengl.GL11C.GL_TEXTURE_2D, previousBinding);
+                org.lwjgl.opengl.GL13C.glActiveTexture(previousActive);
+            }
         } catch (Throwable throwable) {
-            if (!modernopt$compositeWarned) {
-                modernopt$compositeWarned = true;
-                ModernOPT.LOG.warn("[ModernOPT] could not re-run Iris' shadow composites on a held "
-                        + "shadow frame; the pack will use its previous composite result", throwable);
-            }
+            modernopt$probeFailed = true;
+            ModernOPT.LOG.warn("[BENCH][PROBE] shadow depth probe failed", throwable);
         }
     }
 

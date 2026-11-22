@@ -140,7 +140,7 @@ public final class SelfTest {
         }
         if (pairState != null) {
             pairFrames++;
-            if (pairFrames >= 10 && pairFrames <= 13) {
+            if (pairFrames >= 40 && pairFrames <= 43) {
                 saveScreenshot(Minecraft.getInstance(), pairState, "p" + pairFrames);
                 screenshotTaken = true;
             }
@@ -213,6 +213,14 @@ public final class SelfTest {
             steerOnce(minecraft);
             logIrisTargets();
         }
+        if (minecraft.screen != null) {
+            // A menu left open by the previous state changes the scene and makes screenshots
+            // compare UI pages instead of shadows.
+            ModernOPT.LOG.info("[BENCH] closing screen {} for the benchmark",
+                    minecraft.screen.getClass().getSimpleName());
+            minecraft.setScreen(null);
+            return;
+        }
 
         if (!minecraft.isWindowActive()) {
             if (!focusWarned) {
@@ -275,6 +283,7 @@ public final class SelfTest {
             convergenceState = STATES[state].contains("!conv") ? STATES[state] : null;
             convergenceFrames = 0;
             pairState = STATES[state].contains("!pairs") ? STATES[state] : null;
+            RenderPipeline.setShadowProbe(pairState != null);
             pairFrames = 0;
             GpuProfiler.reset();
             applyState(state);
@@ -308,6 +317,7 @@ public final class SelfTest {
             sampling = false;
             convergenceState = null;
             pairState = null;
+            RenderPipeline.setShadowProbe(false);
             logStats(STATES[state]);
             pendingShotState = STATES[state];
             pendingShotPhase = "end";

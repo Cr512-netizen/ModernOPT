@@ -57,7 +57,7 @@ State suffixes used by the harness:
 | `!walkN` | Walks forward N/100 blocks per tick (default 0.04). |
 | `!sunset` | Sets the server time to 13000. |
 | `!reload` | Closes and rebuilds the mod's shader programs at state start. |
-| `!pairs` | Saves four consecutive frames (p10..p13) for flicker inspection. |
+| `!pairs` | Saves four consecutive frames (p40..p43) for flicker inspection and logs the shadow depth-texture hash per frame, so a cleared held map is visible even when animated foliage or clouds dominate the screenshots. |
 | `!lanczos3` | Uses the wider Lanczos-3 kernel (all upscalers). |
 | `!nolanczos` | Disables Lanczos reconstruction (all upscalers). |
 
