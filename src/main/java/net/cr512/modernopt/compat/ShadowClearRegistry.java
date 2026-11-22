@@ -29,6 +29,9 @@ public final class ShadowClearRegistry {
     private static boolean verified;
     private static boolean holdDisabled;
 
+    private static java.lang.reflect.Method clearPassGetFramebuffer;
+    private static java.lang.reflect.Method framebufferGetId;
+
     private ShadowClearRegistry() {
     }
 
@@ -42,8 +45,40 @@ public final class ShadowClearRegistry {
         return clearPass != null && SHADOW_PASSES.contains(clearPass);
     }
 
+    /**
+     * Fallback for a pass that was not tagged: compare the framebuffer the pass clears with the
+     * shadow depth-source framebuffer. Covers Iris renaming the creator method or recreating the
+     * pass objects after a flip.
+     */
+    public static boolean clearsShadowFramebuffer(Object clearPass, int shadowFramebuffer) {
+        if (clearPass == null || shadowFramebuffer <= 0) {
+            return false;
+        }
+        try {
+            if (clearPassGetFramebuffer == null) {
+                clearPassGetFramebuffer = clearPass.getClass().getMethod("getFramebuffer");
+            }
+            Object framebuffer = clearPassGetFramebuffer.invoke(clearPass);
+            if (framebuffer == null) {
+                return false;
+            }
+            if (framebufferGetId == null) {
+                framebufferGetId = framebuffer.getClass().getMethod("getId");
+            }
+            Object id = framebufferGetId.invoke(framebuffer);
+            return id instanceof Integer && (Integer) id == shadowFramebuffer;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
     public static boolean isEmpty() {
         return SHADOW_PASSES.isEmpty();
+    }
+
+    /** Number of tagged shadow clear passes, for the bench diagnostic. */
+    public static int size() {
+        return SHADOW_PASSES.size();
     }
 
     public static boolean holdDisabled() {

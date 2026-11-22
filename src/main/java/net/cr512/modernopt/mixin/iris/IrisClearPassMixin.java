@@ -31,6 +31,10 @@ public abstract class IrisClearPassMixin {
         }
         if (ShadowClearRegistry.isShadowPass(this)) {
             callbackInfo.cancel();
+            return;
+        }
+        if (ShadowClearRegistry.clearsShadowFramebuffer(this, RenderPipeline.shadowHoldFramebuffer())) {
+            callbackInfo.cancel();
         }
     }
 }

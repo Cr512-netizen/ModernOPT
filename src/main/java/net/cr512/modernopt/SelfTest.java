@@ -82,6 +82,8 @@ public final class SelfTest {
     /** State name for the convergence screenshots, or {@code null} when not requested. */
     private static String convergenceState;
     private static int convergenceFrames;
+    private static String pairState;
+    private static int pairFrames;
     private static final List<Map<String, Object>> stateResults = new ArrayList<>();
     private static final Map<String, Map<String, Object>> imageMetrics = new LinkedHashMap<>();
     private static final int[] lastShadowCounters = new int[5];
@@ -133,6 +135,13 @@ public final class SelfTest {
             convergenceFrames++;
             if (convergenceFrames == 1 || convergenceFrames == 10 || convergenceFrames == 60) {
                 saveScreenshot(Minecraft.getInstance(), convergenceState, "f" + convergenceFrames);
+                screenshotTaken = true;
+            }
+        }
+        if (pairState != null) {
+            pairFrames++;
+            if (pairFrames >= 10 && pairFrames <= 13) {
+                saveScreenshot(Minecraft.getInstance(), pairState, "p" + pairFrames);
                 screenshotTaken = true;
             }
         }
@@ -265,6 +274,8 @@ public final class SelfTest {
             state = index;
             convergenceState = STATES[state].contains("!conv") ? STATES[state] : null;
             convergenceFrames = 0;
+            pairState = STATES[state].contains("!pairs") ? STATES[state] : null;
+            pairFrames = 0;
             GpuProfiler.reset();
             applyState(state);
             ModernOPT.LOG.info("[BENCH] state {} | {} | {}x{} | MSAA {} | shadows {}",
@@ -296,6 +307,7 @@ public final class SelfTest {
         } else if (offset == STATE_TICKS - 1) {
             sampling = false;
             convergenceState = null;
+            pairState = null;
             logStats(STATES[state]);
             pendingShotState = STATES[state];
             pendingShotPhase = "end";

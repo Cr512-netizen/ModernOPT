@@ -1022,6 +1022,7 @@ public final class RenderPipeline {
     private static int shadowHoldForcedCaster;
     private static int shadowHoldForceReasons;
     private static int shadowStatsInterval = -1;
+    private static boolean shadowHoldFboWarned;
     private static long shadowHoldBlockX;
     private static long shadowHoldBlockY;
     private static long shadowHoldBlockZ;
@@ -1049,6 +1050,7 @@ public final class RenderPipeline {
     /** Whether the shadow map has to be drawn on this frame. */
     public static boolean shadowHoldShouldDraw(int interval) {
         if (!shadowHoldHaveMap || interval <= 1 || shadowHoldForceDraw
+                || shadowHoldFramebuffer <= 0
                 || net.cr512.modernopt.compat.ShadowClearRegistry.holdDisabled()) {
             return true;
         }
@@ -1235,6 +1237,12 @@ public final class RenderPipeline {
         shadowHoldHaveMap = true;
         shadowHoldForceDraw = false;
         shadowHoldDrawnFrames++;
+        if (shadowHoldFramebuffer <= 0 && ModernOptSettings.shadowUpdateInterval() > 1
+                && !shadowHoldFboWarned) {
+            shadowHoldFboWarned = true;
+            ModernOPT.LOG.warn("[ModernOPT] Iris shadow depth FBO id is unavailable; shadow-map "
+                    + "hold is disabled for this session to prevent flicker");
+        }
         if ((shadowHoldForceReasons & SHADOW_FORCE_CAMERA) != 0) {
             shadowHoldForcedCamera++;
         }

@@ -53,7 +53,9 @@ public abstract class IrisShadowRendererMixin {
     private static java.lang.reflect.Method modernopt$bind;
     private static java.lang.reflect.Method modernopt$getGlId;
     private static java.lang.reflect.Method modernopt$renderAll;
+    private static java.lang.reflect.Method modernopt$fullClearMethod;
     private static boolean modernopt$compositeWarned;
+    private static boolean modernopt$framebufferLogged;
     private static long modernopt$lastLog;
 
     @Inject(method = "renderShadows", at = @At("HEAD"), cancellable = true, require = 0, remap = false)
@@ -70,11 +72,16 @@ public abstract class IrisShadowRendererMixin {
             return;
         }
         if (!RenderPipeline.shadowHoldShouldDraw(interval)) {
-            RenderPipeline.shadowHoldNoteSkipped();
-            modernopt$holdMatricesForThisCamera();
-            modernopt$renderShadowComposites(this);
-            callbackInfo.cancel();
-            return;
+            if (modernopt$fullClearRequired(this)) {
+                // Iris wants a full clear this frame; holding would leave the old map in place.
+                // Fall through to a real draw instead of cancelling.
+            } else {
+                RenderPipeline.shadowHoldNoteSkipped();
+                modernopt$holdMatricesForThisCamera();
+                modernopt$renderShadowComposites(this);
+                callbackInfo.cancel();
+                return;
+            }
         }
 
         RenderPipeline.setShadowPassActive(true);
@@ -134,6 +141,26 @@ public abstract class IrisShadowRendererMixin {
             projection.set(modernopt$heldProjection);
         } catch (Throwable throwable) {
             ModernOPT.LOG.warn("[ModernOPT] could not hold the shadow matrices", throwable);
+        }
+    }
+
+    private static boolean modernopt$fullClearRequired(Object shadowRenderer) {
+        try {
+            if (modernopt$targetsField == null) {
+                modernopt$targetsField = shadowRenderer.getClass().getDeclaredField("targets");
+                modernopt$targetsField.setAccessible(true);
+            }
+            Object targets = modernopt$targetsField.get(shadowRenderer);
+            if (targets == null) {
+                return false;
+            }
+            if (modernopt$fullClearMethod == null) {
+                modernopt$fullClearMethod = modernopt$findMethod(targets.getClass(), "isFullClearRequired");
+            }
+            return modernopt$fullClearMethod != null
+                    && Boolean.TRUE.equals(modernopt$fullClearMethod.invoke(targets));
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 
@@ -274,12 +301,20 @@ public abstract class IrisShadowRendererMixin {
             modernopt$bind.invoke(framebuffer);
             try {
                 if (modernopt$getGlId == null) {
-                    modernopt$getGlId = modernopt$findMethod(framebuffer.getClass(), "getGlId");
+                    modernopt$getGlId = modernopt$findMethod(framebuffer.getClass(), "getId");
+                    if (modernopt$getGlId == null) {
+                        modernopt$getGlId = modernopt$findMethod(framebuffer.getClass(), "getGlId");
+                    }
                 }
                 if (modernopt$getGlId != null) {
                     Object id = modernopt$getGlId.invoke(framebuffer);
                     if (id instanceof Integer) {
                         RenderPipeline.shadowHoldSetFramebuffer((Integer) id);
+                        if (Boolean.getBoolean("modernopt.bench") && !modernopt$framebufferLogged) {
+                            modernopt$framebufferLogged = true;
+                            ModernOPT.LOG.info("[BENCH][SHADOWGL] shadow depth FBO id={}, tagged clears={}",
+                                    id, ShadowClearRegistry.size());
+                        }
                     }
                 }
             } catch (Throwable ignored) {
