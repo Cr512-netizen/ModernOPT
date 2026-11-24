@@ -70,8 +70,8 @@ public abstract class IrisShadowRendererMixin {
     @Inject(method = "renderShadows", at = @At("HEAD"), cancellable = true, require = 0, remap = false)
     private void modernopt$beginShadowPass(CallbackInfo callbackInfo) {
         ShadowClearRegistry.verifyAfterPipelineLoad();
-        int interval = Math.max(1, ModernOptSettings.shadowUpdateInterval());
-        boolean holdActive = interval > 1 && !ShadowClearRegistry.holdDisabled();
+        double interval = Math.max(1.0, ModernOptSettings.shadowUpdateInterval());
+        boolean holdActive = interval > 1.0 && !ShadowClearRegistry.holdDisabled();
         if (!holdActive) {
             // Every-frame shadows are plain Iris behaviour: no hold and no matrix swizzling.
             // The matrices are still captured at RETURN so switching the interval to 2 later

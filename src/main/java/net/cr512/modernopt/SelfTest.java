@@ -808,6 +808,31 @@ public final class SelfTest {
         return end == 0 ? 0 : Integer.parseInt(value.substring(0, end));
     }
 
+    /** First decimal number in the string, or 0. */
+    private static double decimal(String value) {
+        int end = 0;
+        boolean dot = false;
+        while (end < value.length()) {
+            char c = value.charAt(end);
+            if (Character.isDigit(c)) {
+                end++;
+            } else if (c == '.' && !dot) {
+                dot = true;
+                end++;
+            } else {
+                break;
+            }
+        }
+        if (end == 0) {
+            return 0.0;
+        }
+        try {
+            return Double.parseDouble(value.substring(0, end));
+        } catch (NumberFormatException ignored) {
+            return 0.0;
+        }
+    }
+
     private static void applyState(int index) {
         String name = STATES[index];
         int dash = name.indexOf('-');
@@ -851,12 +876,12 @@ public final class SelfTest {
         ModernOptConfig.MSR2_LANCZOS3.set(name.contains("!lanczos3"));
         int shadowIndex = name.indexOf("!shadow");
         if (shadowIndex >= 0) {
-            int shadowInterval = digits(name.substring(shadowIndex + 7));
-            if (shadowInterval >= 1 && shadowInterval <= 8) {
+            double shadowInterval = decimal(name.substring(shadowIndex + 7));
+            if (shadowInterval >= 1.0 && shadowInterval <= 8.0) {
                 ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(shadowInterval);
             }
         } else {
-            ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(1);
+            ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(1.0);
         }
         int panIndex = name.indexOf("!pan");
         if (panIndex >= 0) {

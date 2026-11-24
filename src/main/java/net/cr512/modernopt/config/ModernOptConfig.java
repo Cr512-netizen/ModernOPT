@@ -29,7 +29,7 @@ public final class ModernOptConfig {
 
     // Shader pack shadow map
     public static final ModConfigSpec.IntValue SHADOW_MAP_RESOLUTION;
-    public static final ModConfigSpec.IntValue SHADOW_UPDATE_INTERVAL;
+    public static final ModConfigSpec.DoubleValue SHADOW_UPDATE_INTERVAL;
     public static final ModConfigSpec.IntValue HUD_SCALE_PERCENT;
     public static final ModConfigSpec.BooleanValue SCALE_WHOLE_WINDOW;
 
@@ -98,11 +98,13 @@ public final class ModernOptConfig {
                 .defineInRange("shadowMapResolution", 2048, 512, 4096);
         SHADOW_UPDATE_INTERVAL = b.comment(
                         "Rebuild the shadow map every N frames instead of every frame.",
-                        "1 keeps the pack's normal behaviour. 2-8 skip the whole world-from-the-sun pass on",
-                        "the frames in between and keep sampling the previous map. The held light matrix is",
-                        "translated with the camera so shadows stay attached to the world; a large camera",
-                        "move or a sun/time jump rebuilds the map immediately.")
-                .defineInRange("updateInterval", 2, 1, 8);
+                        "1 keeps the pack's normal behaviour. Values above 1 skip the whole",
+                        "world-from-the-sun pass on the frames in between and keep sampling the previous",
+                        "map. Fractional values are supported in 0.5 steps: 1.5 alternates two draws",
+                        "and one skip (draw, draw, skip), 2.5 alternates three frames in a 2/1 pattern,",
+                        "and so on. The held matrix is anchored to the drawn frame and translated with",
+                        "the camera, so shadows stay attached to the world.")
+                .defineInRange("updateInterval", 2.0, 1.0, 8.0);
         b.pop();
 
         b.comment("Anti-aliasing.").push("antialiasing");

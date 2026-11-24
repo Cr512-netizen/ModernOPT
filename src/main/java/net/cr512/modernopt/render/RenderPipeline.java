@@ -458,6 +458,7 @@ public final class RenderPipeline {
     public static void beginWorldFrame() {
         WorldCpuProfiler.noteWorldFrame();
         WorldCpuProfiler.maybeLog();
+        shadowFrameToken++;
         shadowClearWindow = false;
         shadowHoldSkipFrame = false;
         worldActive = false;
@@ -500,7 +501,7 @@ public final class RenderPipeline {
 
         // Fast settings cache - only refresh when actually changed
         cacheSettings();
-        int shadowInterval = ModernOptSettings.shadowUpdateInterval();
+        double shadowInterval = ModernOptSettings.shadowUpdateInterval();
         if (shadowInterval != shadowStatsInterval) {
             shadowStatsInterval = shadowInterval;
             // Interval changes are a policy change: drop the held map and matrices so the next
@@ -1011,7 +1012,7 @@ public final class RenderPipeline {
     // Shadow map hold (update every N frames)
     // ------------------------------------------------------------------
 
-    private static int shadowHoldFrames;
+    private static double shadowHoldCarry;
     private static boolean shadowHoldHaveMap;
     private static int shadowHoldFramebuffer = -1;
     private static int shadowHoldDrawnFrames;
@@ -1020,11 +1021,13 @@ public final class RenderPipeline {
     private static int shadowHoldForcedTime;
     private static int shadowHoldForcedCaster;
     private static int shadowHoldForceReasons;
-    private static int shadowStatsInterval = -1;
+    private static double shadowStatsInterval = -1.0;
     private static boolean shadowHoldFboWarned;
     private static boolean shadowClearWindow;
     private static boolean shadowClearWindowLogged;
     private static boolean shadowHoldSkipFrame;
+    private static long shadowFrameToken;
+    private static long shadowDecisionToken = -1L;
     private static boolean shadowProbe;
     private static long shadowHoldBlockX;
     private static long shadowHoldBlockY;
@@ -1058,12 +1061,38 @@ public final class RenderPipeline {
         // must force the draw on this frame; otherwise a held map is translated by more than one
         // block for a frame and the shadows visibly jump.
         shadowHoldCheckCameraNow();
-        shadowHoldSkipFrame = !shadowHoldShouldDraw(
-                Math.max(1, ModernOptSettings.shadowUpdateInterval()));
+        if (shadowDecisionToken != shadowFrameToken) {
+            shadowDecisionToken = shadowFrameToken;
+            decideShadowFrame();
+        }
         shadowClearWindow = true;
         if (Boolean.getBoolean("modernopt.bench") && !shadowClearWindowLogged) {
             shadowClearWindowLogged = true;
             ModernOPT.LOG.info("[BENCH][SHADOWGL] level-start clear window active");
+        }
+    }
+
+    /**
+     * Fractional update scheduler. Each frame adds one to a carry and rebuilds when the carry
+     * reaches the configured average interval; the surplus is kept for the next frame. An
+     * interval of 1.5 therefore produces draw, draw, skip, draw, draw, skip. Integer intervals
+     * keep their old every-N-frames cadence.
+     */
+    private static void decideShadowFrame() {
+        double interval = Math.max(1.0, ModernOptSettings.shadowUpdateInterval());
+        boolean forced = !shadowHoldHaveMap || shadowHoldForceDraw || shadowHoldFramebuffer <= 0
+                || net.cr512.modernopt.compat.ShadowClearRegistry.holdDisabled()
+                || interval <= 1.0;
+        double next = shadowHoldCarry + 1.0;
+        if (forced) {
+            shadowHoldCarry = 0.0;
+            shadowHoldSkipFrame = false;
+        } else if (next + 1.0e-9 >= interval) {
+            shadowHoldCarry = Math.max(0.0, next - interval);
+            shadowHoldSkipFrame = false;
+        } else {
+            shadowHoldCarry = next;
+            shadowHoldSkipFrame = true;
         }
     }
 
@@ -1100,19 +1129,6 @@ public final class RenderPipeline {
     /** Frame-global shadow decision, fixed before the clear passes and the shadow pass run. */
     public static boolean shadowHoldSkipFrame() {
         return shadowHoldSkipFrame;
-    }
-
-    /** Whether the shadow map has to be drawn on this frame. */
-    public static boolean shadowHoldShouldDraw(int interval) {
-        if (!shadowHoldHaveMap || interval <= 1 || shadowHoldForceDraw
-                || shadowHoldFramebuffer <= 0
-                || net.cr512.modernopt.compat.ShadowClearRegistry.holdDisabled()) {
-            return true;
-        }
-        // Hold exactly the configured number of frames, like a plain "update every N frames"
-        // option. The old extended static budget (up to eight frames) made the sun and small
-        // camera moves visibly step, even though the map was technically still valid.
-        return shadowHoldFrames >= interval - 1;
     }
 
     /** Camera position of the last frame that actually drew the map. */
@@ -1288,13 +1304,11 @@ public final class RenderPipeline {
 
     /** Marks a frame that skipped the shadow pass. */
     public static void shadowHoldNoteSkipped() {
-        shadowHoldFrames++;
         shadowHoldSkippedFrames++;
     }
 
     /** Marks a frame that drew the shadow map. */
     public static void shadowHoldNoteDrawn() {
-        shadowHoldFrames = 0;
         shadowHoldHaveMap = true;
         shadowHoldForceDraw = false;
         shadowHoldDrawnFrames++;
@@ -1321,7 +1335,7 @@ public final class RenderPipeline {
         int drawn = shadowHoldDrawnFrames;
         int held = shadowHoldSkippedFrames;
         boolean disabled = net.cr512.modernopt.compat.ShadowClearRegistry.holdDisabled();
-        int interval = disabled ? 1 : (shadowStatsInterval > 0
+        double interval = disabled ? 1.0 : (shadowStatsInterval > 0.0
                 ? shadowStatsInterval : ModernOptSettings.shadowUpdateInterval());
         return new ShadowHoldStats(drawn, held, drawn + held, interval,
                 shadowHoldForcedCamera, shadowHoldForcedTime, shadowHoldForcedCaster);
@@ -1363,7 +1377,7 @@ public final class RenderPipeline {
      * rebuild the map.
      */
     public static void shadowHoldResetTargets() {
-        shadowHoldFrames = 0;
+        shadowHoldCarry = 0.0;
         shadowHoldHaveMap = false;
         shadowHoldForceDraw = false;
         shadowHoldFramebuffer = -1;

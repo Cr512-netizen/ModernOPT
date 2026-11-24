@@ -22,7 +22,7 @@ public final class ModernOptSettings {
     private static volatile UpscalerType upscaler = UpscalerType.FSR1;
     private static volatile MsaaLevel msaa = MsaaLevel.OFF;
     private static volatile int shadowMapResolution = 2048;
-    private static volatile int shadowUpdateInterval = 2;
+    private static volatile double shadowUpdateInterval = 2.0;
     private static volatile boolean fp16World = false;
     private static volatile int hudScalePercent = 100;
     private static volatile boolean scaleWholeWindow;
@@ -146,8 +146,8 @@ public final class ModernOptSettings {
         return shadowMapResolution;
     }
 
-    /** Rebuild the shadow map every N frames (1 = every frame). */
-    public static int shadowUpdateInterval() {
+    /** Average number of frames per shadow rebuild (1 = every frame, 1.5 = two draws then a skip). */
+    public static double shadowUpdateInterval() {
         return shadowUpdateInterval;
     }
     /** Render the pre-upscale image into an RGBA16F buffer instead of RGBA8. */

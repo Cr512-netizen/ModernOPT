@@ -129,10 +129,13 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
         OptionGroupBuilder shadows = builder.createOptionGroup()
                 .setName(Component.translatable("modernopt.sodium.group.shadows"))
                 .addOption(integerOption(builder, SHADOW_INTERVAL, "modernopt.option.shadowUpdateInterval",
-                        ModernOptConfig.SHADOW_UPDATE_INTERVAL.getDefault(), 1, 8,
-                        value -> { ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(value); ModernOptSettings.refresh(); },
-                        () -> ModernOptConfig.SHADOW_UPDATE_INTERVAL.get(),
-                        value -> Component.literal(value <= 1 ? "every frame" : "every " + value + " frames")));
+                        4, 2, 16,
+                        value -> {
+                            ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(value / 2.0);
+                            ModernOptSettings.refresh();
+                        },
+                        () -> (int) Math.round(ModernOptConfig.SHADOW_UPDATE_INTERVAL.get() * 2.0),
+                        value -> Component.literal(shadowIntervalLabel(value / 2.0))));
         page.addOptionGroup(shadows);
 
         OptionGroupBuilder antialiasing = builder.createOptionGroup()
@@ -205,6 +208,16 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
                 .setImpact(OptionImpact.HIGH)
                 .setBinding(setter, getter)
                 .setStorageHandler(SAVE);
+    }
+
+    private static String shadowIntervalLabel(double value) {
+        if (value <= 1.0) {
+            return "every frame";
+        }
+        String text = value == Math.rint(value)
+                ? Integer.toString((int) value)
+                : String.format(java.util.Locale.ROOT, "%.1f", value);
+        return "every " + text + " frames";
     }
 
     private static <E extends Enum<E>> String label(E value) {

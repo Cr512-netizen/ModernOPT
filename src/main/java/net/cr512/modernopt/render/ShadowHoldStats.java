@@ -10,7 +10,7 @@ package net.cr512.modernopt.render;
  * is part of the snapshot, so a line like {@code held 552/1661 (33%) interval=2} can be read
  * without guessing which mode produced it.</p>
  */
-public record ShadowHoldStats(int drawn, int held, int total, int interval,
+public record ShadowHoldStats(int drawn, int held, int total, double interval,
                               int forcedCamera, int forcedTime, int forcedCaster) {
 
     public double drawnShare() {

@@ -25,7 +25,7 @@
   "modernopt.option.overlay": "Status overlay",
   "modernopt.option.enabled.tooltip": "Master switch for all ModernOPT render changes. Turning it off restores the game's own rendering exactly.",
   "modernopt.option.disable.tooltip": "Fully disables ModernOPT: no target swap, no upscaling and no shadow changes until it is enabled again.",
-  "modernopt.option.shadowUpdateInterval.tooltip": "Rebuild the shadow map every N frames instead of every frame. 1 is the normal behaviour; 2-8 skip the shadow pass on the frames in between. The held matrix is moved with the camera so shadows stay anchored.",
+  "modernopt.option.shadowUpdateInterval.tooltip": "Average number of frames per shadow rebuild. 1 is the normal behaviour; 1.5 alternates two draws and one skip, 2 skips every other frame, up to 8. The held matrix is anchored to the drawn frame and moved with the camera so shadows stay attached.",
   "modernopt.option.renderScale.tooltip": "Internal world resolution. Lower values render fewer pixels and upscale the result.",
   "modernopt.option.dynamicMovingResolution.tooltip": "While the camera moves or looks around, multiply the internal resolution by 0.85 and round to the nearest percent (70% -> 60%). Restores after the camera has been still for a moment.",
   "modernopt.option.upscaler.tooltip": "Filter used to reconstruct the full-resolution image. MSR adds temporal accumulation and works with Iris shader packs; MSAA is forced off.",

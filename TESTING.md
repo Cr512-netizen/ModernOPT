@@ -51,7 +51,7 @@ State suffixes used by the harness:
 
 | Suffix | Meaning |
 | --- | --- |
-| `!shadowN` | Shadow update interval N (1-8). Without it the benchmark forces interval 1. |
+| `!shadowX` | Average shadow update interval X (1.0-8.0, 0.5 steps, e.g. `!shadow1.5`). Without it the benchmark forces interval 1. |
 | `!conv` | Saves frames 1, 10 and 60 and computes convergence/detail metrics. |
 | `!panN` | Rotates the camera N degrees per tick (default 2). |
 | `!walkN` | Walks forward N/100 blocks per tick (default 0.04). |

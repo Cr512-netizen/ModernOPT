@@ -335,13 +335,25 @@ public class ModernOptConfigScreen extends Screen {
                 value -> shadowSizes[value] + " x " + shadowSizes[value]));
 
         addRight(new IntSlider(0, 0, COLUMN_WIDTH, 20,
-                Component.translatable("modernopt.option.shadowUpdateInterval"), 1, 8,
-                ModernOptSettings.shadowUpdateInterval(),
-                value -> {
-                    ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(value);
+                Component.translatable("modernopt.option.shadowUpdateInterval"), 0, 14,
+                (int) Math.round((ModernOptSettings.shadowUpdateInterval() - 1.0) * 2.0),
+                step -> {
+                    ModernOptConfig.SHADOW_UPDATE_INTERVAL.set(1.0 + step * 0.5);
                     ModernOptSettings.refresh();
                 },
-                value -> value <= 1 ? "every frame" : "every " + value + " frames"));
+                ModernOptConfigScreen::shadowIntervalLabel));
+    }
+
+    /** One slider step is half a frame. Integer values are shown without a trailing ".0". */
+    private static String shadowIntervalLabel(int step) {
+        double value = 1.0 + step * 0.5;
+        if (value <= 1.0) {
+            return "every frame";
+        }
+        String text = value == Math.rint(value)
+                ? Integer.toString((int) value)
+                : String.format(java.util.Locale.ROOT, "%.1f", value);
+        return "every " + text + " frames";
     }
 
     private static int shadowResolutionIndex(int[] sizes, int value) {

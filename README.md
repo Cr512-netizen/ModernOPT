@@ -293,9 +293,12 @@ win - see the benchmark notes below.
 
 ### Shadow update interval
 
-`shadows.updateInterval` (1-8, default 2) rebuilds the shadow map every N frames instead of every
-frame. The frames in between skip the whole second world pass from the sun and keep sampling the
-previous map. The shadow lookup matrix stays anchored to the frame that drew the map: Iris rebuilds
+`shadows.updateInterval` (1.0-8.0 in 0.5 steps, default 2.0) rebuilds the shadow map every N frames
+on average instead of every frame. Fractional values alternate the gaps: 1.5 produces two draws and
+one skip (draw, draw, skip), while 2.5 alternates a two-frame and a one-frame gap. Use 1.5 when the
+two-frame cadence is visible: it keeps the longest gap at one held frame while still skipping one
+shadow pass in three. The frames in between skip the whole second world pass from the sun and keep
+sampling the previous map. The shadow lookup matrix stays anchored to the frame that drew the map: Iris rebuilds
 it from the drawn camera and translates it by the current camera delta after the shadow-map snap.
 The drawn frame's sun angle is kept for the lookup as well, so a moving sun cannot rotate the
 shadow pattern between rebuilds. A camera leaving the integer block it occupied when the map was
