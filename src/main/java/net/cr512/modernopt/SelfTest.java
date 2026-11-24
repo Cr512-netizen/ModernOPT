@@ -923,15 +923,18 @@ public final class SelfTest {
             cameraType = net.minecraft.client.CameraType.THIRD_PERSON_FRONT;
         }
         Minecraft.getInstance().options.setCameraType(cameraType);
-        switch (mode) {
-            case "OFF" -> {
-                ModernOptConfig.ENABLED.set(false);
-                ModernOptConfig.SHOW_OVERLAY.set(false);
+        if ("OFF".equals(mode)) {
+            ModernOptConfig.ENABLED.set(false);
+            ModernOptConfig.SHOW_OVERLAY.set(false);
+        } else {
+            UpscalerType selected = UpscalerType.BILINEAR;
+            for (UpscalerType candidate : UpscalerType.values()) {
+                if (candidate.name().equalsIgnoreCase(mode)) {
+                    selected = candidate;
+                    break;
+                }
             }
-            case "MSR2" -> configure(percent, UpscalerType.MSR2);
-            case "MSR" -> configure(percent, UpscalerType.MSR);
-            case "FSR1" -> configure(percent, UpscalerType.FSR1);
-            default -> configure(percent, UpscalerType.BILINEAR);
+            configure(percent, selected);
         }
         ModernOptSettings.refresh();
         if (name.contains("!reload")) {

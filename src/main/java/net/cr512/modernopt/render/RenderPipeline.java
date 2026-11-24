@@ -331,7 +331,10 @@ public final class RenderPipeline {
         if (requested == UpscalerType.MSR && !msrDepthValidThisFrame) {
             return withLanczos("MSR (no depth)");
         }
-        return withLanczos(requested.label());
+        if (requested == UpscalerType.FSR1 || requested == UpscalerType.MSR2) {
+            return withLanczos(requested.label());
+        }
+        return requested.label();
     }
 
     /** Shows the shared Lanczos toggle in the overlay and benchmark state label. */
@@ -638,6 +641,11 @@ public final class RenderPipeline {
         boolean settingsChanged = requested != lastUpscaler
                 || cachedRenderScale != lastUpscalerPercent
                 || cachedSsaa != lastUpscalerSsaa;
+        if (requested != lastUpscaler) {
+            ModernOPT.LOG.info("[ModernOPT] upscaler {} -> {} (Lanczos {})",
+                    lastUpscaler, requested,
+                    ModernOptSettings.msr2Lanczos() ? "on" : "off");
+        }
         rememberUpscalerSettings(requested);
         if (!msrWanted) {
             resetHistory();
@@ -1712,8 +1720,9 @@ public final class RenderPipeline {
         boolean fxaa = cachedFxaa;
         ShaderLibrary library = shaders;
         UpscalerType upscaler = cachedUpscaler;
-        boolean useLanczos = ModernOptSettings.msr2Lanczos()
-                && library != null && library.hasLanczos();
+        boolean lanczosAvailable = library != null && library.hasLanczos();
+        boolean useLanczos = (upscaler == UpscalerType.FSR1 || upscaler == UpscalerType.MSR)
+                && ModernOptSettings.msr2Lanczos() && lanczosAvailable;
         float lanczosRadius = ModernOptSettings.msr2Lanczos3() ? 3.0F : 2.0F;
         boolean fsr1Path = !cachedSsaa
                 && (upscaler == UpscalerType.FSR1 || upscaler == UpscalerType.MSR);
@@ -1765,9 +1774,8 @@ public final class RenderPipeline {
                     }
                 }
             } else {
-                ShaderInstance filter = useLanczos ? library.lanczos
-                        : cachedSsaa ? library.box : filterFor(library, upscaler);
-                float filterParam = useLanczos ? lanczosRadius : softness;
+                ShaderInstance filter = cachedSsaa ? library.box : filterFor(library, upscaler);
+                float filterParam = softness;
                 if (fxaa) {
                     TextureTarget post = ensureIntermediates(outWidth, outHeight, false);
                     post.bindWrite(true);

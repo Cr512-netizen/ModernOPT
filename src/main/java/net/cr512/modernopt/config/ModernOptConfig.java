@@ -128,13 +128,12 @@ public final class ModernOptConfig {
         MSR2_ENABLED = b.comment("Legacy switch. MSR2 is selected through renderScale.upscaler; this value no longer overrides another upscaler.")
                 .define("enabled", false);
         MSR2_LANCZOS = b.comment(
-                        "Use Lanczos-2 to reconstruct the low-resolution current frame. Applies to every",
-                        "upscaler, not only MSR2; MSR2 uses it inside its temporal pass.",
-                        "Sharper than bilinear on grass, foliage and block edges, but can ring on high-contrast edges.",
-                        "Turn it off if the image shimmers or shows halos.")
+                        "Use Lanczos-2 instead of EASU for FSR 1 and MSR, and inside MSR2's temporal",
+                        "reconstruction. Bilinear, Nearest and Soft keep their own kernel.",
+                        "Sharper than EASU on grass, foliage and block edges, but can ring on high-contrast edges.")
                 .define("lanczos", true);
         MSR2_LANCZOS3 = b.comment(
-                        "Use the wider Lanczos-3 kernel instead of Lanczos-2 for the current-frame reconstruction.",
+                        "Use the wider Lanczos-3 kernel instead of Lanczos-2 for FSR 1, MSR and MSR2.",
                         "More detail and sharper texture response, at the cost of 36 taps instead of 16 and more ringing.",
                         "Only used when msr2.lanczos is on.")
                 .define("lanczos3", false);
