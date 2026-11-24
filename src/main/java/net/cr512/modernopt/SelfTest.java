@@ -68,6 +68,7 @@ public final class SelfTest {
     /** Benchmark-only forward walk, in blocks per tick ({@code 0} keeps the player still). */
     private static double benchWalkBlocksPerTick;
     private static boolean worldLogged;
+    private static boolean benchMob;
     private static boolean sampling;
     private static boolean windowWarned;
     private static boolean finished;
@@ -292,6 +293,16 @@ public final class SelfTest {
                     RenderPipeline.internalWidth(), RenderPipeline.internalHeight(),
                     RenderPipeline.activeSamples(), ModernOptSettings.shadowUpdateInterval());
             return;
+        }
+
+        if (benchMob && minecraft.player != null && minecraft.player.connection != null) {
+            double angle = ticks * 0.08;
+            net.minecraft.world.phys.Vec3 look = minecraft.player.getLookAngle();
+            double batX = minecraft.player.getX() + look.x * 5.0 + Math.cos(angle) * 1.5;
+            double batY = minecraft.player.getY() + 1.5 + Math.sin(ticks * 0.12) * 0.8;
+            double batZ = minecraft.player.getZ() + look.z * 5.0 + Math.sin(angle) * 1.5;
+            minecraft.player.connection.sendCommand(String.format(java.util.Locale.ROOT,
+                    "tp @e[type=minecraft:pig,limit=1] %.3f %.3f %.3f", batX, batY, batZ));
         }
 
         if (offset == WARMUP_TICKS) {
@@ -935,6 +946,15 @@ public final class SelfTest {
                 }
             }
             configure(percent, selected);
+        }
+        benchMob = name.contains("!mob");
+        if (benchMob && Minecraft.getInstance().player != null
+                && Minecraft.getInstance().player.connection != null) {
+            Minecraft.getInstance().player.connection.sendCommand("gamerule sendCommandFeedback false");
+            Minecraft.getInstance().player.connection.sendCommand("kill @e[type=minecraft:pig]");
+            Minecraft.getInstance().player.connection.sendCommand(
+                    "summon minecraft:pig ~4 ~1.5 ~4 {NoAI:1b,NoGravity:1b,Silent:1b,"
+                            + "Invulnerable:1b,PersistenceRequired:1b}");
         }
         ModernOptSettings.refresh();
         if (name.contains("!reload")) {

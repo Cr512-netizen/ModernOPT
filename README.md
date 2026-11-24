@@ -67,6 +67,10 @@ Key properties:
   MSR2 the same taps supply the min/max box for temporal acceptance, so the acceptance window is
   exactly as wide as the reconstruction footprint; when scene depth is unavailable the per-tap
   depth fetch is skipped, not just its weight.
+- Moving entities and particles are handled with a reactive history mask: when the clamped
+  history differs from the current neighbourhood, the history contribution drops smoothly. This
+  rejects the old colour before it can remain behind as a second, flying copy of a mob or the
+  player's body.
 - Negative values and NaNs are clamped before `imageStore`, so one bad frame cannot poison the
   ping-pong history.
 - `msr2.lanczos3` switches to the wider Lanczos-3 kernel: sharper texture response and more
@@ -173,7 +177,8 @@ Key points:
 * The upscalers are presentation filters. They cannot recover detail that was never rendered,
   which is why FSR 1 looks best at 67-85 % scale.
 * MSR and MSR2 use camera-reconstructed motion vectors. They have no per-object velocities, so fast
-  moving entities and particles can ghost briefly before the neighbourhood clamp rejects them.
+  moving entities and particles can still soften or ghost at the edges; MSR2's reactive history mask
+  rejects most of the trail, but it is not a replacement for true object motion vectors.
   Under an Iris shader pack, depth is read from the pack's gbuffer when Iris exposes it. MSR falls
   back to rotation-only reprojection for that frame and logs a warning once; MSR2 uses the scaled
   target's depth instead.

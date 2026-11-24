@@ -302,6 +302,13 @@ void main() {
     float historyBlend = HistoryWeight;
     if (!valid || !depthValid) {
         historyBlend = 0.0;
+    } else {
+        // Reactive mask for moving objects. Camera-only reprojection cannot follow a mob,
+        // particle or the player's own body; without this the old colour stays behind and
+        // reads as a second, flying copy of the entity. Reject history where the clamped
+        // previous colour differs from the current neighbourhood by more than sensor noise.
+        float historyDelta = length(historyYCoCg - currentYCoCg);
+        historyBlend *= 1.0 - smoothstep(0.08, 0.35, historyDelta);
     }
 
     vec3 outputColor = yCoCgToRgb(mix(currentYCoCg, historyYCoCg, historyBlend));

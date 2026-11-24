@@ -58,6 +58,7 @@ State suffixes used by the harness:
 | `!sunset` | Sets the server time to 13000. |
 | `!reload` | Closes and rebuilds the mod's shader programs at state start. |
 | `!pairs` | Saves four consecutive frames (p40..p43) for flicker inspection and logs the shadow depth-texture hash plus the shadow-fed custom images kept on held frames, so a cleared map or a dropped custom image is visible even when animated foliage or clouds dominate the screenshots. |
+| `!mob` | Summons a pig in front of the player and moves it across the view, for temporal ghosting and flying-entity checks. |
 | `!lanczos3` | Uses the wider Lanczos-3 kernel for FSR 1, MSR and MSR2. |
 | `!nolanczos` | Disables Lanczos for FSR 1/MSR and inside MSR2. |
 
