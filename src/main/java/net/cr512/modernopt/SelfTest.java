@@ -69,6 +69,7 @@ public final class SelfTest {
     private static double benchWalkBlocksPerTick;
     private static boolean worldLogged;
     private static boolean benchMob;
+    private static boolean cleanedWorldPigs;
     private static boolean sampling;
     private static boolean windowWarned;
     private static boolean finished;
@@ -214,6 +215,22 @@ public final class SelfTest {
             steerOnce(minecraft);
             logIrisTargets();
         }
+        if (!cleanedWorldPigs) {
+            cleanedWorldPigs = true;
+            boolean wantsMob = false;
+            for (String stateName : STATES) {
+                if (stateName.contains("!mob")) {
+                    wantsMob = true;
+                    break;
+                }
+            }
+            if (!wantsMob && minecraft.player != null && minecraft.player.connection != null) {
+                // A previous !mob state can leave its test pig in the saved world. Remove it so
+                // later screenshots show the actual scene, not a giant pig in front of the camera.
+                minecraft.player.connection.sendCommand("gamerule sendCommandFeedback false");
+                removeBenchMob(minecraft);
+            }
+        }
         if (minecraft.screen != null) {
             // A menu left open by the previous state changes the scene and makes screenshots
             // compare UI pages instead of shadows.
@@ -266,6 +283,10 @@ public final class SelfTest {
             if (!finished) {
                 finished = true;
                 finishedTick = ticks;
+                if (benchMob) {
+                    removeBenchMob(minecraft);
+                    benchMob = false;
+                }
                 writeBenchReport(minecraft);
                 ModernOPT.LOG.info("[BENCH] complete, closing the game automatically");
             } else if (ticks - finishedTick >= 60) {
@@ -844,6 +865,16 @@ public final class SelfTest {
         }
     }
 
+    /** Removes the !mob test pig, including one left invulnerable by an older benchmark run. */
+    private static void removeBenchMob(Minecraft minecraft) {
+        if (minecraft == null || minecraft.player == null || minecraft.player.connection == null) {
+            return;
+        }
+        minecraft.player.connection.sendCommand(
+                "data merge entity @e[type=minecraft:pig,limit=1] {Invulnerable:0b}");
+        minecraft.player.connection.sendCommand("kill @e[type=minecraft:pig]");
+    }
+
     private static void applyState(int index) {
         String name = STATES[index];
         int dash = name.indexOf('-');
@@ -947,14 +978,19 @@ public final class SelfTest {
             }
             configure(percent, selected);
         }
+        boolean wasMob = benchMob;
         benchMob = name.contains("!mob");
+        if (wasMob && !benchMob) {
+            // Do not leak the test mob into the next state's screenshots.
+            removeBenchMob(Minecraft.getInstance());
+        }
         if (benchMob && Minecraft.getInstance().player != null
                 && Minecraft.getInstance().player.connection != null) {
             Minecraft.getInstance().player.connection.sendCommand("gamerule sendCommandFeedback false");
             Minecraft.getInstance().player.connection.sendCommand("kill @e[type=minecraft:pig]");
             Minecraft.getInstance().player.connection.sendCommand(
                     "summon minecraft:pig ~4 ~1.5 ~4 {NoAI:1b,NoGravity:1b,Silent:1b,"
-                            + "Invulnerable:1b,PersistenceRequired:1b}");
+                            + "PersistenceRequired:1b}");
         }
         ModernOptSettings.refresh();
         if (name.contains("!reload")) {
