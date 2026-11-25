@@ -16,5 +16,6 @@ public final class ClientModInit {
 
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(ClientInit.openConfigKey());
+        event.register(ClientInit.cycleUpscalerKey());
     }
 }

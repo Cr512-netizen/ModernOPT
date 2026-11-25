@@ -86,6 +86,9 @@ public final class SelfTest {
     private static int convergenceFrames;
     private static String pairState;
     private static int pairFrames;
+    private static boolean swapFilterOnPair;
+    private static boolean swapLanczosOnPair;
+    private static boolean swapOnPairDone;
     private static final List<Map<String, Object>> stateResults = new ArrayList<>();
     private static final Map<String, Map<String, Object>> imageMetrics = new LinkedHashMap<>();
     private static final int[] lastShadowCounters = new int[5];
@@ -145,6 +148,20 @@ public final class SelfTest {
             if (pairFrames >= 40 && pairFrames <= 43) {
                 saveScreenshot(Minecraft.getInstance(), pairState, "p" + pairFrames);
                 screenshotTaken = true;
+            }
+            if (pairFrames == 40 && !swapOnPairDone) {
+                swapOnPairDone = true;
+                if (swapFilterOnPair) {
+                    ModernOptConfig.UPSCALER.set(UpscalerType.NEAREST);
+                    ModernOptSettings.refresh();
+                    ModernOPT.LOG.info("[BENCH] runtime upscaler switch -> {}", UpscalerType.NEAREST);
+                }
+                if (swapLanczosOnPair) {
+                    ModernOptConfig.MSR2_LANCZOS.set(!ModernOptConfig.MSR2_LANCZOS.get());
+                    ModernOptSettings.refresh();
+                    ModernOPT.LOG.info("[BENCH] runtime Lanczos switch -> {}",
+                            ModernOptSettings.msr2Lanczos());
+                }
             }
         }
         long now = System.nanoTime();
@@ -978,6 +995,9 @@ public final class SelfTest {
             }
             configure(percent, selected);
         }
+        swapFilterOnPair = name.contains("!swapfilter");
+        swapLanczosOnPair = name.contains("!swaplanczos");
+        swapOnPairDone = false;
         boolean wasMob = benchMob;
         benchMob = name.contains("!mob");
         if (wasMob && !benchMob) {

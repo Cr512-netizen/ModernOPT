@@ -246,11 +246,15 @@ expected loss of high-frequency detail at a 42 % internal resolution. Motion run
 * `Options -> ModernOPT` on NeoForge's mod list, or
 * `Video Settings -> ModernOPT` in Sodium (the full screen or the native `Settings` page), or
 * the `F10` keybind (in game).
+* `F9` cycles the upscaler in game and shows the new mode in the action bar. Use it when a menu
+  pauses the world or to compare filters without leaving the game.
 
 The full screen is split into **Upscaling**, **Anti-aliasing** and **Shadows** tabs. Closing the
 screen rebuilds ModernOPT's shader programs from the current resource tree and resets the temporal
 histories, so an upscaler or Lanczos change applies without F3+T. A shadow-map resolution change
-also reloads the Iris pack once.
+also reloads the Iris pack once. Every effective upscaler change is logged as
+`[ModernOPT] upscaler old -> new`; if that line does not appear when switching in a menu, the menu
+did not apply the option and `F9` can be used to verify the renderer directly.
 
 `renderScale.dynamicMovingResolution` lowers the configured internal resolution by 15% while the
 camera is moving or looking around (for example 70% -> 60%) and restores it after a short

@@ -7,10 +7,14 @@ import com.mojang.blaze3d.platform.InputConstants;
 
 import net.cr512.modernopt.ModernOPT;
 import net.cr512.modernopt.FpsLogger;
+import net.cr512.modernopt.config.ModernOptConfig;
+import net.cr512.modernopt.config.ModernOptSettings;
+import net.cr512.modernopt.config.UpscalerType;
 import net.cr512.modernopt.render.GpuProfiler;
 import net.cr512.modernopt.render.RenderPipeline;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -24,12 +28,18 @@ public final class ClientInit {
 
     private static final KeyMapping OPEN_CONFIG = new KeyMapping("key.modernopt.config",
             KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F10, "key.categories.misc");
+    private static final KeyMapping CYCLE_UPSCALER = new KeyMapping("key.modernopt.cycleUpscaler",
+            KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F9, "key.categories.misc");
 
     private ClientInit() {
     }
 
     public static KeyMapping openConfigKey() {
         return OPEN_CONFIG;
+    }
+
+    public static KeyMapping cycleUpscalerKey() {
+        return CYCLE_UPSCALER;
     }
 
     @SubscribeEvent
@@ -44,6 +54,20 @@ public final class ClientInit {
         }
         if (pressed) {
             minecraft.setScreen(new ModernOptConfigScreen(null));
+        }
+        boolean cycle = false;
+        while (CYCLE_UPSCALER.consumeClick()) {
+            cycle = true;
+        }
+        if (cycle) {
+            UpscalerType next = ModernOptSettings.upscaler().next();
+            ModernOptConfig.UPSCALER.set(next);
+            ModernOptConfig.SPEC.save();
+            ModernOptSettings.refresh();
+            if (minecraft.player != null) {
+                minecraft.player.displayClientMessage(
+                        Component.literal("[ModernOPT] upscaler: " + next.label()), true);
+            }
         }
     }
 

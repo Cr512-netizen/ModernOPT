@@ -62,5 +62,6 @@
   "modernopt.sodium.group.shadows": "Тени",
   "modernopt.sodium.open": "Открыть настройки ModernOPT",
   "modernopt.sodium.open.tooltip": "Масштаб рендера, апскейлинг, MSAA, FXAA и SSAA",
-  "key.modernopt.config": "Открыть настройки ModernOPT"
+  "key.modernopt.config": "Открыть настройки ModernOPT",
+  "key.modernopt.cycleUpscaler": "Переключить апскейлер ModernOPT"
 }

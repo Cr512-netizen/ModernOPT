@@ -62,5 +62,6 @@
   "modernopt.sodium.group.shadows": "Shadows",
   "modernopt.sodium.open": "Open ModernOPT settings",
   "modernopt.sodium.open.tooltip": "Render scale, upscaling, MSAA, FXAA and SSAA",
-  "key.modernopt.config": "Open ModernOPT options"
+  "key.modernopt.config": "Open ModernOPT options",
+  "key.modernopt.cycleUpscaler": "Cycle ModernOPT upscaler"
 }
