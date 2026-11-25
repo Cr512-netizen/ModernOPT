@@ -12,8 +12,8 @@ resolution.
 | Option | Values | What it does |
 | --- | --- | --- |
 | Render scale | 25 - 100 % | Internal world resolution. 75 % means roughly 56 % of the pixels. |
-| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `MSR`, `MSR2` | Filter used to present the internal image. The selection is authoritative: Bilinear, Nearest and Soft always use their own kernel. `MSR` adds a temporal accumulation pass. `MSR2` is the newest upscaler, built on the same camera-reconstructed reprojection as MSR but with an output-resolution RGBA16F history and an EASU spatial base (Lanczos-2 when the shared toggle is on). |
-| Lanczos reconstruction | On / Off | Replaces EASU with Lanczos-2 for FSR 1 and MSR. MSR2 uses EASU by default and switches to Lanczos when this is on. Bilinear, Nearest and Soft keep their own kernel. `Lanczos-3` switches the wider kernel. |
+| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `MSR`, `MSR2` | Filter used to present the internal image. The selection is authoritative: Bilinear, Nearest and Soft always use their own kernel. `MSR` adds a temporal accumulation pass. `MSR2` is the newest upscaler, built on the same camera-reconstructed reprojection as MSR but with an output-resolution RGBA16F history and a Lanczos-2 base (EASU when the shared toggle is off). |
+| Lanczos reconstruction | On / Off | Replaces EASU with Lanczos-2 for FSR 1 and MSR. MSR2 uses Lanczos-2 when this is on (the default) and EASU when it is off. Bilinear, Nearest and Soft keep their own kernel. `Lanczos-3` switches the wider kernel. |
 | SoftScale softness | 0 - 100 % | Blur radius of the 9-tap tent filter (`Soft scale`). |
 | FSR sharpness | 0 - 100 % | RCAS strength applied after the FSR 1 EASU or MSR temporal upscale. |
 | MSAA | Off, 2x, 4x, 8x, 16x | Multisampling for the world pass (hardware, resolved before the upscale). |
@@ -30,7 +30,7 @@ options compose instead of fighting each other.
 ### MSR
 
 `MSR` is a temporal upscaler in the same shape as AMD's FSR 2: the world is rendered with a
-sub-pixel Halton jitter, EASU brings the current frame to output resolution, a temporal pass
+sub-pixel R2 jitter, EASU brings the current frame to output resolution, a temporal pass
 reprojects the previous frame with the camera matrices and accumulates it in an RGBA16F history
 buffer, and RCAS sharpens the result (FXAA can follow). A depth test rejects disoccluded pixels,
 and a 3x3 YCoCg neighbourhood clamp plus a reactive mask suppress ghosting.
@@ -58,16 +58,21 @@ Key properties:
   ping-pong history costs roughly 40 MiB.
 - The temporal pass runs as a compute shader on GL 4.3+ and dispatches one thread per output
   pixel; the final pass is RCAS, or a plain copy when sharpening is off.
+- The temporal path runs when the upscale factor is above 1.11x (below about 90 % scale). At
+  90-99 % MSR2 uses the spatial MSR shader (edge-aware + CAS); at 100 % with no SSAA the
+  offscreen pipeline is bypassed and the frame is native. Neither path accumulates history.
+- FXAA is not applied on the MSR2 path; RCAS is the only post filter. Use FSR 1 or MSR if FXAA is
+  required.
 - MSR2 applies an R2 sub-pixel jitter and samples the history on the unjittered output grid, so
   accumulated samples do not drift by the difference between jitter phases. History that moves more
   than 15 % of the screen in one frame is rejected.
-- The low-resolution current frame is reconstructed with **EASU** inside MSR2, or with
-  **Lanczos-2** when the shared Lanczos toggle is on. The EASU prepass shifts its source sampling
-  by the frame's sub-pixel jitter, so its output is already aligned to the unjittered history
-  grid. FSR 1 and MSR use the same toggle in their spatial pass; Bilinear, Nearest and Soft keep
-  their own kernels. The Lanczos kernel weights come from a 65-phase polyphase table in a small
-  R32F texture; when scene depth is unavailable the per-tap depth fetch is skipped, not just its
-  weight.
+- The low-resolution current frame is reconstructed with **Lanczos-2** when the shared Lanczos
+  toggle is on (the default), or with **EASU** when it is off. The EASU prepass shifts its source
+  sampling by the frame's sub-pixel jitter, so its output is already aligned to the unjittered
+  history grid. FSR 1 and MSR use the same toggle in their spatial pass; Bilinear, Nearest and
+  Soft keep their own kernels. The Lanczos kernel weights come from a 65-phase polyphase table in
+  a small R32F texture; when scene depth is unavailable the per-tap depth fetch is skipped, not
+  just its weight.
 - The temporal acceptance box is a tight 3x3 neighbourhood of the current sample for both
   reconstruction paths. It intentionally does **not** use the wide Lanczos footprint: that box
   grew with the upscale ratio (twelve output pixels at 50 %) and let a moving entity keep its old

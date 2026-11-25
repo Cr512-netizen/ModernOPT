@@ -139,12 +139,14 @@ public final class ModernOptConfig {
                 .define("lanczos3", false);
         MSR2_VARIANCE_SCALE = b.comment(
                 "Variance clipping threshold multiplier. Higher = wider acceptance box = more history",
-                "and less flicker, but more ghosting. In Lanczos mode the box is at least the sampled",
-                "neighbourhood extrema, so values below 2.0 behave as 2.0.")
+                "and less flicker, but more ghosting. Both the Lanczos and EASU temporal paths use a",
+                "tight 3x3 YCoCg neighbourhood; this multiplier controls how far outside it history",
+                "is accepted.")
                 .defineInRange("varianceScale", 2.0, 0.5, 4.0);
         MSR2_EDGE_AWARE = b.comment("Enable edge-aware interpolation in spatial pass (preserves geometry edges).")
                 .define("edgeAware", true);
-        MSR2_SHARPNESS = b.comment("MSR2 spatial sharpening strength (CAS), 0 = off, 100 = strong.")
+        MSR2_SHARPNESS = b.comment("MSR2 temporal sharpening strength (RCAS), 0 = off, 100 = strong.",
+                        "The spatial fallback uses a CAS kernel instead.")
                 .defineInRange("sharpness", 30, 0, 100);
         MSR2_DEPTH_THRESHOLD = b.comment("Depth difference threshold for temporal disocclusion detection.")
                 .defineInRange("depthThreshold", 0.02, 0.005, 0.1);

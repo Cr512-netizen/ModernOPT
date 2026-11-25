@@ -40,7 +40,7 @@ import org.joml.Vector3f;
  *       {@code Minecraft#getMainRenderTarget} to answer with it, so the world, entities,
  *       particles, clouds and post effects all land in the smaller/larger image.</li>
  *   <li>Right before {@code LevelRenderer#renderLevel}: for MSR, offset the projection matrix
- *       by a sub-pixel Halton jitter and remember the camera pose.</li>
+ *       by a sub-pixel R2 jitter and remember the camera pose.</li>
  *   <li>Right before the hand pass: finish the MSR chain into the real main target, so the
  *       depth buffer is still available for reprojection and the hand is rendered natively.</li>
  *   <li>{@code GameRenderer#render} right before {@code Gui#render}: the remaining filters
@@ -68,6 +68,13 @@ public final class RenderPipeline {
     private static ShaderLibrary shaders;
     private static boolean shaderFailure;
     private static boolean worldActive;
+    /**
+     * Whether the last started world frame actually used the offscreen/scaled target. This stays
+     * true through the HUD pass so the overlay can name the pass that produced the visible frame;
+     * at 100 % with no AA the pipeline is bypassed and the label must say "native" instead of
+     * naming an upscaler that never ran.
+     */
+    private static boolean lastFrameScaled;
 
     /** Bench diagnostics helper: true while the world is being rendered into the scaled target. */
     public static boolean worldActive() {
@@ -326,6 +333,12 @@ public final class RenderPipeline {
      */
     public static String activeUpscalerLabel() {
         UpscalerType requested = ModernOptSettings.upscaler();
+        if (!lastFrameScaled && !offscreenRequested(requested)) {
+            // At 100 % with no AA the world renders straight into the main target. Naming an
+            // upscaler here would claim a pass that never ran; this also covers MSR2, whose
+            // 100 % path is an intentional passthrough.
+            return "native";
+        }
         if (requested == UpscalerType.MSR && !msrActiveThisFrame) {
             return withLanczos(ModernOptSettings.ssaa() ? "MSR off (SSAA)" : "MSR off (FSR 1)");
         }
@@ -336,6 +349,19 @@ public final class RenderPipeline {
             return withLanczos(requested.label());
         }
         return requested.label();
+    }
+
+    /** True when the requested settings can use the offscreen target on the next frame. */
+    private static boolean offscreenRequested(UpscalerType requested) {
+        if (requested == UpscalerType.MSR2
+                && ModernOptSettings.renderScalePercent() >= 100
+                && !ModernOptSettings.ssaa()) {
+            // beginWorldFrame short-circuits MSR2 at 100 % before the FXAA/MSAA checks.
+            return false;
+        }
+        return RenderScaleMath.needsOffscreenPass(ModernOptSettings.renderScalePercent(),
+                ModernOptSettings.ssaa(), ModernOptSettings.msaa().samples() > 1,
+                ModernOptSettings.fxaa());
     }
 
     /** Shows the shared Lanczos toggle in the overlay and benchmark state label. */
@@ -465,6 +491,7 @@ public final class RenderPipeline {
         shadowFrameToken++;
         shadowClearWindow = false;
         shadowHoldSkipFrame = false;
+        lastFrameScaled = false;
         worldActive = false;
         msrThisFrame = false;
         msr2ThisFrame = false;
@@ -697,6 +724,7 @@ public final class RenderPipeline {
             ensureHistoryTargets(outputWidth, outputHeight);
         }
         worldActive = true;
+        lastFrameScaled = true;
         if (useFastTarget) {
             // Plain spatial modes: install the small target in the real field. This is the hot
             // path and must not pay for a per-call getter redirect.
