@@ -62,11 +62,16 @@ Key properties:
   accumulated samples do not drift by the difference between jitter phases. History that moves more
   than 15 % of the screen in one frame is rejected.
 - The low-resolution current frame is reconstructed with **EASU** inside MSR2, or with
-  **Lanczos-2** when the shared Lanczos toggle is on. FSR 1 and MSR use the same toggle in their
-  spatial pass; Bilinear, Nearest and Soft keep their own kernels. The kernel weights come from a 65-phase polyphase table in a small R32F texture. In
-  MSR2 the same taps supply the min/max box for temporal acceptance, so the acceptance window is
-  exactly as wide as the reconstruction footprint; when scene depth is unavailable the per-tap
-  depth fetch is skipped, not just its weight.
+  **Lanczos-2** when the shared Lanczos toggle is on. The EASU prepass shifts its source sampling
+  by the frame's sub-pixel jitter, so its output is already aligned to the unjittered history
+  grid. FSR 1 and MSR use the same toggle in their spatial pass; Bilinear, Nearest and Soft keep
+  their own kernels. The Lanczos kernel weights come from a 65-phase polyphase table in a small
+  R32F texture; when scene depth is unavailable the per-tap depth fetch is skipped, not just its
+  weight.
+- The temporal acceptance box is a tight 3x3 neighbourhood of the current sample for both
+  reconstruction paths. It intentionally does **not** use the wide Lanczos footprint: that box
+  grew with the upscale ratio (twelve output pixels at 50 %) and let a moving entity keep its old
+  colour for many frames, which showed up as a second, flying copy of the mob.
 - Moving entities and particles are handled with a reactive history mask: when the clamped
   history differs from the current neighbourhood, the history contribution drops smoothly. This
   rejects the old colour before it can remain behind as a second, flying copy of a mob or the

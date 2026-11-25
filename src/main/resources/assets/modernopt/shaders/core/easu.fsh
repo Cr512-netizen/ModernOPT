@@ -6,6 +6,9 @@ uniform sampler2D InputSampler;
 uniform vec2 InputSize;
 uniform vec2 OutputSize;
 uniform vec4 Params;
+// Sub-pixel jitter of the current frame, in clip space. MSR2 sets it so the EASU output is
+// aligned to the unjittered output grid; every other mode renders unjittered and leaves it at 0.
+uniform vec2 Jitter;
 
 in vec2 texCoord;
 out vec4 fragColor;
@@ -72,7 +75,7 @@ void easuTap(inout vec3 aC, inout float aW, vec2 off, vec2 dir, vec2 len2,
 
 void main() {
     vec2 ratio = InputSize / OutputSize;
-    vec2 ip = texCoord * OutputSize;
+    vec2 ip = (texCoord + Jitter * 0.5) * OutputSize;
     vec2 pp = ip * ratio + 0.5 * ratio - 0.5;
     vec2 fp = floor(pp);
     pp -= fp;

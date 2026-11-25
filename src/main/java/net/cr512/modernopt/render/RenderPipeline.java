@@ -1651,6 +1651,8 @@ public final class RenderPipeline {
         boolean useLanczos = ModernOptSettings.msr2Lanczos() && library.hasLanczos();
         ShaderInstance primary = useLanczos ? library.lanczos : library.easu;
         float primaryParam = useLanczos ? (ModernOptSettings.msr2Lanczos3() ? 3.0F : 2.0F) : 0.0F;
+        // MSR's temporal pass applies the jitter offset itself when it samples the EASU output.
+        setUniform2f(library.easu, "Jitter", 0.0F, 0.0F);
 
         ShaderLibrary.beginPassState();
         try {
@@ -1721,6 +1723,8 @@ public final class RenderPipeline {
         boolean fxaa = cachedFxaa;
         ShaderLibrary library = shaders;
         UpscalerType upscaler = cachedUpscaler;
+        // FSR 1 / MSR render an unjittered frame; only the MSR2 temporal prepass de-jitters EASU.
+        setUniform2f(library.easu, "Jitter", 0.0F, 0.0F);
         boolean lanczosAvailable = library != null && library.hasLanczos();
         boolean useLanczos = (upscaler == UpscalerType.FSR1 || upscaler == UpscalerType.MSR)
                 && ModernOptSettings.msr2Lanczos() && lanczosAvailable;
@@ -2635,6 +2639,10 @@ public final class RenderPipeline {
             ShaderLibrary.beginPassState();
             try {
                 msr2CurrentColor.bindWrite(true);
+                // The temporal history is unjittered, so the prepass must reconstruct the current
+                // frame at its unjittered positions: shift the source sampling by the jitter
+                // offset, exactly like the Lanczos kernel does inside the compute pass.
+                setUniform2f(library.easu, "Jitter", jitterX, jitterY);
                 ShaderLibrary.draw(library.easu, sourceTexture, sourceWidth, sourceHeight,
                         outWidth, outHeight, 0.0F, 0.0F);
             } finally {

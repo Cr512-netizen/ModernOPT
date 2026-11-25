@@ -199,8 +199,9 @@ void main() {
     if (lanczos) {
         currentColor = sampleCurrentLanczos(currentUv, filterDepth, boxMin, boxMax);
     } else {
-        // EASU has already reconstructed the jittered source frame at output resolution and
-        // aligned it to the output grid, so sample at the unjittered pixel centre.
+        // The EASU prepass de-jitters the current frame while reconstructing it, so its output
+        // pixel is already the unjittered colour: sample at the pixel centre and build the
+        // variance box around the same position.
         currentColor = texture(CurrentColor, uv).rgb;
         boxMin = currentColor;
         boxMax = currentColor;
@@ -276,23 +277,20 @@ void main() {
     vec3 lowerBound;
     vec3 upperBound;
 
-    if (lanczos) {
-        // The reconstruction taps already give the true neighbourhood extrema. Reusing them
-        // keeps the acceptance box as wide as the Lanczos footprint instead of narrowing it with
-        // a separate bilinear sample.
-        vec3 minY = rgbToYCoCg(boxMin);
-        vec3 maxY = rgbToYCoCg(boxMax);
-        vec3 center = (minY + maxY) * 0.5;
-        // At the default VarianceScale 2.0 the box is exactly the reconstruction extrema; higher
-        // values widen it, lower values cannot narrow it below the actual neighbourhood.
-        float boxScale = max(1.0, VarianceScale * 0.5);
-        vec3 halfRange = max((maxY - minY) * 0.5 * boxScale, vec3(1.0e-4));
-        lowerBound = center - halfRange;
-        upperBound = center + halfRange;
-    } else {
+    {
+        // Acceptance box: a tight 3x3 neighbourhood of the current sample, for both
+        // reconstruction paths. The Lanczos taps span six source texels, so a box built from
+        // their extrema grew with the upscale ratio - twelve output pixels at 50 % - and let a
+        // moving entity keep its old colour for many frames, which read as a second, flying
+        // copy. The wide kernel is for reconstruction only; history acceptance stays tight and
+        // independent of the render scale.
         vec3 meanYCoCg;
         vec3 varianceYCoCg;
-        computeVariance(uv, colorSize, meanYCoCg, varianceYCoCg);
+        if (lanczos) {
+            computeVariance(currentUv, ivec2(InputSize), meanYCoCg, varianceYCoCg);
+        } else {
+            computeVariance(uv, colorSize, meanYCoCg, varianceYCoCg);
+        }
         vec3 stdDev = sqrt(max(vec3(0.0), varianceYCoCg));
         lowerBound = meanYCoCg - VarianceScale * stdDev;
         upperBound = meanYCoCg + VarianceScale * stdDev;
