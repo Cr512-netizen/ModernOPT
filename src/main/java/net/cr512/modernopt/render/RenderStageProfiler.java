@@ -27,7 +27,8 @@ import java.util.Map;
 @EventBusSubscriber(modid = ModernOPT.MOD_ID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
 public final class RenderStageProfiler {
 
-    private static final boolean ENABLED = Boolean.getBoolean("modernopt.bench");
+    private static final boolean ENABLED = Boolean.getBoolean("modernopt.bench")
+            && !Boolean.getBoolean("modernopt.bench.nogpu");
     private static final int SLOTS = 3;
     private static final int MAX_MARKS = 16;
 

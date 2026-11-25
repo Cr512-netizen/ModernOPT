@@ -41,6 +41,11 @@ option is passed. `runBench` is the explicit benchmark entry point.
   -PbenchWarmup=60 -PbenchSample=160
 ```
 
+Throughput runs disable the GPU stage timers by default because the timer queries and their
+synchronisation cost 10-20 % FPS on current drivers, which understates the renderer's real frame
+rate. Add `-PbenchProfile` to a separate run when the per-stage GPU breakdown is needed; do not
+compare its absolute FPS with a throughput run.
+
 The harness focuses the fullscreen window and disables vsync/frame limiting before sampling. If
 Windows refuses the focus request, click the window once; sampling is paused while it is inactive so
 OS-capped background frames cannot enter the results. Chunk streaming must be stable for 40 ticks
@@ -65,8 +70,8 @@ State suffixes used by the harness:
 The harness writes `run/bench-results.json` with an environment fingerprint (GPU, driver/GL
 version, Minecraft, NeoForge, mod, shader pack, render distance, window) and, for every state, the
 render scale, upscaler, MSAA/SSAA/FXAA/FP16, MSR2 and shadow settings, mean FPS, 1% low, p99 and
-worst frame time, shadow drawn/held counts and force reasons, per-stage GPU times, and image
-metrics.
+worst frame time, shadow drawn/held counts and force reasons, per-stage GPU times when
+`-PbenchProfile` is set, and image metrics.
 
 The screenshot frame is excluded from the frame-time statistics: writing a 1080p PNG stalls that
 frame for hundreds of milliseconds and would otherwise dominate the 1% low.

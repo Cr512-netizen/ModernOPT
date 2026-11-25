@@ -203,16 +203,28 @@ RTX 5060 Ti 16 GB / Ryzen 7 7800X3D, 1920x1080, Complementary Unbound r5.9.3, re
 frozen time and weather, static camera, 512 shadow map, 60-tick warmup and 160-tick sample. The
 control stack is Minecraft 1.21.1, NeoForge 21.1.264, Sodium 0.8.13 and Iris 1.8.14-beta.1.
 
-| Mode | Mean FPS | 1% low | Shadow interval | Held share | Shadow ms (drawn / amortized) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Native (mod disabled, 100 %) | 114.0 | 90.0 | - | - | - |
-| FSR 1 + Lanczos-2, 50 % | 143.3 | 129.0 | 2 | 50 % | 2.40 / 1.20 |
-| FSR 1 + Lanczos-2, 50 % | 130.2 | 115.5 | 1 | 0 % | 2.44 / 2.44 |
-| FSR 1 EASU (Lanczos off), 50 % | 145.1 | 131.2 | 2 | 50 % | 2.39 / 1.20 |
-| MSR2, 50 % | 145.7 | 131.7 | 2 | 50 % | 2.37 / 1.19 |
-| MSR2, 42 % | 156.6 | 122.2 | 2 | 50 % | 2.39 / 1.20 |
+| Mode | Mean FPS | 1% low | Shadow interval | Held share |
+| --- | ---: | ---: | ---: | ---: |
+| Native Iris (mod disabled, 100 %) | 131.5 | 114.8 | - | - |
+| ModernOPT passthrough, 100 % | 147.0 | 133.2 | 2 | 50 % |
+| FSR 1 + Lanczos-2, 50 % | 143.6 | 129.2 | 2 | 50 % |
+| FSR 1 + Lanczos-2, 50 % | 126.7 | 114.8 | 1 | 0 % |
+| FSR 1 EASU (Lanczos off), 50 % | 143.5 | 129.4 | 2 | 50 % |
+| MSR2, 50 % | 144.7 | 121.9 | 2 | 50 % |
+| MSR2, 42 % | 162.4 | 147.0 | 2 | 50 % |
 
-`Held share` is `held / (drawn + held)` for the same measurement window as the stage times; the
+Throughput runs disable the GPU stage timers, because their queries and readback add about
+1.2-1.5 ms per frame (10-20 %) on this driver. That overhead is why earlier tables reported
+130-135 FPS at 50 % instead of 143-145; `-PbenchProfile` enables the timers for a separate
+breakdown and must not be compared with these totals.
+
+`ModernOPT passthrough, 100 %` is scale 100 with no AA: the offscreen pipeline is bypassed and the
+world renders into the main target, but shadow holding still applies. It is 12 % above the
+mod-disabled native row because that row has no shadow holding and none of the mod's
+optimisations. The passthrough row comes from a second run of the same scene; its MSR2 42 %
+control repeated at 162.4, within 0.1 % of the table value.
+
+`Held share` is `held / (drawn + held)` for the same measurement window as the frame times; the
 interval is printed next to it because 50 % is the correct value for interval 2, not a defect.
 The 1% low is the mean of the slowest 1 % of frames after excluding the screenshot frame. Sampling
 pauses while the window is inactive; screenshots are taken outside the sample window, so OS focus
@@ -220,18 +232,39 @@ drops and PNG writes cannot enter the numbers. The player is teleported to the s
 the start of every run. Absolute FPS depends on GPU state; compare rows from this one run, not
 numbers from older releases.
 
-MSR2 50 % is within 0.4 % of FSR 1 EASU and 1.6 % above FSR 1 + Lanczos-2. MSR2 42 % has a higher
-mean (about 8 % over FSR 1 + Lanczos-2) but a lower 1% low (122.2 vs 129.0), and the image is
-softer; it remains an optional experimental preset, not the default. Lanczos-2 on FSR 1 is about
-1 % slower than EASU and its 1% low is slightly lower (129.0 vs 131.2); disable it for the pure
-FSR 1 kernel, use it when you prefer the Lanczos reconstruction. The shadow interval is worth about
-10 % mean FPS here with the block-boundary rebuild rule.
+MSR2 50 % is within 1 % of FSR 1 + Lanczos-2 and of EASU. MSR2 42 % is 13 % above FSR 1 at 50 %
+and 10 % above the 100 % passthrough row, and its 1% low is also higher in this run (147.0 vs
+121.9); the image is softer, so it remains an optional experimental preset, not the default.
+Lanczos-2 and EASU on FSR 1 are within noise of each other at 50 %; the choice is visual. The
+shadow interval change from 1 to 2 is worth about 13 % mean FPS here with the block-boundary
+rebuild rule.
 
-`nvidia-smi` sampled during a separate run of the same scene with a 2048 px shadow map reported
-79-83 % GPU utilization while the frame rate was capped (2.7 GHz, ~95 W). That is below the 90 % threshold used for this project, so the render thread is
-the current floor in this scene: another GPU pass will not convert into FPS one-to-one. CPU-side
-work (draw submission, allocations, per-frame lookups) is the next priority, not more pixel work.
-The sampler itself adds hitches, so it is never run during a timing run.
+### Frame cost
+
+The table below is measured with `-PbenchProfile` and scaled proportionally to the throughput
+frame time, because the timers themselves add about 1 ms. The split, not the absolute number, is
+the useful part.
+
+| Stage per frame (ms) | FSR 1, 50 % | MSR2, 50 % | MSR2, 42 % |
+| --- | ---: | ---: | ---: |
+| Iris/Sodium world pass | 6.71 | 6.82 | 6.07 |
+| – terrain | 3.58 | 3.65 | 3.12 |
+| – shadow map, amortised | 1.15 | 1.17 | 1.19 |
+| – Iris composite, final and sky | 0.63 | 0.66 | 0.54 |
+| – entities, translucency and other world work | 1.34 | 1.33 | 1.23 |
+| Upscale (FSR 1 or MSR2) | 0.18 | 0.02 | 0.02 |
+| Present and CPU overhead | 0.07 | 0.07 | 0.07 |
+| **Total** | **6.96** | **6.91** | **6.16** |
+
+MSR2's own cost is 0.02 ms, about 0.3 % of the 42 % frame; even FSR 1's output-resolution pass is
+0.18 ms. The frame is the world pass. Lowering the scale from 50 to 42 % cuts terrain from 3.65 to
+3.12 ms, but the shadow map and the non-pixel part of the world stay nearly constant, which is why
+the frame falls by 11 % rather than the 29 % fewer pixels.
+
+A spot check with `nvidia-smi` during these runs reported 100 % GPU utilisation at 2.7 GHz and
+about 110 W, so the 1080p scene is GPU-bound. CPU-side draw submission is not the limiter at this
+resolution; internal pixels, the shadow map and the pack's full-resolution passes are. The sampler
+itself adds hitches, so it is never run during a timing run.
 
 Correctness checks that accompany these numbers: render scale 50-75 % with bilinear, FSR 1 and
 MSR2, correct depth (no holes or LODs over the world), HUD at native resolution, first-person hand

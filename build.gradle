@@ -128,6 +128,12 @@ neoForge {
             if (project.hasProperty('benchKeepPosition')) {
                 systemProperty 'modernopt.bench.keepPosition', 'true'
             }
+            // GPU timestamps are a development aid but cost ~10-15% FPS on some drivers.
+            // Measure frame rate without them by default; -PbenchProfile enables the stage
+            // timers for a separate profile run.
+            if (!project.hasProperty('benchProfile')) {
+                systemProperty 'modernopt.bench.nogpu', 'true'
+            }
             programArgument '--quickPlaySingleplayer'
             programArgument 'ModernOPTTest'
             }
@@ -155,6 +161,12 @@ neoForge {
             }
             if (project.hasProperty('benchKeepPosition')) {
                 systemProperty 'modernopt.bench.keepPosition', 'true'
+            }
+            // GPU timestamps are a development aid but cost ~10-15% FPS on some drivers.
+            // Measure frame rate without them by default; -PbenchProfile enables the stage
+            // timers for a separate profile run.
+            if (!project.hasProperty('benchProfile')) {
+                systemProperty 'modernopt.bench.nogpu', 'true'
             }
             programArgument '--quickPlaySingleplayer'
             programArgument 'ModernOPTTest'

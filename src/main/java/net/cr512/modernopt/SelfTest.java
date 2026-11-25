@@ -326,10 +326,18 @@ public final class SelfTest {
             pairFrames = 0;
             GpuProfiler.reset();
             applyState(state);
-            ModernOPT.LOG.info("[BENCH] state {} | {} | {}x{} | MSAA {} | shadows {}",
-                    STATES[state], RenderPipeline.activeUpscalerLabel(),
-                    RenderPipeline.internalWidth(), RenderPipeline.internalHeight(),
-                    RenderPipeline.activeSamples(), ModernOptSettings.shadowUpdateInterval());
+            if (ModernOptConfig.ENABLED.get()) {
+                ModernOPT.LOG.info("[BENCH] state {} | {} | {} | MSAA {} | shadows {}",
+                        STATES[state], RenderPipeline.activeUpscalerLabel(),
+                        internalResolution(), RenderPipeline.activeSamples(),
+                        ModernOptSettings.shadowUpdateInterval());
+            } else {
+                // The disabled state has no internal resolution; printing the previous state's
+                // size or upscaler made the native baseline look like a 50 % FSR 1 run.
+                ModernOPT.LOG.info("[BENCH] state {} | ModernOPT off (native 100%) | window {}x{}",
+                        STATES[state], minecraft.getWindow().getWidth(),
+                        minecraft.getWindow().getHeight());
+            }
             return;
         }
 
@@ -348,12 +356,13 @@ public final class SelfTest {
             sampling = true;
             skipNextFrameSample = false;
             Minecraft client = Minecraft.getInstance();
-            ModernOPT.LOG.info("[BENCH] sampling {} | screen={} noRender={} paused={} active={} window={}x{} internal={}x{} label={}",
+            ModernOPT.LOG.info("[BENCH] sampling {} | screen={} noRender={} paused={} active={} window={}x{} internal={} label={}",
                     STATES[state], client.screen == null ? "none" : client.screen.getClass().getSimpleName(),
                     client.noRender, client.isPaused(), client.isWindowActive(),
                     client.getWindow().getWidth(), client.getWindow().getHeight(),
-                    RenderPipeline.internalWidth(), RenderPipeline.internalHeight(),
-                    RenderPipeline.activeUpscalerLabel());
+                    internalResolution(),
+                    ModernOptConfig.ENABLED.get()
+                            ? RenderPipeline.activeUpscalerLabel() : "ModernOPT off");
             ModernOPT.LOG.info("[BENCH] conditions {} | fpsLimit={} loadedChunks={} playerY={} ground={}",
                     STATES[state], client.options.framerateLimit().get(),
                     client.level.getChunkSource().getLoadedChunksCount(),
@@ -561,18 +570,21 @@ public final class SelfTest {
         result.put("p99FrameMs", round(p99Ms, 3));
         result.put("worstFrameMs", round(maxMs, 3));
         result.put("samples", sorted.size());
-        result.put("renderScalePercent", ModernOptSettings.renderScalePercent());
-        result.put("upscaler", ModernOptSettings.upscaler().name());
-        result.put("ssaa", ModernOptSettings.ssaa());
-        result.put("fxaa", ModernOptSettings.fxaa());
-        result.put("msaa", ModernOptSettings.msaa().name());
-        result.put("fp16", ModernOptSettings.fp16World());
-        result.put("msr2Enabled", ModernOptSettings.msr2Enabled());
-        result.put("msr2Lanczos", ModernOptSettings.msr2Lanczos());
-        result.put("msr2Lanczos3", ModernOptSettings.msr2Lanczos3());
-        result.put("shadowMap", net.cr512.modernopt.compat.ShadowMapResolution.describe());
-        result.put("shadowHoldDisabled",
-                net.cr512.modernopt.compat.ShadowClearRegistry.holdDisabled());
+        boolean benchEnabled = ModernOptConfig.ENABLED.get();
+        result.put("modernoptEnabled", benchEnabled);
+        result.put("renderScalePercent", benchEnabled ? ModernOptSettings.renderScalePercent() : 100);
+        result.put("upscaler", benchEnabled ? ModernOptSettings.upscaler().name() : "OFF");
+        result.put("ssaa", benchEnabled && ModernOptSettings.ssaa());
+        result.put("fxaa", benchEnabled && ModernOptSettings.fxaa());
+        result.put("msaa", benchEnabled ? ModernOptSettings.msaa().name() : "OFF");
+        result.put("fp16", benchEnabled && ModernOptSettings.fp16World());
+        result.put("msr2Enabled", benchEnabled && ModernOptSettings.msr2Enabled());
+        result.put("msr2Lanczos", benchEnabled && ModernOptSettings.msr2Lanczos());
+        result.put("msr2Lanczos3", benchEnabled && ModernOptSettings.msr2Lanczos3());
+        result.put("shadowMap", benchEnabled
+                ? net.cr512.modernopt.compat.ShadowMapResolution.describe() : "vanilla");
+        result.put("shadowHoldDisabled", !benchEnabled
+                || net.cr512.modernopt.compat.ShadowClearRegistry.holdDisabled());
         net.cr512.modernopt.render.ShadowHoldStats shadows =
                 RenderPipeline.shadowHoldStats();
         int drawn = shadows.drawn() - lastShadowCounters[0];
@@ -593,13 +605,14 @@ public final class SelfTest {
         lastShadowCounters[2] = shadows.forcedCamera();
         lastShadowCounters[3] = shadows.forcedTime();
         lastShadowCounters[4] = shadows.forcedCaster();
-        result.put("shadowDrawn", drawn);
-        result.put("shadowHeld", held);
-        result.put("shadowTotal", drawn + held);
-        result.put("shadowInterval", shadows.interval());
-        result.put("shadowForcedCamera", forcedCamera);
-        result.put("shadowForcedTime", forcedTime);
-        result.put("shadowForcedCaster", forcedCaster);
+        result.put("shadowDrawn", benchEnabled ? drawn : 0);
+        result.put("shadowHeld", benchEnabled ? held : 0);
+        result.put("shadowTotal", benchEnabled ? drawn + held : 0);
+        result.put("shadowInterval", benchEnabled ? shadows.interval() : 0.0);
+        result.put("shadowForcedCamera", benchEnabled ? forcedCamera : 0);
+        result.put("shadowForcedTime", benchEnabled ? forcedTime : 0);
+        result.put("shadowForcedCaster", benchEnabled ? forcedCaster : 0);
+        result.put("gpuProfilerEnabled", GpuProfiler.isEnabled());
         result.put("stagesMs", GpuProfiler.snapshotStages());
         result.put("stagesPerFrameMs", GpuProfiler.snapshotPerFrameStages());
         Map<String, Object> image = imageMetrics.get(name);
@@ -890,6 +903,21 @@ public final class SelfTest {
         minecraft.player.connection.sendCommand(
                 "data merge entity @e[type=minecraft:pig,limit=1] {Invulnerable:0b}");
         minecraft.player.connection.sendCommand("kill @e[type=minecraft:pig]");
+    }
+
+    /**
+     * Internal size label for the logs. At 100 % with no anti-aliasing the offscreen pipeline is
+     * bypassed, so the last small target would be stale and misleading; report "native" instead.
+     */
+    private static String internalResolution() {
+        boolean passthrough = ModernOptSettings.renderScalePercent() >= 100
+                && !ModernOptSettings.ssaa()
+                && ModernOptSettings.msaa().samples() <= 1
+                && !ModernOptSettings.fxaa();
+        if (passthrough) {
+            return "native";
+        }
+        return RenderPipeline.internalWidth() + "x" + RenderPipeline.internalHeight();
     }
 
     private static void applyState(int index) {

@@ -39,7 +39,13 @@ public final class GpuProfiler {
      * Timers are a development aid: they cost GL queries every frame, so they are only created
      * when the benchmark harness is enabled with {@code -Dmodernopt.bench=true}.
      */
-    private static final boolean ENABLED = Boolean.getBoolean("modernopt.bench");
+    private static final boolean ENABLED = Boolean.getBoolean("modernopt.bench")
+            && !Boolean.getBoolean("modernopt.bench.nogpu");
+
+    /** Whether the stage timers are active; throughput runs disable them. */
+    public static boolean isEnabled() {
+        return ENABLED;
+    }
 
     private static final int[][] beginQueries = new int[SECTIONS][RING];
     private static final int[][] endQueries = new int[SECTIONS][RING];
