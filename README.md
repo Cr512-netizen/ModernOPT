@@ -12,8 +12,8 @@ resolution.
 | Option | Values | What it does |
 | --- | --- | --- |
 | Render scale | 25 - 100 % | Internal world resolution. 75 % means roughly 56 % of the pixels. |
-| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `MSR`, `MSR2` | Filter used to present the internal image. The selection is authoritative: Bilinear, Nearest and Soft always use their own kernel. `MSR` adds a temporal accumulation pass. `MSR2` is the newest upscaler, built on the same camera-reconstructed reprojection as MSR but with an output-resolution RGBA16F history and a depth-guided Lanczos reconstruction. |
-| Lanczos reconstruction | On / Off | Replaces EASU with Lanczos-2 for FSR 1 and MSR; MSR2 uses it inside the temporal pass. Bilinear, Nearest and Soft keep their own kernel. `Lanczos-3` switches the wider kernel. |
+| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `MSR`, `MSR2` | Filter used to present the internal image. The selection is authoritative: Bilinear, Nearest and Soft always use their own kernel. `MSR` adds a temporal accumulation pass. `MSR2` is the newest upscaler, built on the same camera-reconstructed reprojection as MSR but with an output-resolution RGBA16F history and an EASU spatial base (Lanczos-2 when the shared toggle is on). |
+| Lanczos reconstruction | On / Off | Replaces EASU with Lanczos-2 for FSR 1 and MSR. MSR2 uses EASU by default and switches to Lanczos when this is on. Bilinear, Nearest and Soft keep their own kernel. `Lanczos-3` switches the wider kernel. |
 | SoftScale softness | 0 - 100 % | Blur radius of the 9-tap tent filter (`Soft scale`). |
 | FSR sharpness | 0 - 100 % | RCAS strength applied after the FSR 1 EASU or MSR temporal upscale. |
 | MSAA | Off, 2x, 4x, 8x, 16x | Multisampling for the world pass (hardware, resolved before the upscale). |
@@ -61,9 +61,9 @@ Key properties:
 - MSR2 applies an R2 sub-pixel jitter and samples the history on the unjittered output grid, so
   accumulated samples do not drift by the difference between jitter phases. History that moves more
   than 15 % of the screen in one frame is rejected.
-- The low-resolution current frame is reconstructed with **Lanczos-2** inside MSR2. FSR 1 and
-  MSR use the same toggle in their spatial pass; Bilinear, Nearest and Soft keep their own
-  kernels. The kernel weights come from a 65-phase polyphase table in a small R32F texture. In
+- The low-resolution current frame is reconstructed with **EASU** inside MSR2, or with
+  **Lanczos-2** when the shared Lanczos toggle is on. FSR 1 and MSR use the same toggle in their
+  spatial pass; Bilinear, Nearest and Soft keep their own kernels. The kernel weights come from a 65-phase polyphase table in a small R32F texture. In
   MSR2 the same taps supply the min/max box for temporal acceptance, so the acceptance window is
   exactly as wide as the reconstruction footprint; when scene depth is unavailable the per-tap
   depth fetch is skipped, not just its weight.

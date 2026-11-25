@@ -144,6 +144,7 @@ public final class RenderPipeline {
     private static boolean msr2ThisFrame;
     private static boolean msr2ActiveThisFrame;
     private static MSR2HistoryTarget msr2History;
+    private static HalfFloatTarget msr2CurrentColor;
     private static boolean msrShaderFailure;
     private static boolean msrHistoryValid;
     private static int msrFrameIndex;
@@ -2510,6 +2511,10 @@ public final class RenderPipeline {
             msr2History.destroy();
             msr2History = null;
         }
+        if (msr2CurrentColor != null) {
+            msr2CurrentColor.destroyBuffers();
+            msr2CurrentColor = null;
+        }
     }
 
     // ==================== MSR2 METHODS ====================
@@ -2546,6 +2551,18 @@ public final class RenderPipeline {
         msrHistoryValid = false;
         msrFrameIndex = 0;
         ModernOPT.LOG.info("[ModernOPT] allocated MSR2 history targets at {}x{}", width, height);
+    }
+
+    /** EASU-reconstructed current frame at output resolution, used when MSR2 Lanczos is off. */
+    private static void ensureMSR2CurrentColor(int width, int height) {
+        if (msr2CurrentColor != null && msr2CurrentColor.width == width
+                && msr2CurrentColor.height == height) {
+            return;
+        }
+        if (msr2CurrentColor != null) {
+            msr2CurrentColor.destroyBuffers();
+        }
+        msr2CurrentColor = new HalfFloatTarget(width, height);
     }
 
     
@@ -2606,9 +2623,32 @@ public final class RenderPipeline {
             return;
         }
 
+        boolean useLanczos = ModernOptSettings.msr2Lanczos() && library.hasLanczos();
+        int currentColorTexture = sourceTexture;
+        int currentColorWidth = sourceWidth;
+        int currentColorHeight = sourceHeight;
+        if (temporalWorthIt && !useLanczos) {
+            // EASU base for MSR2: reconstruct the jittered low-resolution frame once at output
+            // resolution, then let the temporal pass reuse that image. This is cheaper than the
+            // 6x6 Lanczos kernel and much sharper than a plain bilinear fetch.
+            ensureMSR2CurrentColor(outWidth, outHeight);
+            ShaderLibrary.beginPassState();
+            try {
+                msr2CurrentColor.bindWrite(true);
+                ShaderLibrary.draw(library.easu, sourceTexture, sourceWidth, sourceHeight,
+                        outWidth, outHeight, 0.0F, 0.0F);
+            } finally {
+                ShaderLibrary.endPassState();
+            }
+            currentColorTexture = msr2CurrentColor.getColorTextureId();
+            currentColorWidth = outWidth;
+            currentColorHeight = outHeight;
+        }
+
         if (temporalWorthIt) {
             runComputeTemporal(sourceWidth, sourceHeight, outWidth, outHeight,
-                    sourceTexture, depthTexture);
+                    currentColorTexture, currentColorWidth, currentColorHeight,
+                    depthTexture, useLanczos);
             // The just-written ping-pong side becomes the read side for the sharpen pass.
             msr2History.swap();
         }
@@ -2670,7 +2710,9 @@ public final class RenderPipeline {
      * result.</p>
      */
     private static void runComputeTemporal(int sourceWidth, int sourceHeight,
-            int outWidth, int outHeight, int sourceTexture, int depthTexture) {
+            int outWidth, int outHeight, int currentColorTexture,
+            int currentColorWidth, int currentColorHeight, int depthTexture,
+            boolean useLanczos) {
         Msr2TemporalCompute compute = msrComputeProgram;
         if (compute == null) {
             throw new IllegalStateException("MSR compute program is not loaded");
@@ -2688,7 +2730,7 @@ public final class RenderPipeline {
         try {
             // Explicit texture units: the compute program's sampler uniforms are set to these
             // exact indices below, so it can never read a default/unbound unit.
-            bindTextureUnit(GL13C.GL_TEXTURE0 + 4, sourceTexture);
+            bindTextureUnit(GL13C.GL_TEXTURE0 + 4, currentColorTexture);
             bindTextureUnit(GL13C.GL_TEXTURE0 + 5, depthTexture);
             bindTextureUnit(GL13C.GL_TEXTURE0 + 6, historyColorRead);
             bindTextureUnit(GL13C.GL_TEXTURE0 + 7, historyDepthRead);
@@ -2702,9 +2744,10 @@ public final class RenderPipeline {
             compute.setInt("LanczosTable", 8);
 
             compute.setVec2("InputSize", (float) sourceWidth, (float) sourceHeight);
+            compute.setVec2("ColorSize", (float) currentColorWidth, (float) currentColorHeight);
             compute.setVec2("OutputSize", (float) outWidth, (float) outHeight);
             compute.setVec2("Jitter", jitterX, jitterY);
-            compute.setInt("UseLanczos", ModernOptSettings.msr2Lanczos() ? 1 : 0);
+            compute.setInt("UseLanczos", useLanczos ? 1 : 0);
             compute.setInt("LanczosRadius", ModernOptSettings.msr2Lanczos3() ? 3 : 2);
             compute.setFloat("VarianceScale", (float) cachedMsrVarianceScale);
             compute.setFloat("DepthThreshold", (float) cachedMsrDepthThreshold);

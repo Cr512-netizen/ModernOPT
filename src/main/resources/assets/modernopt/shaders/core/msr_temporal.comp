@@ -35,6 +35,7 @@ layout(location = 11) uniform float HistoryValid;
 layout(location = 12) uniform float DepthValid;
 layout(location = 13) uniform int UseLanczos;
 layout(location = 14) uniform int LanczosRadius;
+layout(location = 15) uniform vec2 ColorSize;  // resolution of CurrentColor (EASU output or source)
 
 // Polyphase Lanczos table, uploaded once as a 65x6x2 R32F texture (layer 0 = radius 2,
 // layer 1 = radius 3). Entry p covers the fractional phase p/64; the six taps are offsets
@@ -144,15 +145,15 @@ vec3 sampleCurrentLanczos(vec2 uv, float centerDepth,
 // 3x3 texelFetch neighbourhood mean/variance in YCoCg space (FSR 2 style variance clipping).
 // This is the path when Lanczos reconstruction is off; it uses exact source texels instead of a
 // bilinear average, which used to make the acceptance box narrower than the actual frame.
-void computeVariance(vec2 uv, ivec2 sourceSize,
+void computeVariance(vec2 uv, ivec2 colorSize,
                      out vec3 meanYCoCg, out vec3 varianceYCoCg) {
-    ivec2 center = ivec2(floor(uv * InputSize));
+    ivec2 center = ivec2(floor(uv * ColorSize));
     meanYCoCg = vec3(0.0);
     vec3 meanSq = vec3(0.0);
 
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
-            vec3 color = texelFetch(CurrentColor, clampPixel(center + ivec2(x, y), sourceSize), 0).rgb;
+            vec3 color = texelFetch(CurrentColor, clampPixel(center + ivec2(x, y), colorSize), 0).rgb;
             vec3 ycocg = rgbToYCoCg(color);
             meanYCoCg += ycocg;
             meanSq += ycocg * ycocg;
@@ -198,7 +199,9 @@ void main() {
     if (lanczos) {
         currentColor = sampleCurrentLanczos(currentUv, filterDepth, boxMin, boxMax);
     } else {
-        currentColor = texture(CurrentColor, currentUv).rgb;
+        // EASU has already reconstructed the jittered source frame at output resolution and
+        // aligned it to the output grid, so sample at the unjittered pixel centre.
+        currentColor = texture(CurrentColor, uv).rgb;
         boxMin = currentColor;
         boxMax = currentColor;
     }
@@ -269,7 +272,7 @@ void main() {
 
     vec3 currentYCoCg = rgbToYCoCg(currentColor);
     vec3 historyYCoCg = rgbToYCoCg(historyColor);
-    ivec2 sourceSize = ivec2(InputSize);
+    ivec2 colorSize = ivec2(ColorSize);
     vec3 lowerBound;
     vec3 upperBound;
 
@@ -289,7 +292,7 @@ void main() {
     } else {
         vec3 meanYCoCg;
         vec3 varianceYCoCg;
-        computeVariance(currentUv, sourceSize, meanYCoCg, varianceYCoCg);
+        computeVariance(uv, colorSize, meanYCoCg, varianceYCoCg);
         vec3 stdDev = sqrt(max(vec3(0.0), varianceYCoCg));
         lowerBound = meanYCoCg - VarianceScale * stdDev;
         upperBound = meanYCoCg + VarianceScale * stdDev;
