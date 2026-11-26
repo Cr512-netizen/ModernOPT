@@ -70,9 +70,11 @@ Key properties:
 - **Per-entity motion vectors** are collected during the world pass: the projection of each
   entity's bounding box and screen centre is recorded, and a source-resolution RGBA16F target
   stores `previousUv - currentUv` plus a coverage mask. The temporal shader uses the entity vector
-  where the coverage and depth test pass and camera reprojection everywhere else. Small items,
-  arrows, XP orbs and particles are deliberately left to the reactive mask instead of applying a
-  box-sized velocity to the ground behind them.
+  where the coverage and depth test pass and camera reprojection everywhere else. The vector pass
+  is skipped entirely when no tracked entity has moved in world space: a world-static entity is
+  already reprojected exactly by the camera matrices. Small items, arrows, XP orbs and particles
+  are deliberately left to the reactive mask instead of applying a box-sized velocity to the
+  ground behind them.
 - The low-resolution current frame is reconstructed with **Lanczos-2** when the shared Lanczos
   toggle is on (the default), or with **EASU** when it is off. The EASU prepass shifts its source
   sampling by the frame's sub-pixel jitter, so its output is already aligned to the unjittered
@@ -274,7 +276,10 @@ the useful part.
 | **Total** | **6.96** | **7.34** | **6.60** |
 
 MSR2's temporal compute plus RCAS is 0.31 ms, about 5 % of the 42 % frame; FSR 1's spatial pass is
-0.18 ms. The frame is still the world pass. Lowering the scale from 50 to 42 % cuts terrain from
+0.18 ms. The motion-vector pass is skipped when no tracked entity moves in world space, so static
+scenes pay only for the temporal+RCAS chain. The EASU path (Lanczos off) measured about 153.4 FPS
+against 151.7 FPS for Lanczos-2 at 42 % in the same run, roughly a 1 % difference. The frame is
+still the world pass. Lowering the scale from 50 to 42 % cuts terrain from
 3.51 to 3.00 ms, but the shadow map and the non-pixel part of the world stay nearly constant, which
 is why the frame falls by 10 % rather than the 29 % fewer pixels.
 

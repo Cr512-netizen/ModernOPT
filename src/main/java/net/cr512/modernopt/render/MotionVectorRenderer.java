@@ -66,6 +66,10 @@ public final class MotionVectorRenderer {
         float previousU;
         float previousV;
         boolean hasPrevious;
+        double worldX;
+        double worldY;
+        double worldZ;
+        boolean hasWorld;
         int recordSlot = -1;
         long recordFrame = -1L;
     }
@@ -221,6 +225,18 @@ public final class MotionVectorRenderer {
             tracks.put(id, track);
         }
 
+        boolean moving = false;
+        if (track.hasWorld) {
+            double dx = entity.getX() - track.worldX;
+            double dy = entity.getY() - track.worldY;
+            double dz = entity.getZ() - track.worldZ;
+            moving = dx * dx + dy * dy + dz * dz > 2.5e-5; // ~0.005 blocks
+        }
+        track.worldX = entity.getX();
+        track.worldY = entity.getY();
+        track.worldZ = entity.getZ();
+        track.hasWorld = true;
+
         float velocityX = 0.0F;
         float velocityY = 0.0F;
         if (track.hasPrevious && track.lastFrame == frameIndex - 1) {
@@ -231,6 +247,13 @@ public final class MotionVectorRenderer {
         track.previousV = currentV;
         track.hasPrevious = true;
         track.lastFrame = frameIndex;
+
+        if (!moving) {
+            // A world-static entity is already reprojected exactly by the camera matrices.
+            // Generating a box vector for it would only risk moving the background around its
+            // silhouette.
+            return;
+        }
 
         int slot;
         if (track.recordFrame == frameIndex && track.recordSlot >= 0) {
@@ -264,7 +287,7 @@ public final class MotionVectorRenderer {
      * @return the colour texture id, or {@code 0} when motion vectors are unavailable
      */
     public int render(int depthTexture, int width, int height) {
-        if (disabled || width <= 0 || height <= 0 || depthTexture == 0) {
+        if (disabled || recordCount == 0 || width <= 0 || height <= 0 || depthTexture == 0) {
             return 0;
         }
         try {
