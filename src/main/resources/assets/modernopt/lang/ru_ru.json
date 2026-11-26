@@ -44,6 +44,8 @@
   "modernopt.option.msrLanczos.tooltip": "Использовать Lanczos-2 для FSR 1 и MSR и внутри MSR2. Bilinear, Nearest и Soft сохраняют своё ядро.",
   "modernopt.option.msrLanczos3": "Качество Lanczos-3",
   "modernopt.option.msrLanczos3.tooltip": "Использовать более широкое ядро Lanczos-3 для FSR 1, MSR и MSR2.",
+  "modernopt.option.msrMotionVectors": "Векторы движения сущностей",
+  "modernopt.option.msrMotionVectors.tooltip": "Репроецировать движущихся сущностей по экранным векторам. Выключи для сравнения с репроекцией только по камере.",
   "modernopt.option.msrVarianceScale": "MSR2 масштаб дисперсии",
   "modernopt.option.msrEdgeAware": "MSR2 edge-aware интерполяция",
   "modernopt.option.msrSharpness": "MSR2 резкость",

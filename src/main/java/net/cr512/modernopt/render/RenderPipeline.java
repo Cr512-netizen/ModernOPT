@@ -27,6 +27,7 @@ import net.minecraft.client.player.LocalPlayer;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.server.packs.resources.ResourceProvider;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.entity.Entity;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -155,6 +156,8 @@ public final class RenderPipeline {
     private static boolean msrShaderFailure;
     private static boolean msrHistoryValid;
     private static int msrFrameIndex;
+    private static MotionVectorRenderer motionVectors;
+    private static long motionFrameIndex;
     static {
         float phi = 1.324717957244746f; // plastic constant (real root of x^3 = x + 1)
         for (int i = 0; i < 64; i++) {
@@ -401,6 +404,21 @@ public final class RenderPipeline {
     }
 
     /**
+     * Records one rendered entity for the MSR2 motion-vector buffer.
+     *
+     * <p>{@code x},{@code y},{@code z} are the camera-relative coordinates Minecraft passes to
+     * {@code EntityRenderDispatcher}; the current view matrix is rotation-only, so world
+     * coordinates must not be used here.</p>
+     */
+    public static void recordEntityMotion(Entity entity, double x, double y, double z) {
+        if (motionVectors == null || !msr2ThisFrame || shadowPassActive
+                || !ModernOptSettings.msr2MotionVectors()) {
+            return;
+        }
+        motionVectors.record(entity, x, y, z, currentView, currentProjection);
+    }
+
+    /**
      * Tracks whether the camera is moving and computes the resolution for this frame.
      *
      * <p>The drop is a single step, not a per-frame regulator: 70% becomes 60% while the view
@@ -532,6 +550,13 @@ public final class RenderPipeline {
 
         // Fast settings cache - only refresh when actually changed
         cacheSettings();
+        // Detection alone does not compile the program: the first switch to MSR2 after launch
+        // used to fall through to the spatial fallback until a resource reload. Load it here.
+        if (cachedMsrEnabled && computeAvailable && msrComputeProgram == null && !msrComputeFailed) {
+            if (minecraft.getResourceManager() instanceof ResourceProvider resources) {
+                loadMsrCompute(resources);
+            }
+        }
         double shadowInterval = ModernOptSettings.shadowUpdateInterval();
         if (shadowInterval != shadowStatsInterval) {
             shadowStatsInterval = shadowInterval;
@@ -725,6 +750,11 @@ public final class RenderPipeline {
         }
         worldActive = true;
         lastFrameScaled = true;
+        motionFrameIndex++;
+        if (cachedMsrEnabled && ModernOptSettings.msr2MotionVectors()
+                && motionVectors != null && worldTarget != null) {
+            motionVectors.beginFrame(motionFrameIndex, worldTarget.width, worldTarget.height);
+        }
         if (useFastTarget) {
             // Plain spatial modes: install the small target in the real field. This is the hot
             // path and must not pay for a per-call getter redirect.
@@ -863,7 +893,6 @@ public final class RenderPipeline {
                 ModernOPT.LOG.warn("[ModernOPT] MSR: compute detection failed", t);
             }
         }
-        // The temporal shader is camera-only; there is no per-entity motion-vector collector.
     }
 
     /**
@@ -2209,6 +2238,10 @@ public final class RenderPipeline {
      * driver reports GL < 4.3).
      */
     private static void loadMsrCompute(ResourceProvider resources) {
+        if (motionVectors != null) {
+            motionVectors.destroy();
+            motionVectors = null;
+        }
         if (!computeAvailable) {
             msrComputeProgram = null;
             msrComputeFailed = false;
@@ -2223,10 +2256,27 @@ public final class RenderPipeline {
             msrComputeFailed = true;
             ModernOPT.LOG.warn("[ModernOPT] MSR: compute temporal unavailable, using the fragment fallback",
                     throwable);
+            return;
+        }
+        try {
+            motionVectors = new MotionVectorRenderer();
+            ModernOPT.LOG.info("[ModernOPT] MSR2: entity motion-vector pass compiled");
+        } catch (Throwable throwable) {
+            motionVectors = null;
+            ModernOPT.LOG.warn("[ModernOPT] MSR2: entity motion-vector pass unavailable; "
+                    + "using camera reprojection", throwable);
         }
     }
 
     private static void destroyMsrCompute() {
+        if (motionVectors != null) {
+            try {
+                motionVectors.destroy();
+            } catch (Throwable ignored) {
+                // context may already be gone during shutdown
+            }
+            motionVectors = null;
+        }
         if (msrComputeProgram != null) {
             try {
                 msrComputeProgram.delete();
@@ -2682,9 +2732,15 @@ public final class RenderPipeline {
         }
 
         if (temporalWorthIt) {
+            int motionTexture = 0;
+            if (ModernOptSettings.msr2MotionVectors() && motionVectors != null) {
+                // The entity boxes were collected during the world pass; rasterise them now that
+                // the scene depth buffer is complete.
+                motionTexture = motionVectors.render(depthTexture, sourceWidth, sourceHeight);
+            }
             runComputeTemporal(sourceWidth, sourceHeight, outWidth, outHeight,
                     currentColorTexture, currentColorWidth, currentColorHeight,
-                    depthTexture, useLanczos);
+                    depthTexture, useLanczos, motionTexture);
             // The just-written ping-pong side becomes the read side for the sharpen pass.
             msr2History.swap();
         }
@@ -2748,7 +2804,7 @@ public final class RenderPipeline {
     private static void runComputeTemporal(int sourceWidth, int sourceHeight,
             int outWidth, int outHeight, int currentColorTexture,
             int currentColorWidth, int currentColorHeight, int depthTexture,
-            boolean useLanczos) {
+            boolean useLanczos, int motionTexture) {
         Msr2TemporalCompute compute = msrComputeProgram;
         if (compute == null) {
             throw new IllegalStateException("MSR compute program is not loaded");
@@ -2771,6 +2827,7 @@ public final class RenderPipeline {
             bindTextureUnit(GL13C.GL_TEXTURE0 + 6, historyColorRead);
             bindTextureUnit(GL13C.GL_TEXTURE0 + 7, historyDepthRead);
             bindTextureArrayUnit(GL13C.GL_TEXTURE0 + 8, ensureLanczosTable());
+            bindTextureUnit(GL13C.GL_TEXTURE0 + 9, motionTexture);
 
             compute.bind();
             compute.setInt("CurrentColor", 4);
@@ -2778,6 +2835,7 @@ public final class RenderPipeline {
             compute.setInt("HistoryColor", 6);
             compute.setInt("HistoryDepth", 7);
             compute.setInt("LanczosTable", 8);
+            compute.setInt("MotionVectors", 9);
 
             compute.setVec2("InputSize", (float) sourceWidth, (float) sourceHeight);
             compute.setVec2("ColorSize", (float) currentColorWidth, (float) currentColorHeight);
@@ -2799,6 +2857,7 @@ public final class RenderPipeline {
             compute.setMatrix4("PrevProjection", previousProjection);
             compute.setFloat("HistoryValid", msrHistoryValid ? 1.0F : 0.0F);
             compute.setFloat("DepthValid", depthTexture != 0 ? 1.0F : 0.0F);
+            compute.setFloat("MotionValid", motionTexture != 0 ? 1.0F : 0.0F);
 
             msr2History.bindWriteForCompute();
             compute.bindImage(0, historyColorWrite, MSR2HistoryTarget.COLOR_FORMAT);

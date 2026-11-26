@@ -59,6 +59,8 @@ public final class SelfTest {
     private static final int STATE_TICKS = WARMUP_TICKS + SAMPLE_TICKS;
 
     private static int ticks;
+    /** Ticks since the current benchmark state started; used by the moving-mob diagnostic. */
+    private static int stateTicks;
     private static int smallWindowTicks;
     private static int state = -1;
     /** Benchmark-only camera pitch ({@code NaN} keeps the default view). */
@@ -88,6 +90,7 @@ public final class SelfTest {
     private static int pairFrames;
     private static boolean swapFilterOnPair;
     private static boolean swapLanczosOnPair;
+    private static boolean swapMotionOnPair;
     private static boolean swapOnPairDone;
     private static final List<Map<String, Object>> stateResults = new ArrayList<>();
     private static final Map<String, Map<String, Object>> imageMetrics = new LinkedHashMap<>();
@@ -161,6 +164,12 @@ public final class SelfTest {
                     ModernOptSettings.refresh();
                     ModernOPT.LOG.info("[BENCH] runtime Lanczos switch -> {}",
                             ModernOptSettings.msr2Lanczos());
+                }
+                if (swapMotionOnPair) {
+                    ModernOptConfig.MSR2_MOTION_VECTORS.set(!ModernOptConfig.MSR2_MOTION_VECTORS.get());
+                    ModernOptSettings.refresh();
+                    ModernOPT.LOG.info("[BENCH] runtime motion-vector switch -> {}",
+                            ModernOptSettings.msr2MotionVectors());
                 }
             }
         }
@@ -288,6 +297,7 @@ public final class SelfTest {
         }
 
         ticks++;
+        stateTicks++;
         int elapsed = ticks - START_TICK;
         if (elapsed < 0) {
             return;
@@ -326,6 +336,7 @@ public final class SelfTest {
             pairFrames = 0;
             GpuProfiler.reset();
             applyState(state);
+            stateTicks = 0;
             if (ModernOptConfig.ENABLED.get()) {
                 ModernOPT.LOG.info("[BENCH] state {} | {} | {} | MSAA {} | shadows {}",
                         STATES[state], RenderPipeline.activeUpscalerLabel(),
@@ -342,11 +353,12 @@ public final class SelfTest {
         }
 
         if (benchMob && minecraft.player != null && minecraft.player.connection != null) {
-            double angle = ticks * 0.08;
+            double angle = stateTicks * 0.08;
             net.minecraft.world.phys.Vec3 look = minecraft.player.getLookAngle();
-            double batX = minecraft.player.getX() + look.x * 5.0 + Math.cos(angle) * 1.5;
-            double batY = minecraft.player.getY() + 1.5 + Math.sin(ticks * 0.12) * 0.8;
-            double batZ = minecraft.player.getZ() + look.z * 5.0 + Math.sin(angle) * 1.5;
+            double lateral = Math.sin(angle) * 1.2;
+            double batX = minecraft.player.getX() + look.x * 4.0 - look.z * lateral;
+            double batY = minecraft.player.getY() + 0.5 + Math.sin(stateTicks * 0.12) * 0.25;
+            double batZ = minecraft.player.getZ() + look.z * 4.0 + look.x * lateral;
             minecraft.player.connection.sendCommand(String.format(java.util.Locale.ROOT,
                     "tp @e[type=minecraft:pig,limit=1] %.3f %.3f %.3f", batX, batY, batZ));
         }
@@ -581,6 +593,7 @@ public final class SelfTest {
         result.put("msr2Enabled", benchEnabled && ModernOptSettings.msr2Enabled());
         result.put("msr2Lanczos", benchEnabled && ModernOptSettings.msr2Lanczos());
         result.put("msr2Lanczos3", benchEnabled && ModernOptSettings.msr2Lanczos3());
+        result.put("msr2MotionVectors", benchEnabled && ModernOptSettings.msr2MotionVectors());
         result.put("shadowMap", benchEnabled
                 ? net.cr512.modernopt.compat.ShadowMapResolution.describe() : "vanilla");
         result.put("shadowHoldDisabled", !benchEnabled
@@ -961,6 +974,7 @@ public final class SelfTest {
         ModernOptConfig.SCALE_WHOLE_WINDOW.set(name.contains("!wws"));
         ModernOptConfig.MSR2_LANCZOS.set(!name.contains("!nolanczos"));
         ModernOptConfig.MSR2_LANCZOS3.set(name.contains("!lanczos3"));
+        ModernOptConfig.MSR2_MOTION_VECTORS.set(!name.contains("!nomv"));
         int shadowIndex = name.indexOf("!shadow");
         if (shadowIndex >= 0) {
             double shadowInterval = decimal(name.substring(shadowIndex + 7));
@@ -1025,6 +1039,7 @@ public final class SelfTest {
         }
         swapFilterOnPair = name.contains("!swapfilter");
         swapLanczosOnPair = name.contains("!swaplanczos");
+        swapMotionOnPair = name.contains("!swapmv");
         swapOnPairDone = false;
         boolean wasMob = benchMob;
         benchMob = name.contains("!mob");
@@ -1036,9 +1051,14 @@ public final class SelfTest {
                 && Minecraft.getInstance().player.connection != null) {
             Minecraft.getInstance().player.connection.sendCommand("gamerule sendCommandFeedback false");
             Minecraft.getInstance().player.connection.sendCommand("kill @e[type=minecraft:pig]");
-            Minecraft.getInstance().player.connection.sendCommand(
-                    "summon minecraft:pig ~4 ~1.5 ~4 {NoAI:1b,NoGravity:1b,Silent:1b,"
-                            + "PersistenceRequired:1b}");
+            net.minecraft.world.phys.Vec3 look = Minecraft.getInstance().player.getLookAngle();
+            double spawnX = Minecraft.getInstance().player.getX() + look.x * 4.0;
+            double spawnY = Minecraft.getInstance().player.getY() + 0.5;
+            double spawnZ = Minecraft.getInstance().player.getZ() + look.z * 4.0;
+            Minecraft.getInstance().player.connection.sendCommand(String.format(
+                    java.util.Locale.ROOT,
+                    "summon minecraft:pig %.3f %.3f %.3f {NoAI:1b,NoGravity:1b,Silent:1b,"
+                            + "PersistenceRequired:1b}", spawnX, spawnY, spawnZ));
         }
         ModernOptSettings.refresh();
         if (name.contains("!reload")) {

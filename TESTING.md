@@ -63,13 +63,16 @@ State suffixes used by the harness:
 | `!sunset` | Sets the server time to 13000. |
 | `!reload` | Closes and rebuilds the mod's shader programs at state start. |
 | `!pairs` | Saves four consecutive frames (p40..p43) for flicker inspection and logs the shadow depth-texture hash plus the shadow-fed custom images kept on held frames, so a cleared map or a dropped custom image is visible even when animated foliage or clouds dominate the screenshots. |
-| `!mob` | Summons a pig in front of the player and moves it across the view, for temporal ghosting and flying-entity checks. |
+| `!mob` | Summons a pig in front of the player for temporal ghosting and flying-entity checks. |
+| `!nomv` | Disables MSR2's per-entity motion vectors for an A/B against camera-only reprojection. |
+| `!swapmv` | Toggles MSR2 motion vectors at pair frame 40 for a same-run A/B. |
 | `!lanczos3` | Uses the wider Lanczos-3 kernel for FSR 1, MSR and MSR2. |
 | `!nolanczos` | Disables Lanczos for FSR 1/MSR and inside MSR2. |
 
 The harness writes `run/bench-results.json` with an environment fingerprint (GPU, driver/GL
 version, Minecraft, NeoForge, mod, shader pack, render distance, window) and, for every state, the
-render scale, upscaler, MSAA/SSAA/FXAA/FP16, MSR2 and shadow settings, mean FPS, 1% low, p99 and
+render scale, upscaler, MSAA/SSAA/FXAA/FP16, MSR2 (Lanczos, motion vectors) and shadow settings,
+mean FPS, 1% low, p99 and
 worst frame time, shadow drawn/held counts and force reasons, per-stage GPU times when
 `-PbenchProfile` is set, and image metrics.
 

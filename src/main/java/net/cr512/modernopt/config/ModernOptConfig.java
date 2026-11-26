@@ -37,6 +37,7 @@ public final class ModernOptConfig {
     public static final ModConfigSpec.BooleanValue MSR2_ENABLED;
     public static final ModConfigSpec.BooleanValue MSR2_LANCZOS;
     public static final ModConfigSpec.BooleanValue MSR2_LANCZOS3;
+    public static final ModConfigSpec.BooleanValue MSR2_MOTION_VECTORS;
     public static final ModConfigSpec.DoubleValue MSR2_VARIANCE_SCALE;
     public static final ModConfigSpec.BooleanValue MSR2_EDGE_AWARE;
     public static final ModConfigSpec.IntValue MSR2_SHARPNESS;
@@ -137,6 +138,12 @@ public final class ModernOptConfig {
                         "More detail and sharper texture response, at the cost of 36 taps instead of 16 and more ringing.",
                         "Only used when msr2.lanczos is on.")
                 .define("lanczos3", false);
+        MSR2_MOTION_VECTORS = b.comment(
+                        "Use per-entity screen-space motion vectors for MSR2 temporal reprojection.",
+                        "Moving mobs are then reprojected instead of relying only on the reactive mask;",
+                        "the rest of the scene still uses the camera reconstruction. Disable to compare",
+                        "with the camera-only path; the image may be slightly softer at entity edges.")
+                .define("motionVectors", true);
         MSR2_VARIANCE_SCALE = b.comment(
                 "Variance clipping threshold multiplier. Higher = wider acceptance box = more history",
                 "and less flicker, but more ghosting. Both the Lanczos and EASU temporal paths use a",

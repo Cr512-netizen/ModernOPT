@@ -31,6 +31,7 @@ public final class ModernOptSettings {
     private static volatile boolean msr2Enabled = false;
     private static volatile boolean msr2Lanczos = true;
     private static volatile boolean msr2Lanczos3 = false;
+    private static volatile boolean msr2MotionVectors = true;
     private static volatile double msr2VarianceScale = 2.0;
     private static volatile boolean msr2EdgeAware = true;
     private static volatile int msr2Sharpness = 30;
@@ -73,6 +74,7 @@ public final class ModernOptSettings {
         msr2Enabled = upscaler == UpscalerType.MSR2;
         msr2Lanczos = ModernOptConfig.MSR2_LANCZOS.get();
         msr2Lanczos3 = ModernOptConfig.MSR2_LANCZOS3.get();
+        msr2MotionVectors = ModernOptConfig.MSR2_MOTION_VECTORS.get();
         msr2VarianceScale = ModernOptConfig.MSR2_VARIANCE_SCALE.get();
         msr2EdgeAware = ModernOptConfig.MSR2_EDGE_AWARE.get();
         msr2Sharpness = ModernOptConfig.MSR2_SHARPNESS.get();
@@ -176,6 +178,10 @@ public final class ModernOptSettings {
 
     public static boolean msr2Lanczos3() {
         return msr2Lanczos3;
+    }
+
+    public static boolean msr2MotionVectors() {
+        return msr2MotionVectors;
     }
 
     public static double msr2VarianceScale() {

@@ -12,8 +12,9 @@ resolution.
 | Option | Values | What it does |
 | --- | --- | --- |
 | Render scale | 25 - 100 % | Internal world resolution. 75 % means roughly 56 % of the pixels. |
-| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `MSR`, `MSR2` | Filter used to present the internal image. The selection is authoritative: Bilinear, Nearest and Soft always use their own kernel. `MSR` adds a temporal accumulation pass. `MSR2` is the newest upscaler, built on the same camera-reconstructed reprojection as MSR but with an output-resolution RGBA16F history and a Lanczos-2 base (EASU when the shared toggle is off). |
+| Upscaler | `Bilinear`, `Nearest`, `Soft scale`, `FSR 1`, `MSR`, `MSR2` | Filter used to present the internal image. The selection is authoritative: Bilinear, Nearest and Soft always use their own kernel. `MSR` adds a temporal accumulation pass. `MSR2` is the newest upscaler, built on camera reconstruction plus per-entity motion vectors, with an output-resolution RGBA16F history and a Lanczos-2 base (EASU when the shared toggle is off). |
 | Lanczos reconstruction | On / Off | Replaces EASU with Lanczos-2 for FSR 1 and MSR. MSR2 uses Lanczos-2 when this is on (the default) and EASU when it is off. Bilinear, Nearest and Soft keep their own kernel. `Lanczos-3` switches the wider kernel. |
+| Entity motion vectors | On / Off | Per-entity screen-space vectors for MSR2. Moving mobs are reprojected with their own motion instead of relying only on the reactive mask. Disable for an A/B against camera-only reprojection. |
 | SoftScale softness | 0 - 100 % | Blur radius of the 9-tap tent filter (`Soft scale`). |
 | FSR sharpness | 0 - 100 % | RCAS strength applied after the FSR 1 EASU or MSR temporal upscale. |
 | MSAA | Off, 2x, 4x, 8x, 16x | Multisampling for the world pass (hardware, resolved before the upscale). |
@@ -47,9 +48,9 @@ pack's output and upscales it. MSAA is also forced off in MSR mode and that is l
 
 ### MSR2
 
-`MSR2` is the newest upscaler in ModernOPT. It uses the same camera-reconstructed motion vectors
-as MSR, but merges the passes: a temporal pass with variance clipping in YCoCg followed by an
-RCAS sharpen pass.
+`MSR2` is the newest upscaler in ModernOPT. It uses camera reconstruction for the static world and
+per-entity screen-space motion vectors for moving entities, with an output-resolution history and
+an RCAS sharpen pass.
 
 Key properties:
 - History is **RGBA16F colour + R16_UINT depth**, allocated at the **output resolution**. The
@@ -66,6 +67,12 @@ Key properties:
 - MSR2 applies an R2 sub-pixel jitter and samples the history on the unjittered output grid, so
   accumulated samples do not drift by the difference between jitter phases. History that moves more
   than 15 % of the screen in one frame is rejected.
+- **Per-entity motion vectors** are collected during the world pass: the projection of each
+  entity's bounding box and screen centre is recorded, and a source-resolution RGBA16F target
+  stores `previousUv - currentUv` plus a coverage mask. The temporal shader uses the entity vector
+  where the coverage and depth test pass and camera reprojection everywhere else. Small items,
+  arrows, XP orbs and particles are deliberately left to the reactive mask instead of applying a
+  box-sized velocity to the ground behind them.
 - The low-resolution current frame is reconstructed with **Lanczos-2** when the shared Lanczos
   toggle is on (the default), or with **EASU** when it is off. The EASU prepass shifts its source
   sampling by the frame's sub-pixel jitter, so its output is already aligned to the unjittered
@@ -77,10 +84,10 @@ Key properties:
   reconstruction paths. It intentionally does **not** use the wide Lanczos footprint: that box
   grew with the upscale ratio (twelve output pixels at 50 %) and let a moving entity keep its old
   colour for many frames, which showed up as a second, flying copy of the mob.
-- Moving entities and particles are handled with a reactive history mask: when the clamped
-  history differs from the current neighbourhood, the history contribution drops smoothly. This
-  rejects the old colour before it can remain behind as a second, flying copy of a mob or the
-  player's body.
+- Moving entities and particles are handled with per-entity vectors where available and a
+  reactive history mask everywhere else: when the clamped history differs from the current
+  neighbourhood, the history contribution drops smoothly. This rejects the old colour before it
+  can remain behind as a second, flying copy of a mob or the player's body.
 - Negative values and NaNs are clamped before `imageStore`, so one bad frame cannot poison the
   ping-pong history.
 - `msr2.lanczos3` switches to the wider Lanczos-3 kernel: sharper texture response and more
@@ -186,9 +193,11 @@ Key points:
   but it means very low scales soften those effects too.
 * The upscalers are presentation filters. They cannot recover detail that was never rendered,
   which is why FSR 1 looks best at 67-85 % scale.
-* MSR and MSR2 use camera-reconstructed motion vectors. They have no per-object velocities, so fast
-  moving entities and particles can still soften or ghost at the edges; MSR2's reactive history mask
-  rejects most of the trail, but it is not a replacement for true object motion vectors.
+* MSR uses camera-reconstructed motion vectors only. MSR2 adds per-entity screen-space boxes for
+  moving mobs and players; particles, translucent entities and per-vertex deformation still have no
+  per-pixel vectors, so their edges can soften. The boxes are depth-gated but approximate; small
+  items, arrows and XP orbs are deliberately left to the reactive mask. FSR 3 frame generation is
+  not implemented.
   Under an Iris shader pack, depth is read from the pack's gbuffer when Iris exposes it. MSR falls
   back to rotation-only reprojection for that frame and logs a warning once; MSR2 uses the scaled
   target's depth instead.
@@ -215,8 +224,8 @@ control stack is Minecraft 1.21.1, NeoForge 21.1.264, Sodium 0.8.13 and Iris 1.8
 | FSR 1 + Lanczos-2, 50 % | 143.6 | 129.2 | 2 | 50 % |
 | FSR 1 + Lanczos-2, 50 % | 126.7 | 114.8 | 1 | 0 % |
 | FSR 1 EASU (Lanczos off), 50 % | 143.5 | 129.4 | 2 | 50 % |
-| MSR2, 50 % | 144.7 | 121.9 | 2 | 50 % |
-| MSR2, 42 % | 162.4 | 147.0 | 2 | 50 % |
+| MSR2, 50 % | 135.4 | 121.9 | 2 | 50 % |
+| MSR2, 42 % | 150.6 | 135.8 | 2 | 50 % |
 
 Throughput runs disable the GPU stage timers, because their queries and readback add about
 1.2-1.5 ms per frame (10-20 %) on this driver. That overhead is why earlier tables reported
@@ -226,8 +235,11 @@ breakdown and must not be compared with these totals.
 `ModernOPT passthrough, 100 %` is scale 100 with no AA: the offscreen pipeline is bypassed and the
 world renders into the main target, but shadow holding still applies. It is 12 % above the
 mod-disabled native row because that row has no shadow holding and none of the mod's
-optimisations. The passthrough row comes from a second run of the same scene; its MSR2 42 %
-control repeated at 162.4, within 0.1 % of the table value.
+optimisations.
+
+The MSR2 rows above are **true temporal runs**. The compute program is compiled when MSR2 is
+selected at runtime; before 0.7.0 a runtime switch could silently keep the spatial fallback, which
+made the old 42 % figure look faster but did not accumulate history.
 
 `Held share` is `held / (drawn + held)` for the same measurement window as the frame times; the
 interval is printed next to it because 50 % is the correct value for interval 2, not a defect.
@@ -237,12 +249,12 @@ drops and PNG writes cannot enter the numbers. The player is teleported to the s
 the start of every run. Absolute FPS depends on GPU state; compare rows from this one run, not
 numbers from older releases.
 
-MSR2 50 % is within 1 % of FSR 1 + Lanczos-2 and of EASU. MSR2 42 % is 13 % above FSR 1 at 50 %
-and 10 % above the 100 % passthrough row, and its 1% low is also higher in this run (147.0 vs
-121.9); the image is softer, so it remains an optional experimental preset, not the default.
-Lanczos-2 and EASU on FSR 1 are within noise of each other at 50 %; the choice is visual. The
-shadow interval change from 1 to 2 is worth about 13 % mean FPS here with the block-boundary
-rebuild rule.
+MSR2 50 % is about 6 % below FSR 1 + Lanczos-2; the true temporal pass costs more than the old
+spatial fallback. MSR2 42 % is 11 % above MSR2 50 % and about 5 % above FSR 1 at 50 %, with a
+higher 1% low in this run (135.8 vs 121.9); the image is softer, so it remains an optional
+experimental preset, not the default. Lanczos-2 and EASU on FSR 1 are within noise of each other
+at 50 %; the choice is visual. The shadow interval change from 1 to 2 is worth about 13 % mean FPS
+here with the block-boundary rebuild rule.
 
 ### Frame cost
 
@@ -252,19 +264,19 @@ the useful part.
 
 | Stage per frame (ms) | FSR 1, 50 % | MSR2, 50 % | MSR2, 42 % |
 | --- | ---: | ---: | ---: |
-| Iris/Sodium world pass | 6.71 | 6.82 | 6.07 |
-| – terrain | 3.58 | 3.65 | 3.12 |
-| – shadow map, amortised | 1.15 | 1.17 | 1.19 |
-| – Iris composite, final and sky | 0.63 | 0.66 | 0.54 |
-| – entities, translucency and other world work | 1.34 | 1.33 | 1.23 |
-| Upscale (FSR 1 or MSR2) | 0.18 | 0.02 | 0.02 |
-| Present and CPU overhead | 0.07 | 0.07 | 0.07 |
-| **Total** | **6.96** | **6.91** | **6.16** |
+| Iris/Sodium world pass | 6.71 | 6.89 | 6.16 |
+| – terrain | 3.58 | 3.51 | 3.00 |
+| – shadow map, amortised | 1.15 | 1.21 | 1.20 |
+| – Iris composite, final and sky | 0.63 | 0.66 | 0.55 |
+| – entities, translucency and other world work | 1.34 | 1.51 | 1.41 |
+| Upscale (FSR 1 or MSR2 temporal + RCAS) | 0.18 | 0.31 | 0.31 |
+| Present and CPU overhead | 0.07 | 0.14 | 0.13 |
+| **Total** | **6.96** | **7.34** | **6.60** |
 
-MSR2's own cost is 0.02 ms, about 0.3 % of the 42 % frame; even FSR 1's output-resolution pass is
-0.18 ms. The frame is the world pass. Lowering the scale from 50 to 42 % cuts terrain from 3.65 to
-3.12 ms, but the shadow map and the non-pixel part of the world stay nearly constant, which is why
-the frame falls by 11 % rather than the 29 % fewer pixels.
+MSR2's temporal compute plus RCAS is 0.31 ms, about 5 % of the 42 % frame; FSR 1's spatial pass is
+0.18 ms. The frame is still the world pass. Lowering the scale from 50 to 42 % cuts terrain from
+3.51 to 3.00 ms, but the shadow map and the non-pixel part of the world stay nearly constant, which
+is why the frame falls by 10 % rather than the 29 % fewer pixels.
 
 A spot check with `nvidia-smi` during these runs reported 100 % GPU utilisation at 2.7 GHz and
 about 110 W, so the 1080p scene is GPU-bound. CPU-side draw submission is not the limiter at this

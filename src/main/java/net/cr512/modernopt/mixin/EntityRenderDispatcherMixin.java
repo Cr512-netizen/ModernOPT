@@ -3,6 +3,7 @@
 
 package net.cr512.modernopt.mixin;
 
+import net.cr512.modernopt.render.RenderPipeline;
 import net.cr512.modernopt.render.WorldCpuProfiler;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.world.entity.Entity;
@@ -12,11 +13,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Times entity rendering for the CPU profiler.
- *
- * <p>The old per-entity motion-vector projection was removed together with the SSBO: the MSR2
- * temporal shader is camera-only and never read those vectors, so the hook only added a matrix
- * multiply per entity.</p>
+ * Times entity rendering for the CPU profiler and records the entity's screen-space motion for
+ * the MSR2 temporal pass.
  */
 @Mixin(EntityRenderDispatcher.class)
 public abstract class EntityRenderDispatcherMixin {
@@ -27,6 +25,7 @@ public abstract class EntityRenderDispatcherMixin {
     )
     private void modernopt$beginEntityTiming(Entity entity, double x, double y, double z, float yaw, float pitch, com.mojang.blaze3d.vertex.PoseStack poseStack, net.minecraft.client.renderer.MultiBufferSource multiBufferSource, int packedLight, CallbackInfo ci) {
         WorldCpuProfiler.beginEntity();
+        RenderPipeline.recordEntityMotion(entity, x, y, z);
     }
 
     @Inject(method = "render", at = @At("RETURN"))

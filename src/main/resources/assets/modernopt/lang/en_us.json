@@ -44,6 +44,8 @@
   "modernopt.option.msrLanczos.tooltip": "Use Lanczos-2 for FSR 1 and MSR and inside MSR2. Bilinear, Nearest and Soft keep their own kernel.",
   "modernopt.option.msrLanczos3": "Lanczos-3 quality",
   "modernopt.option.msrLanczos3.tooltip": "Use the wider Lanczos-3 kernel for FSR 1, MSR and MSR2.",
+  "modernopt.option.msrMotionVectors": "Entity motion vectors",
+  "modernopt.option.msrMotionVectors.tooltip": "Reproject moving entities with per-entity screen-space vectors. Disable to compare with camera-only reprojection.",
   "modernopt.option.msrVarianceScale": "MSR2 variance scale",
   "modernopt.option.msrEdgeAware": "MSR2 edge-aware interpolation",
   "modernopt.option.msrSharpness": "MSR2 sharpness",
