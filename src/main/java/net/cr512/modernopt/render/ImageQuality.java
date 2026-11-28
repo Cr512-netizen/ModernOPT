@@ -58,6 +58,7 @@ public final class ImageQuality {
             }
 
             int[] luma = luma(image, width, height);
+            int[] chroma = chroma(image, width, height);
             double currentSharpness = sharpness(luma, width, x0, x1, y0, y1);
             double currentHighFrequency = highFrequency(luma, width, x0, x1, y0, y1);
             result.put("sharpness", round(currentSharpness, 5));
@@ -74,12 +75,17 @@ public final class ImageQuality {
                     return result;
                 }
                 int[] refLuma = luma(reference, width, height);
+                int[] refChroma = chroma(reference, width, height);
                 double refSharpness = sharpness(refLuma, width, x0, x1, y0, y1);
                 double refHighFrequency = highFrequency(refLuma, width, x0, x1, y0, y1);
                 double[] errors = errors(luma, refLuma, width, x0, x1, y0, y1);
                 result.put("qualityMae", round(errors[0], 5));
                 result.put("qualityRmse", round(errors[1], 5));
                 result.put("psnr", round(errors[2], 3));
+                result.put("chromaMae", round(chromaMae(chroma, refChroma, width,
+                        x0, x1, y0, y1), 5));
+                result.put("overshoot", round(overshoot(luma, refLuma, width,
+                        x0, x1, y0, y1), 5));
                 result.put("ssim", round(ssim(luma, refLuma, width, x0, x1, y0, y1), 5));
                 result.put("referenceSharpness", round(refSharpness, 5));
                 result.put("referenceHighFrequency", round(refHighFrequency, 5));
@@ -106,6 +112,23 @@ public final class ImageQuality {
             }
         }
         return luma;
+    }
+
+    /** Interleaved YCoCg chroma (Co, Cg), each in -255..255. */
+    private static int[] chroma(NativeImage image, int width, int height) {
+        int[] chroma = new int[width * height * 2];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int rgba = image.getPixelRGBA(x, y);
+                int r = rgba & 0xFF;
+                int g = (rgba >>> 8) & 0xFF;
+                int b = (rgba >>> 16) & 0xFF;
+                int index = (y * width + x) * 2;
+                chroma[index] = r - b;
+                chroma[index + 1] = (2 * g - r - b) / 2;
+            }
+        }
+        return chroma;
     }
 
     private static double sharpness(int[] luma, int width, int x0, int x1, int y0, int y1) {
@@ -198,6 +221,55 @@ public final class ImageQuality {
         double rmse = Math.sqrt(sumSq / count);
         double psnr = rmse <= 1.0e-9 ? 99.0 : 20.0 * Math.log10(1.0 / rmse);
         return new double[] {mae, rmse, psnr};
+    }
+
+    /** Mean absolute YCoCg chroma error against the reference, normalised to 0..1. */
+    private static double chromaMae(int[] chroma, int[] reference, int width,
+            int x0, int x1, int y0, int y1) {
+        double sum = 0.0;
+        long count = 0;
+        for (int y = y0; y < y1; y++) {
+            int row = y * width;
+            for (int x = x0; x < x1; x++) {
+                int index = (row + x) * 2;
+                sum += Math.abs(chroma[index] - reference[index])
+                        + Math.abs(chroma[index + 1] - reference[index + 1]);
+                count += 2;
+            }
+        }
+        return count == 0 ? 0.0 : sum / (count * 255.0);
+    }
+
+    /**
+     * Fraction of ROI pixels whose luma lies more than 6/255 outside the 3x3 reference luma
+     * range. Those are pixels where sharpening or Lanczos ringing invented contrast that is not
+     * present in the native image; lower is better.
+     */
+    private static double overshoot(int[] luma, int[] reference, int width,
+            int x0, int x1, int y0, int y1) {
+        long hits = 0;
+        long count = 0;
+        for (int y = y0; y < y1; y++) {
+            int row = y * width;
+            for (int x = x0; x < x1; x++) {
+                int min = 255;
+                int max = 0;
+                for (int dy = -1; dy <= 1; dy++) {
+                    int refRow = (y + dy) * width;
+                    for (int dx = -1; dx <= 1; dx++) {
+                        int value = reference[refRow + x + dx];
+                        min = Math.min(min, value);
+                        max = Math.max(max, value);
+                    }
+                }
+                int value = luma[row + x];
+                if (value > max + 6 || value < min - 6) {
+                    hits++;
+                }
+                count++;
+            }
+        }
+        return count == 0 ? 0.0 : (double) hits / count;
     }
 
     private static double ssim(int[] luma, int[] reference, int width,

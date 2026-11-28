@@ -2,10 +2,13 @@
     "vertex": "modernopt:bilinear",
     "fragment": "modernopt:lanczos",
     "samplers": [
-        { "name": "InputSampler" }
+        { "name": "InputSampler" },
+        { "name": "DepthSampler" },
+        { "name": "LanczosTable" }
     ],
     "uniforms": [
         { "name": "InputSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] },
-        { "name": "Params", "type": "float", "count": 4, "values": [ 2.0, 0.0, 0.0, 0.0 ] }
+        { "name": "Params", "type": "float", "count": 4, "values": [ 2.0, 0.0, 0.0, 0.0 ] },
+        { "name": "DepthValid", "type": "float", "count": 1, "values": [ 0.0 ] }
     ]
 }

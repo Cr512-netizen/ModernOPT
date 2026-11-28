@@ -39,22 +39,21 @@ void main() {
     nz = clamp(abs(nz) / max(ringMax - ringMin, 3.0517578125e-5), 0.0, 1.0);
     nz = 1.0 - 0.5 * nz;
 
-    // Min/Max of ring
+    // Min/Max of the four-neighbour ring, as in AMD RCAS. Including the centre in this ring
+    // shrinks the lobe on exactly the pixels it is meant to sharpen.
     vec3 mn4 = min(min(tapB.rgb, tapD.rgb), min(tapF.rgb, tapH.rgb));
     vec3 mx4 = max(max(tapB.rgb, tapD.rgb), max(tapF.rgb, tapH.rgb));
 
     // Fused hitMin/hitMax with branchless safe divide
-    vec3 mn4e = min(mn4, tapE.rgb);
-    vec3 mx4e = max(mx4, tapE.rgb);
-    vec3 fourMx4 = 4.0 * mx4e;
-    vec3 fourMn4 = 4.0 * mn4e;
+    vec3 fourMx4 = 4.0 * mx4;
+    vec3 fourMn4 = 4.0 * mn4 - 4.0;
 
     // Safe divide: replace small denominators with 1.0
     vec3 safeMx = mix(fourMx4, vec3(1.0), lessThan(abs(fourMx4), vec3(3.0517578125e-5)));
-    vec3 safeMn = mix(fourMn4 - vec3(4.0), vec3(1.0), lessThan(abs(fourMn4 - vec3(4.0)), vec3(3.0517578125e-5)));
+    vec3 safeMn = mix(fourMn4, vec3(1.0), lessThan(abs(fourMn4), vec3(3.0517578125e-5)));
 
-    vec3 hitMin = mn4e / safeMx;
-    vec3 hitMax = (vec3(1.0) - mx4e) / safeMn;
+    vec3 hitMin = mn4 / safeMx;
+    vec3 hitMax = (vec3(1.0) - mx4) / safeMn;
 
     // Lobe - max of RGB components
     vec3 lobeAbs = max(-hitMin, hitMax);

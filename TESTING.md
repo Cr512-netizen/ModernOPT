@@ -108,6 +108,8 @@ status overlay, hotbar and hand do not dominate the result:
 | `qualityMae`, `qualityRmse` | Error against the native reference, 0..1. |
 | `psnr` | PSNR against the reference, dB. |
 | `ssim` | Mean 8x8-window SSIM against the reference, 0..1. |
+| `chromaMae` | Mean absolute YCoCg chroma error against the reference, 0..1. Lower is better; catches colour fringes that a luma-only SSIM misses. |
+| `overshoot` | Fraction of ROI pixels more than 6/255 outside the 3x3 native luma range. Lower is better; catches halos invented by sharpening or Lanczos ringing. |
 | `sharpnessRatio`, `highFrequencyRatio` | Relative to the reference. |
 
 The log prints a `[BENCH][QUALITY]` line per state and a ranking by SSIM; `bench-results.json`
@@ -117,7 +119,15 @@ not a valid comparison.
 
 Sharpness alone is not quality: Nearest-neighbour can have a high gradient while looking blocky.
 Use SSIM/MAE together with the sharpness ratio: a good upscaler keeps the ratio near 1 without
-losing much SSIM.
+losing much SSIM. `chromaMae` and `overshoot` separate a genuinely sharper reconstruction from one
+that only adds colour fringes and halos.
+
+Two audit-only suffixes isolate the stages when tuning:
+
+* `!sharpN` sets both the FSR RCAS and MSR2 sharpness to `N` (0..100). Use `!sharp0` to compare
+  reconstruction filters without the sharpening stage.
+* `!histNN` sets the MSR2 history weight to `NN` percent (50..95). It is useful for checking
+  temporal convergence separately from the spatial filter.
 
 ### Baselines
 

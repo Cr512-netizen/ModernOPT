@@ -829,12 +829,14 @@ public final class SelfTest {
             ranking.add(row);
 
             ModernOPT.LOG.info("[BENCH][QUALITY] {} scale={} sharpness={} highFrequency={} "
-                            + "ssim={} mae={} psnr={} sharpnessRatio={}",
+                            + "ssim={} mae={} psnr={} sharpnessRatio={} chromaMae={} overshoot={}",
                     name, state.get("renderScalePercent"), metrics.get("sharpness"),
                     metrics.get("highFrequency"), metrics.getOrDefault("ssim", "-"),
                     metrics.getOrDefault("qualityMae", "-"),
                     metrics.getOrDefault("psnr", "-"),
-                    metrics.getOrDefault("sharpnessRatio", "-"));
+                    metrics.getOrDefault("sharpnessRatio", "-"),
+                    metrics.getOrDefault("chromaMae", "-"),
+                    metrics.getOrDefault("overshoot", "-"));
         }
         ranking.sort((a, b) -> {
             double sa = a.get("ssim") instanceof Number n ? n.doubleValue() : -1.0;
@@ -1159,6 +1161,24 @@ public final class SelfTest {
         }
         if (name.contains("!drs")) {
             ModernOptConfig.MSR2_DYNAMIC_RES.set(true);
+        }
+        // Audit-only sharpness override: isolates reconstruction quality from the RCAS stage.
+        int sharpIndex = name.indexOf("!sharp");
+        if (sharpIndex >= 0 && !"OFF".equals(mode)) {
+            int strength = digits(name.substring(sharpIndex + 6));
+            if (strength >= 0 && strength <= 100) {
+                ModernOptConfig.FSR_RCAS_SHARPNESS.set(strength);
+                ModernOptConfig.MSR2_SHARPNESS.set(strength);
+            }
+        }
+        // Audit-only history-weight override: measures temporal convergence separately from the
+        // spatial filter. Values are percent (50..95).
+        int historyIndex = name.indexOf("!hist");
+        if (historyIndex >= 0 && !"OFF".equals(mode)) {
+            int weight = digits(name.substring(historyIndex + 5));
+            if (weight >= 50 && weight <= 95) {
+                ModernOptConfig.MSR2_HISTORY_WEIGHT.set(weight / 100.0);
+            }
         }
         swapOnPairDone = false;
         boolean wasMob = benchMob;

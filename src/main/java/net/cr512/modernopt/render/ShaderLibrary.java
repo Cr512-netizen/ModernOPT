@@ -208,6 +208,46 @@ public final class ShaderLibrary {
     }
 
     /**
+     * Draws the generic Lanczos pass with scene depth bound. The depth sampler lets the kernel
+     * reject taps from a different surface at silhouettes, which removes the dark halo that a
+     * depth-blind Lanczos kernel leaves around foreground objects.
+     */
+    public static void drawLanczos(ShaderInstance shader, int source, int depth,
+                                   int sourceWidth, int sourceHeight,
+                                   int outputWidth, int outputHeight,
+                                   float radius, boolean depthValid) {
+        RenderSystem.assertOnRenderThread();
+
+        shader.setSampler("InputSampler", source);
+        shader.setSampler("DepthSampler", depth);
+        shader.setSampler("LanczosTable", RenderPipeline.ensureLanczosTable());
+        Uniform inputSize = shader.getUniform("InputSize");
+        if (inputSize != null) {
+            inputSize.set((float) sourceWidth, (float) sourceHeight);
+        }
+        Uniform params = shader.getUniform("Params");
+        if (params != null) {
+            params.set(radius, 0.0F, (float) sourceWidth, (float) sourceHeight);
+        }
+        Uniform depthValidUniform = shader.getUniform("DepthValid");
+        if (depthValidUniform != null) {
+            depthValidUniform.set(depth != 0 && depthValid ? 1.0F : 0.0F);
+        }
+
+        shader.apply();
+
+        BufferBuilder buffer = RenderSystem.renderThreadTesselator()
+                .begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLIT_SCREEN);
+        buffer.addVertex(0.0F, 0.0F, 0.0F);
+        buffer.addVertex(1.0F, 0.0F, 0.0F);
+        buffer.addVertex(1.0F, 1.0F, 0.0F);
+        buffer.addVertex(0.0F, 1.0F, 0.0F);
+        BufferUploader.draw(buffer.buildOrThrow());
+
+        shader.clear();
+    }
+
+    /**
      * One-texel bilinear copy. Used by the MSR2 spatial pass when the upscale factor is small
      * enough that the fused EASU+RCAS sharpening costs more than it is worth.
      */

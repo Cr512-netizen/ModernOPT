@@ -307,8 +307,8 @@ public final class RenderPipeline {
     private static Msr2TemporalCompute msrComputeProgram;
     private static boolean msrComputeFailed;
 
-    /** Polyphase Lanczos tables shared with {@code msr_temporal.comp} (65 phases, 6 taps). */
-    private static final int LANCZOS_PHASES = 65;
+    /** Polyphase Lanczos tables shared with {@code msr_temporal.comp} (129 phases, 6 taps). */
+    private static final int LANCZOS_PHASES = 129;
     private static final int LANCZOS_TAPS = 6;
     private static final float[] LANCZOS_WEIGHTS_2 = buildLanczosWeights(2);
     private static final float[] LANCZOS_WEIGHTS_3 = buildLanczosWeights(3);
@@ -1738,8 +1738,14 @@ public final class RenderPipeline {
         ShaderLibrary.beginPassState();
         try {
             easu.bindWrite(true);
-            ShaderLibrary.draw(primary, sourceTexture, sourceWidth, sourceHeight,
-                    outWidth, outHeight, primaryParam, 0.0F);
+            if (useLanczos) {
+                ShaderLibrary.drawLanczos(primary, sourceTexture, depthTexture,
+                        sourceWidth, sourceHeight, outWidth, outHeight,
+                        primaryParam, depthValid);
+            } else {
+                ShaderLibrary.draw(primary, sourceTexture, sourceWidth, sourceHeight,
+                        outWidth, outHeight, primaryParam, 0.0F);
+            }
 
             write.bindWrite(true);
             ShaderLibrary.drawTemporal(library.temporal,
@@ -1840,13 +1846,26 @@ public final class RenderPipeline {
                     // The intermediate full-resolution buffer and the RCAS pass exist only to
                     // sharpen, so running them with a zero lobe was pure overhead.
                     main.bindWrite(true);
-                    ShaderLibrary.draw(fsrPrimary, sourceTexture, sourceWidth, sourceHeight,
-                            outWidth, outHeight, fsrPrimaryParam, 0.0F);
+                    if (useLanczos) {
+                        ShaderLibrary.drawLanczos(fsrPrimary, sourceTexture,
+                                source.getDepthTextureId(), sourceWidth, sourceHeight,
+                                outWidth, outHeight, fsrPrimaryParam, true);
+                    } else {
+                        ShaderLibrary.draw(fsrPrimary, sourceTexture, sourceWidth, sourceHeight,
+                                outWidth, outHeight, fsrPrimaryParam, 0.0F);
+                    }
                 } else {
                     // Full FSR 1 EASU (or generic Lanczos) + RCAS path
                     TextureTarget easu = ensureIntermediates(outWidth, outHeight, true);
                     easu.bindWrite(true);
-                    ShaderLibrary.draw(fsrPrimary, sourceTexture, sourceWidth, sourceHeight, outWidth, outHeight, fsrPrimaryParam, 0.0F);
+                    if (useLanczos) {
+                        ShaderLibrary.drawLanczos(fsrPrimary, sourceTexture,
+                                source.getDepthTextureId(), sourceWidth, sourceHeight,
+                                outWidth, outHeight, fsrPrimaryParam, true);
+                    } else {
+                        ShaderLibrary.draw(fsrPrimary, sourceTexture, sourceWidth, sourceHeight,
+                                outWidth, outHeight, fsrPrimaryParam, 0.0F);
+                    }
 
                     if (fxaa) {
                         TextureTarget post = ensureIntermediates(outWidth, outHeight, false);
@@ -2841,7 +2860,7 @@ public final class RenderPipeline {
 
         int previousActive = GlStateManager._getActiveTexture();
         GlStateManager._activeTexture(GL13C.GL_TEXTURE0 + 8);
-        int previousArrayTexture = GL11C.glGetInteger(GL30C.GL_TEXTURE_BINDING_2D_ARRAY);
+        int previousTableTexture = GL11C.glGetInteger(GL11C.GL_TEXTURE_BINDING_2D);
         GlStateManager._activeTexture(previousActive);
         try {
             // Explicit texture units: the compute program's sampler uniforms are set to these
@@ -2850,7 +2869,7 @@ public final class RenderPipeline {
             bindTextureUnit(GL13C.GL_TEXTURE0 + 5, depthTexture);
             bindTextureUnit(GL13C.GL_TEXTURE0 + 6, historyColorRead);
             bindTextureUnit(GL13C.GL_TEXTURE0 + 7, historyDepthRead);
-            bindTextureArrayUnit(GL13C.GL_TEXTURE0 + 8, ensureLanczosTable());
+            bindTextureUnit(GL13C.GL_TEXTURE0 + 8, ensureLanczosTable());
             bindTextureUnit(GL13C.GL_TEXTURE0 + 9, motionTexture);
 
             compute.bind();
@@ -2903,7 +2922,7 @@ public final class RenderPipeline {
             compute.unbind();
         } finally {
             GlStateManager._activeTexture(GL13C.GL_TEXTURE0 + 8);
-            GL11C.glBindTexture(GL30C.GL_TEXTURE_2D_ARRAY, previousArrayTexture);
+            GlStateManager._bindTexture(previousTableTexture);
             GlStateManager._activeTexture(previousActive);
         }
     }
@@ -2935,9 +2954,9 @@ public final class RenderPipeline {
     }
 
     /**
-     * Builds the polyphase Lanczos table: one row per 1/64-pixel phase, six taps at offsets
+     * Builds the polyphase Lanczos table: one row per 1/128-pixel phase, six taps at offsets
      * -2..+3. This is the CPU twin of the table sampling in {@code msr_temporal.comp}; both use
-     * the same 65 entries, and the shader round-trips the fractional phase to the nearest one.
+     * the same 129 entries, and the shader round-trips the fractional phase to the nearest one.
      */
     private static float[] buildLanczosWeights(int radius) {
         float[] table = new float[LANCZOS_PHASES * LANCZOS_TAPS];
@@ -2967,32 +2986,32 @@ public final class RenderPipeline {
     }
 
     /**
-     * Lazily creates the 65x6x2 R32F polyphase texture. A texture is used rather than a uniform
-     * array because dynamically indexed uniform arrays made the NVIDIA compiler lower the whole
-     * table onto the local stack and fail with "invalid local parameter number".
+     * Lazily creates the 129x12 R32F polyphase texture (six taps for radius 2 on rows 0..5, six
+     * for radius 3 on rows 6..11). A texture is used rather than a uniform array because
+     * dynamically indexed uniform arrays made the NVIDIA compiler lower the whole table onto the
+     * local stack and fail with "invalid local parameter number".
      */
-    private static int ensureLanczosTable() {
+    static int ensureLanczosTable() {
         if (lanczosTableTexture != 0) {
             return lanczosTableTexture;
         }
         int previousActive = GlStateManager._getActiveTexture();
-        int previousArrayTexture = GL11C.glGetInteger(GL30C.GL_TEXTURE_BINDING_2D_ARRAY);
+        int previousTexture = GL11C.glGetInteger(GL11C.GL_TEXTURE_BINDING_2D);
         int texture = GL11C.glGenTextures();
         try {
-            GL11C.glBindTexture(GL30C.GL_TEXTURE_2D_ARRAY, texture);
-            GL11C.glTexParameteri(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_MIN_FILTER, GL11C.GL_NEAREST);
-            GL11C.glTexParameteri(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_MAG_FILTER, GL11C.GL_NEAREST);
-            GL11C.glTexParameteri(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_WRAP_S, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
-            GL11C.glTexParameteri(GL30C.GL_TEXTURE_2D_ARRAY, GL11C.GL_TEXTURE_WRAP_T, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
-            GL11C.glTexParameteri(GL30C.GL_TEXTURE_2D_ARRAY, org.lwjgl.opengl.GL12C.GL_TEXTURE_WRAP_R, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
+            GlStateManager._bindTexture(texture);
+            GL11C.glTexParameteri(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_MIN_FILTER, GL11C.GL_NEAREST);
+            GL11C.glTexParameteri(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_MAG_FILTER, GL11C.GL_NEAREST);
+            GL11C.glTexParameteri(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_WRAP_S, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
+            GL11C.glTexParameteri(GL11C.GL_TEXTURE_2D, GL11C.GL_TEXTURE_WRAP_T, org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE);
             java.nio.FloatBuffer data = org.lwjgl.system.MemoryUtil.memAllocFloat(
                     LANCZOS_PHASES * LANCZOS_TAPS * 2);
             try {
                 data.put(LANCZOS_WEIGHTS_2);
                 data.put(LANCZOS_WEIGHTS_3);
                 data.flip();
-                GL30C.glTexImage3D(GL30C.GL_TEXTURE_2D_ARRAY, 0, GL30C.GL_R32F,
-                        LANCZOS_PHASES, LANCZOS_TAPS, 2, 0,
+                GL11C.glTexImage2D(GL11C.GL_TEXTURE_2D, 0, GL30C.GL_R32F,
+                        LANCZOS_PHASES, LANCZOS_TAPS * 2, 0,
                         GL11C.GL_RED, GL11C.GL_FLOAT, data);
             } finally {
                 org.lwjgl.system.MemoryUtil.memFree(data);
@@ -3000,15 +3019,9 @@ public final class RenderPipeline {
             lanczosTableTexture = texture;
             return texture;
         } finally {
-            GL11C.glBindTexture(GL30C.GL_TEXTURE_2D_ARRAY, previousArrayTexture);
+            GlStateManager._bindTexture(previousTexture);
             GlStateManager._activeTexture(previousActive);
         }
-    }
-
-    /** Binds a texture to the GL_TEXTURE_2D_ARRAY target on an explicit unit. */
-    private static void bindTextureArrayUnit(int glTextureUnit, int texture) {
-        GlStateManager._activeTexture(glTextureUnit);
-        GL11C.glBindTexture(GL30C.GL_TEXTURE_2D_ARRAY, texture);
     }
 
     private static void drawFullscreenQuad() {

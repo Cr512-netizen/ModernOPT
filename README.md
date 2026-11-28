@@ -72,24 +72,36 @@ Key properties:
   stores `previousUv - currentUv` plus a coverage mask. The temporal shader uses the entity vector
   where the coverage and depth test pass and camera reprojection everywhere else. The vector pass
   is skipped entirely when no tracked entity has moved in world space: a world-static entity is
-  already reprojected exactly by the camera matrices. Small items, arrows, XP orbs and particles
-  are deliberately left to the reactive mask instead of applying a box-sized velocity to the
-  ground behind them.
+  already reprojected exactly by the camera matrices. The vector lookup is dilated by one source
+  texel with a depth check, so the outermost silhouette sample of a moving entity does not fall
+  back to the camera vector. Small items, arrows, XP orbs and particles are deliberately left to
+  the reactive mask instead of applying a box-sized velocity to the ground behind them.
 - The low-resolution current frame is reconstructed with **Lanczos-2** when the shared Lanczos
   toggle is on (the default), or with **EASU** when it is off. The EASU prepass shifts its source
   sampling by the frame's sub-pixel jitter, so its output is already aligned to the unjittered
   history grid. FSR 1 and MSR use the same toggle in their spatial pass; Bilinear, Nearest and
-  Soft keep their own kernels. The Lanczos kernel weights come from a 65-phase polyphase table in
-  a small R32F texture; when scene depth is unavailable the per-tap depth fetch is skipped, not
-  just its weight.
+  Soft keep their own kernels. Luma uses the signed Lanczos kernel and chroma uses a bilinear
+  fetch, which removes coloured fringes on high-contrast edges. The kernel weights come from a
+  129-phase polyphase table in a small R32F texture, shared by the compute and spatial paths.
+  Depth guidance rejects taps from a different surface at silhouettes; a cheap depth check
+  disables the per-tap weights on flat terrain, where they are all 1.0.
+- **History rectification**: the history colour is reconstructed from the four texels of the
+  reprojection footprint and each tap is weighted by its depth agreement with the current
+  surface. This keeps a foreground/background bilinear blend from passing the depth test as a
+  mixed surface, which used to leave a dark or doubled fringe on silhouettes.
+- **Adaptive history**: the base history weight is raised slightly at rest, then reduced smoothly
+  by the reactive mask, depth confidence and screen-space speed. The reactive mask compares the
+  *unclamped* history luma/chroma against the current sample, so a lighting or object change is
+  rejected before the variance clamp can hide it.
 - The temporal acceptance box is a tight 3x3 neighbourhood of the current sample for both
   reconstruction paths. It intentionally does **not** use the wide Lanczos footprint: that box
   grew with the upscale ratio (twelve output pixels at 50 %) and let a moving entity keep its old
   colour for many frames, which showed up as a second, flying copy of the mob.
 - Moving entities and particles are handled with per-entity vectors where available and a
-  reactive history mask everywhere else: when the clamped history differs from the current
-  neighbourhood, the history contribution drops smoothly. This rejects the old colour before it
-  can remain behind as a second, flying copy of a mob or the player's body.
+  reactive history mask everywhere else: when the unclamped history luma/chroma differs from the
+  current sample, or its depth is close to the disocclusion threshold, the history contribution
+  drops smoothly. This rejects the old colour before it can remain behind as a second, flying
+  copy of a mob or the player's body.
 - Negative values and NaNs are clamped before `imageStore`, so one bad frame cannot poison the
   ping-pong history.
 - `msr2.lanczos3` switches to the wider Lanczos-3 kernel: sharper texture response and more
@@ -258,26 +270,38 @@ about 13 % mean FPS here with the block-boundary rebuild rule.
 
 The harness measures every state against a native `BILINEAR-100!shadow2` screenshot from the same
 run. The ROI is the central world area (`x = 8..92 %`, `y = 32..82 %`), so HUD, hand and sky do not
-dominate. Higher sharpness is not automatically better; SSIM/MAE show whether the detail is real.
+dominate. Higher sharpness is not automatically better; SSIM/MAE show whether the detail is real,
+`chromaMae` shows coloured fringes, and `overshoot` shows how often sharpening invented contrast
+outside the native 3x3 neighbourhood.
 
-| Mode | Sharpness | High-frequency | SSIM | MAE | PSNR | Sharpness ratio |
+| Mode | Sharpness | SSIM | MAE | Sharpness ratio | Chroma MAE | Overshoot |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Native reference, 100 % | 0.0309 | 0.0177 | 1.000 | 0.000 | 99.0 | 1.000 |
-| Bilinear, 50 % | 0.0214 | 0.0068 | 0.721 | 0.0382 | 23.19 | 0.691 |
-| Nearest, 50 % | 0.0278 | 0.0174 | 0.700 | 0.0400 | 22.40 | 0.899 |
-| Soft scale, 50 % | 0.0194 | 0.0052 | 0.650 | 0.0495 | 21.40 | 0.629 |
-| FSR 1 + Lanczos-2, 50 % | 0.0247 | 0.0086 | 0.735 | 0.0377 | 22.85 | 0.800 |
-| MSR, 50 % | 0.0241 | 0.0083 | 0.714 | 0.0394 | 22.80 | 0.778 |
-| MSR2 + Lanczos-2, 50 % | 0.0248 | 0.0086 | 0.704 | 0.0412 | 22.36 | 0.803 |
-| MSR2 EASU, 50 % | 0.0240 | 0.0086 | 0.748 | 0.0345 | 23.84 | 0.777 |
-| MSR2 + Lanczos-2, 42 % | 0.0230 | 0.0067 | 0.725 | 0.0379 | 23.53 | 0.742 |
-| MSR2 + Lanczos-2, 67 % | 0.0272 | 0.0110 | 0.736 | 0.0391 | 22.52 | 0.879 |
+| Native reference, 100 % | 0.0235 | 1.000 | 0.000 | 1.000 | 0.000 | 0.000 |
+| Bilinear, 50 % | 0.0158 | 0.801 | 0.0191 | 0.672 | 0.0105 | 0.0112 |
+| FSR 1 EASU, 50 % | 0.0177 | 0.774 | 0.0201 | 0.750 | 0.0110 | 0.0172 |
+| FSR 1 + Lanczos-2, 50 % | 0.0191 | 0.806 | 0.0194 | 0.810 | 0.0105 | 0.0110 |
+| FSR 1 + Lanczos-3, 50 % | 0.0207 | 0.803 | 0.0202 | 0.881 | 0.0105 | 0.0151 |
+| MSR2 EASU, 50 % | 0.0178 | 0.776 | 0.0201 | 0.757 | 0.0110 | 0.0166 |
+| MSR2 + Lanczos-2, 50 % | 0.0193 | 0.806 | 0.0194 | 0.818 | 0.0105 | 0.0110 |
+| MSR2 + Lanczos-3, 50 % | 0.0205 | 0.804 | 0.0199 | 0.869 | 0.0105 | 0.0146 |
+| MSR2 + Lanczos-2, 67 % | 0.0212 | 0.862 | 0.0155 | 0.902 | 0.0083 | 0.0041 |
+| MSR2 + Lanczos-3, 67 % | 0.0224 | 0.860 | 0.0160 | 0.949 | 0.0084 | 0.0068 |
+| MSR2 + Lanczos-2, 77 % | 0.0218 | 0.884 | 0.0138 | 0.927 | 0.0073 | 0.0027 |
+| MSR2 + Lanczos-3, 77 % | 0.0228 | 0.883 | 0.0142 | 0.968 | 0.0073 | 0.0052 |
 
-Nearest-neighbour keeps 90 % of the native gradient but loses the most SSIM after Soft scale: the
-gradient is concentrated on block edges, not on real detail. MSR2 with EASU has the best SSIM and
-MAE among the temporal modes at 50 %; Lanczos-2 is slightly sharper but a little noisier. MSR2 67 %
-gets closest to native sharpness, at the cost of a lower frame rate. The full JSON ranking is under
-`quality.ranking`; see [TESTING.md](TESTING.md#upscaler-quality-metrics).
+EASU is clearly softer now: at 50 % it keeps only 75-76 % of the native gradient, while Lanczos-2
+reaches 81-82 % and Lanczos-3 reaches 87-88 %. Lanczos-3 gets to 95 % at 67 % and 97 % at 77 %,
+with a slightly lower SSIM and a small frame-rate cost. Its `overshoot` is still lower than EASU's
+at every scale in this run, so the extra sharpness is not coming from larger halos. Lanczos-2 is the
+best SSIM/MAE choice; Lanczos-3 is the sharper choice. Leave Lanczos on unless the pack's own
+reconstruction already supplies the detail. The full JSON ranking is under `quality.ranking`; see
+[TESTING.md](TESTING.md#upscaler-quality-metrics).
+
+Against 0.7.3 on the same frozen world, the 50/67/77 % Lanczos states gained **1.1-2.1 % sharpness**
+and **0.09-0.12 % SSIM**; MAE rose by 1.3-2.0 % because the sharper edges no longer sit on top of
+the native edge as softly. The bigger change is in motion: motion-vector dilation, history
+rectification and the luma/chroma/depth-reactive mask target ghosting and silhouette fringes, which
+a static screenshot cannot measure. Use `!pan2` and a moving mob in-game to inspect that part.
 
 ### Frame cost
 
