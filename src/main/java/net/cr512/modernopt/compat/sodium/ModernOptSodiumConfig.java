@@ -49,6 +49,7 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
     private static final ResourceLocation FXAA = id("fxaa");
     private static final ResourceLocation OVERLAY = id("overlay");
     private static final ResourceLocation HUD_SCALE = id("hud_scale");
+    private static final ResourceLocation WHOLE_WINDOW = id("whole_window");
     private static final ResourceLocation SHADOW_INTERVAL = id("shadow_interval");
     private static final ResourceLocation OPEN_SETTINGS = id("open_settings");
 
@@ -118,7 +119,11 @@ public final class ModernOptSodiumConfig implements ConfigEntryPoint {
                 .addOption(integerOption(builder, HUD_SCALE, "modernopt.option.hudScale",
                         ModernOptConfig.HUD_SCALE_PERCENT.getDefault(), 50, 100,
                         value -> { ModernOptConfig.HUD_SCALE_PERCENT.set(value); ModernOptSettings.refresh(); },
-                        () -> ModernOptConfig.HUD_SCALE_PERCENT.get()));
+                        () -> ModernOptConfig.HUD_SCALE_PERCENT.get()))
+                .addOption(booleanOption(builder, WHOLE_WINDOW, "modernopt.option.scaleWholeWindow",
+                        ModernOptConfig.SCALE_WHOLE_WINDOW.getDefault(),
+                        value -> { ModernOptConfig.SCALE_WHOLE_WINDOW.set(value); ModernOptSettings.refresh(); },
+                        () -> ModernOptConfig.SCALE_WHOLE_WINDOW.get()));
         page.addOptionGroup(scaling);
 
         OptionGroupBuilder shadows = builder.createOptionGroup()

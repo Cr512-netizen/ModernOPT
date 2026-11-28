@@ -11,7 +11,7 @@
   "modernopt.option.upscaler": "Апскейлер",
   "modernopt.option.temporalPreset": "Пресет Temporal 42%",
   "modernopt.option.hudScale": "Разрешение интерфейса",
-  "modernopt.option.scaleWholeWindow": "Масштабировать всё окно",
+  "modernopt.option.scaleWholeWindow": "Всё окно",
   "modernopt.option.shadowMapResolution": "Разрешение карты теней",
   "modernopt.option.shadowUpdateInterval": "Обновление теней",
   "modernopt.option.fp16": "FP16-буфер мира",

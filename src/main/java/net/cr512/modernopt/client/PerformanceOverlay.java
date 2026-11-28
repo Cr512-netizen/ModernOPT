@@ -32,8 +32,13 @@ public final class PerformanceOverlay {
 
         int internalWidth = RenderPipeline.internalWidth();
         int internalHeight = RenderPipeline.internalHeight();
-        int windowWidth = minecraft.getWindow().getWidth();
-        int windowHeight = minecraft.getWindow().getHeight();
+        boolean wholeWindow = RenderPipeline.wholeWindowActive();
+        int windowWidth = wholeWindow
+                ? Math.max(RenderPipeline.realWindowWidth(), 1)
+                : minecraft.getWindow().getWidth();
+        int windowHeight = wholeWindow
+                ? Math.max(RenderPipeline.realWindowHeight(), 1)
+                : minecraft.getWindow().getHeight();
         int samples = RenderPipeline.activeSamples();
 
         StringBuilder builder = new StringBuilder(96);
@@ -46,6 +51,9 @@ public final class PerformanceOverlay {
             builder.append("native");
         }
         builder.append(" -> ").append(windowWidth).append('x').append(windowHeight);
+        if (wholeWindow) {
+            builder.append(" WW");
+        }
         builder.append(" | MSAA ").append(samples > 1 ? samples + "x" : "off");
         if (ModernOptSettings.ssaa()) {
             builder.append(" | SSAA");

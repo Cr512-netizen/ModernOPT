@@ -85,11 +85,11 @@ frame for hundreds of milliseconds and would otherwise dominate the 1% low.
 
 ## Upscaler quality metrics
 
-Every state's end screenshot (or `f60` for `!conv`) is analysed after the run. Since 0.7.6
-whole-window is always on and the screenshot is taken from the native-resolution upscaled output,
-not from the small intermediate frame. The default reference is the `BILINEAR-100!shadow2`
-screenshot from the same run, then `BILINEAR-100`, then `OFF-100`; `-PbenchReference=<png>`
-overrides it. Put the reference state first:
+Every state's end screenshot (or `f60` for `!conv`) is analysed after the run. In whole-window
+mode (default) the screenshot is taken from the native-resolution upscaled output, not from the
+small intermediate frame. The default reference is the `BILINEAR-100!shadow2` screenshot from the
+same run, then `BILINEAR-100`, then `OFF-100`; `-PbenchReference=<png>` overrides it. Put the
+reference state first:
 
 ```bash
 ./gradlew runBench -PbenchStates=BILINEAR-100!shadow2,BILINEAR-50!shadow2,\
@@ -117,8 +117,9 @@ status overlay, hotbar and hand do not dominate the result:
 The log prints a `[BENCH][QUALITY]` line per state and a ranking by SSIM; `bench-results.json`
 contains the same data under `quality.ranking` and each state's `image` object. `qualityComparable`
 is false for motion, sunset and third-person states, where the native reference is not a valid
-comparison. Whole-window is the only presentation mode now, so `!wws` no longer affects
-comparability; it is kept as a no-op suffix for old state lists.
+comparison. Whole-window is the default presentation mode; `!wws` turns it on for old state lists
+and no longer affects comparability. Use `-PbenchStates=...` without a per-state override to run
+whatever `renderScale.scaleWholeWindow` is configured to.
 
 Sharpness alone is not quality: Nearest-neighbour can have a high gradient while looking blocky.
 Use SSIM/MAE together with the sharpness ratio: a good upscaler keeps the ratio near 1 without

@@ -185,6 +185,7 @@ public final class RenderPipeline {
     private static boolean wholeWindowActive;
     /** Native-resolution output of the whole-window upscaler, presented at the end of the frame. */
     private static TextureTarget wholeWindowOutput;
+    private static boolean loggedWholeWindowFallback;
 
     // MSR2 cached settings
     private static boolean cachedMsrEnabled = false;
@@ -891,7 +892,7 @@ public final class RenderPipeline {
         cachedFsrEasuSharpness = ModernOptSettings.fsrEasuSharpness();
         cachedFsrRcasSharpness = ModernOptSettings.fsrRcasSharpness();
         cachedSoftness = ModernOptSettings.softness();
-        cachedScaleWholeWindow = true;
+        cachedScaleWholeWindow = ModernOptSettings.scaleWholeWindow();
 
         // MSR2
         cachedMsrEnabled = cachedUpscaler == UpscalerType.MSR2;
@@ -2149,6 +2150,7 @@ public final class RenderPipeline {
                 presentWholeWindow(output.getColorTextureId(), output.width, output.height,
                         windowWidth, windowHeight);
                 presented = true;
+                loggedWholeWindowFallback = false;
             } catch (Throwable throwable) {
                 ModernOPT.LOG.error("[ModernOPT] whole-window reconstruction failed, "
                         + "falling back to a plain blit", throwable);
@@ -2156,6 +2158,11 @@ public final class RenderPipeline {
             }
         }
         if (!presented) {
+            if (!loggedWholeWindowFallback) {
+                loggedWholeWindowFallback = true;
+                ModernOPT.LOG.warn("[ModernOPT] whole-window upscaler unavailable, using a plain "
+                        + "bilinear blit (upscaler {} at {}%)", cachedUpscaler, cachedRenderScale);
+            }
             main.unbindWrite();
             if (shaders != null && shaders.isValid()) {
                 presentWholeWindow(main.getColorTextureId(), main.width, main.height,

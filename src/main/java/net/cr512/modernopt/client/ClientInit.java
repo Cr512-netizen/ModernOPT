@@ -70,9 +70,21 @@ public final class ClientInit {
             ModernOptConfig.UPSCALER.set(next);
             ModernOptConfig.SPEC.save();
             ModernOptSettings.refresh();
+            int percent = ModernOptSettings.renderScalePercent();
+            int windowWidth = minecraft.getWindow().getWidth();
+            int windowHeight = minecraft.getWindow().getHeight();
+            int internalWidth = Math.max(1, (int) Math.round(windowWidth * percent / 100.0));
+            int internalHeight = Math.max(1, (int) Math.round(windowHeight * percent / 100.0));
+            String message = "[ModernOPT] " + next.label() + " | " + percent + "% | "
+                    + internalWidth + "x" + internalHeight;
+            if (percent >= 100) {
+                message += " (100% = native; upscalers are bypassed)";
+            }
+            ModernOPT.LOG.info("[ModernOPT] upscaler {} at {}% ({}x{} -> {}x{}, whole-window {})",
+                    next.label(), percent, internalWidth, internalHeight,
+                    windowWidth, windowHeight, ModernOptSettings.scaleWholeWindow());
             if (minecraft.player != null) {
-                minecraft.player.displayClientMessage(
-                        Component.literal("[ModernOPT] upscaler: " + next.label()), true);
+                minecraft.player.displayClientMessage(Component.literal(message), true);
             }
         }
     }

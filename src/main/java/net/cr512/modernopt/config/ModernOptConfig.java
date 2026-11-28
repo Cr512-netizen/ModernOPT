@@ -81,10 +81,11 @@ public final class ModernOptConfig {
                         "fill rate of the whole GUI pass (the text becomes softer).")
                 .defineInRange("hudScalePercent", 100, 50, 100);
         SCALE_WHOLE_WINDOW = b.comment(
-                        "Whole-window presentation. Since 0.7.6 the whole frame (world, HUD, Iris",
-                        "composites) renders at the internal resolution and the selected upscaler",
-                        "presents it to the window. The key is kept so old config files still load;",
-                        "the value is ignored and the mode is always on.")
+                        "Whole-window presentation (default on): the world, hand, HUD, chat and",
+                        "menus render at the internal resolution and the selected upscaler presents",
+                        "the finished frame. Turn off for world-only scaling: the HUD stays native",
+                        "and MSR2 keeps its temporal history/motion-vector path, which is sharper",
+                        "on block edges but does not scale the interface.")
                 .define("scaleWholeWindow", true);
         b.pop();
 

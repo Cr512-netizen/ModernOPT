@@ -11,7 +11,7 @@
   "modernopt.option.upscaler": "Upscaler",
   "modernopt.option.temporalPreset": "Temporal 42% preset (experimental)",
   "modernopt.option.hudScale": "HUD resolution",
-  "modernopt.option.scaleWholeWindow": "Scale whole window",
+  "modernopt.option.scaleWholeWindow": "Whole-window",
   "modernopt.option.shadowMapResolution": "Shadow map resolution",
   "modernopt.option.shadowUpdateInterval": "Shadow update",
   "modernopt.option.fp16": "FP16 world target",
