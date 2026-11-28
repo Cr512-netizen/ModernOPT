@@ -159,6 +159,9 @@ public class ModernOptConfigScreen extends Screen {
         addLeft(Button.builder(Component.translatable("modernopt.option.temporalPreset"), button -> {
                     ModernOptConfig.RENDER_SCALE_PERCENT.set(42);
                     ModernOptConfig.UPSCALER.set(UpscalerType.MSR2);
+                    // DRS's minimum is 50%; leaving it on would immediately raise the preset
+                    // back to 50%. The fixed preset owns the scale.
+                    ModernOptConfig.MSR2_DYNAMIC_RES.set(false);
                     ModernOptSettings.refresh();
                     this.rebuildWidgets();
                 })

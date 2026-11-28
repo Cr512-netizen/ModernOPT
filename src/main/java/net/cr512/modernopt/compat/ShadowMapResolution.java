@@ -45,6 +45,7 @@ public final class ShadowMapResolution {
     private static int fileValue = Integer.MIN_VALUE;
     private static Boolean fileEnabled;
     private static volatile boolean reloadPending;
+    private static volatile String pendingReason;
 
     private ShadowMapResolution() {
     }
@@ -254,31 +255,63 @@ public final class ShadowMapResolution {
      * triggered by an explicit setting change (options screen or config file), never per frame.</p>
      */
     public static void requestReload() {
+        requestReload(null);
+    }
+
+    /**
+     * Reloads the shader pack for a specific reason (for example rebuilding Iris targets after
+     * SSAA was switched off).
+     */
+    public static void requestReload(String reason) {
         if (reloadPending || !ModList.get().isLoaded("iris")) {
+            return;
+        }
+        if (Minecraft.getInstance() == null) {
+            return;
+        }
+        pendingReason = reason;
+        reloadPending = true;
+    }
+
+    /**
+     * Performs a pending pack reload on the client tick, never inside the render pass. Calling
+     * {@code Iris.reload()} from {@code beginWorldFrame} rebuilds the pipeline while its old
+     * targets are still in use and can leave the pack disabled.
+     */
+    public static void tick() {
+        if (!reloadPending) {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null) {
             return;
         }
-        reloadPending = true;
-        minecraft.execute(() -> {
-            reloadPending = false;
-            try {
-                Class<?> iris = Class.forName("net.irisshaders.iris.Iris");
-                Object manager = iris.getMethod("getPipelineManager").invoke(null);
-                Object pipeline = manager.getClass().getMethod("getPipelineNullable").invoke(manager);
-                if (pipeline == null) {
-                    // No pack loaded: the value is picked up on the next pack load anyway.
-                    return;
-                }
-                ModernOPT.LOG.info("[ModernOPT] reloading shader pack to {}",
-                        enabled() ? "apply shadow map " + desired() : "restore the pack's shadow map");
-                iris.getMethod("reload").invoke(null);
-            } catch (Throwable throwable) {
-                ModernOPT.LOG.warn("[ModernOPT] could not reload the shader pack after the shadow "
-                        + "map change; it will apply on the next pack reload", throwable);
+        try {
+            Class<?> iris = Class.forName("net.irisshaders.iris.Iris");
+            Object manager = iris.getMethod("getPipelineManager").invoke(null);
+            Object pipeline = manager.getClass().getMethod("getPipelineNullable").invoke(manager);
+            if (pipeline == null) {
+                // No pack loaded: the value is picked up on the next pack load anyway.
+                reloadPending = false;
+                pendingReason = null;
+                return;
             }
-        });
+            String reason = pendingReason;
+            pendingReason = null;
+            reloadPending = false;
+            if (reason != null) {
+                ModernOPT.LOG.info("[ModernOPT] reloading shader pack ({})", reason);
+            } else {
+                ModernOPT.LOG.info("[ModernOPT] reloading shader pack to {}",
+                        enabled() ? "apply shadow map " + desired()
+                                : "restore the pack's shadow map");
+            }
+            iris.getMethod("reload").invoke(null);
+        } catch (Throwable throwable) {
+            reloadPending = false;
+            pendingReason = null;
+            ModernOPT.LOG.warn("[ModernOPT] could not reload the shader pack after the shadow "
+                    + "map change; it will apply on the next pack reload", throwable);
+        }
     }
 }

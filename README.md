@@ -190,6 +190,9 @@ Key points:
 ## Limitations (honest list)
 
 * MSAA is disabled while an Iris shader pack is active; the pack brings its own antialiasing.
+* SSAA is also disabled while an Iris shader pack is active. A 2x target followed by a switch
+  back can leave Iris 1.8.14 with stale post-chain targets and silently vanilla-looking output;
+  the setting is turned off with one log message. Use SSAA without a pack.
 * A shader pack owns its lighting pipeline, so effects it computes at internal resolution
   (shadows, SSAO, reflections) are also at internal resolution. That is the point of the feature,
   but it means very low scales soften those effects too.
@@ -221,23 +224,17 @@ control stack is Minecraft 1.21.1, NeoForge 21.1.264, Sodium 0.8.13 and Iris 1.8
 
 | Mode | Mean FPS | 1% low | Shadow interval | Held share |
 | --- | ---: | ---: | ---: | ---: |
-| Native Iris (mod disabled, 100 %) | 131.5 | 114.8 | - | - |
-| ModernOPT passthrough, 100 % | 147.0 | 133.2 | 2 | 50 % |
-| FSR 1 + Lanczos-2, 50 % | 143.6 | 129.2 | 2 | 50 % |
-| FSR 1 + Lanczos-2, 50 % | 126.7 | 114.8 | 1 | 0 % |
-| FSR 1 EASU (Lanczos off), 50 % | 143.5 | 129.4 | 2 | 50 % |
-| MSR2, 50 % | 135.4 | 121.9 | 2 | 50 % |
-| MSR2, 42 % | 150.6 | 135.8 | 2 | 50 % |
+| Native Iris (mod disabled, 100 %) | 130.6 | 119.8 | - | - |
+| FSR 1 + Lanczos-2, 50 % | 138.8 | 125.4 | 2 | 50 % |
+| MSR2, 25 % | 199.6 | 177.8 | 2 | 50 % |
+| MSR2, 42 % | 151.4 | 138.4 | 2 | 50 % |
+| MSR2, 50 % | 136.1 | 113.6 | 2 | 50 % |
+| MSR2, 67 % | 113.2 | 106.4 | 2 | 50 % |
+| MSR2, 75 % | 103.5 | 97.8 | 2 | 50 % |
 
 Throughput runs disable the GPU stage timers, because their queries and readback add about
-1.2-1.5 ms per frame (10-20 %) on this driver. That overhead is why earlier tables reported
-130-135 FPS at 50 % instead of 143-145; `-PbenchProfile` enables the timers for a separate
+1.2-1.5 ms per frame (10-20 %) on this driver. `-PbenchProfile` enables the timers for a separate
 breakdown and must not be compared with these totals.
-
-`ModernOPT passthrough, 100 %` is scale 100 with no AA: the offscreen pipeline is bypassed and the
-world renders into the main target, but shadow holding still applies. It is 12 % above the
-mod-disabled native row because that row has no shadow holding and none of the mod's
-optimisations.
 
 The MSR2 rows above are **true temporal runs**. The compute program is compiled when MSR2 is
 selected at runtime; before 0.7.0 a runtime switch could silently keep the spatial fallback, which
@@ -251,12 +248,11 @@ drops and PNG writes cannot enter the numbers. The player is teleported to the s
 the start of every run. Absolute FPS depends on GPU state; compare rows from this one run, not
 numbers from older releases.
 
-MSR2 50 % is about 6 % below FSR 1 + Lanczos-2; the true temporal pass costs more than the old
-spatial fallback. MSR2 42 % is 11 % above MSR2 50 % and about 5 % above FSR 1 at 50 %, with a
-higher 1% low in this run (135.8 vs 121.9); the image is softer, so it remains an optional
-experimental preset, not the default. Lanczos-2 and EASU on FSR 1 are within noise of each other
-at 50 %; the choice is visual. The shadow interval change from 1 to 2 is worth about 13 % mean FPS
-here with the block-boundary rebuild rule.
+MSR2 50 % is within 2 % of FSR 1 + Lanczos-2 at the same scale. MSR2 42 % is 11 % above MSR2 50 %
+and 9 % above FSR 1 at 50 %, with a higher 1% low (138.4 vs 113.6); the image is softer, so it
+remains an optional experimental preset, not the default. The 25 % row is the throughput limit;
+67 and 75 % trade frame rate for internal detail. The shadow interval change from 1 to 2 is worth
+about 13 % mean FPS here with the block-boundary rebuild rule.
 
 ### Frame cost
 

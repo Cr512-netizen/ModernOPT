@@ -1040,6 +1040,24 @@ public final class SelfTest {
         swapFilterOnPair = name.contains("!swapfilter");
         swapLanczosOnPair = name.contains("!swaplanczos");
         swapMotionOnPair = name.contains("!swapmv");
+        // Audit-only state switches for combinations the normal preset cannot reach.
+        if (name.contains("!ssaa")) {
+            ModernOptConfig.SSAA.set(true);
+        }
+        if (name.contains("!fxaa")) {
+            ModernOptConfig.FXAA.set(true);
+        }
+        int msaaIndex = name.indexOf("!msaa");
+        if (msaaIndex >= 0) {
+            int samples = digits(name.substring(msaaIndex + 5));
+            ModernOptConfig.MSAA.set(samples >= 16 ? MsaaLevel.X16
+                    : samples >= 8 ? MsaaLevel.X8
+                    : samples >= 4 ? MsaaLevel.X4
+                    : samples >= 2 ? MsaaLevel.X2 : MsaaLevel.OFF);
+        }
+        if (name.contains("!drs")) {
+            ModernOptConfig.MSR2_DYNAMIC_RES.set(true);
+        }
         swapOnPairDone = false;
         boolean wasMob = benchMob;
         benchMob = name.contains("!mob");
@@ -1079,6 +1097,7 @@ public final class SelfTest {
         ModernOptConfig.SSAA.set(false);
         ModernOptConfig.MSAA.set(MsaaLevel.OFF);
         ModernOptConfig.FXAA.set(false);
+        ModernOptConfig.FP16_WORLD.set(false);
         ModernOptConfig.SHOW_OVERLAY.set(true);
     }
 }

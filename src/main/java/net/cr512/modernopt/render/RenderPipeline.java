@@ -15,6 +15,7 @@ import org.lwjgl.opengl.GL30C;
 import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GL43;
 import net.cr512.modernopt.ModernOPT;
+import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.config.UpscalerType;
 import net.cr512.modernopt.compat.IrisCompat;
@@ -112,6 +113,7 @@ public final class RenderPipeline {
     private static boolean loggedMsrActive;
     private static boolean loggedMsrIris;
     private static boolean loggedMsrMsaa;
+    private static boolean loggedSsaaIris;
     private static boolean loggedMsrFallback;
     private static boolean loggedProjectionGuard;
     private static int msrFailureCount;
@@ -317,11 +319,19 @@ public final class RenderPipeline {
 
     /** Internal world resolution, for the overlay and for logging. */
     public static int internalWidth() {
+        if (wholeWindowActive) {
+            RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
+            return main != null ? main.width : -1;
+        }
         RenderTarget target = activeWorldTarget();
         return target != null ? target.width : -1;
     }
 
     public static int internalHeight() {
+        if (wholeWindowActive) {
+            RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
+            return main != null ? main.height : -1;
+        }
         RenderTarget target = activeWorldTarget();
         return target != null ? target.height : -1;
     }
@@ -606,6 +616,19 @@ public final class RenderPipeline {
             resetHistory();
             resetMsr2History();
         }
+        if (cachedSsaa && iris) {
+            // The pack's post chain is built for one main-target size; a 2x target followed by a
+            // switch back leaves Iris with stale targets on 1.8.14. SSAA is therefore unavailable
+            // while a pack is active, like MSAA.
+            cachedSsaa = false;
+            ModernOptConfig.SSAA.set(false);
+            ModernOptSettings.refresh();
+            if (!loggedSsaaIris) {
+                loggedSsaaIris = true;
+                ModernOPT.LOG.info("[ModernOPT] SSAA is off while an Iris shader pack is active "
+                        + "(the pack owns the post chain)");
+            }
+        }
         boolean msrWanted = requested == UpscalerType.MSR && !cachedSsaa;
         if (requested == UpscalerType.MSR && iris && !loggedMsrIris) {
             loggedMsrIris = true;
@@ -662,8 +685,9 @@ public final class RenderPipeline {
             samples = 1;
             msrWanted = false;
             // At 100% render scale there is nothing to reconstruct: MSR must be a pure
-            // passthrough here so it can never be slower than native rendering.
-            if (size[0] >= windowWidth && size[1] >= windowHeight) {
+            // passthrough here so it can never be slower than native rendering. SSAA is the
+            // exception: it deliberately allocates a 2x target even though the scale is 100%.
+            if (!cachedSsaa && size[0] >= windowWidth && size[1] >= windowHeight) {
                 resetHistory();
                 resetMsr2History();
                 rememberUpscalerSettings(requested);
@@ -826,7 +850,7 @@ public final class RenderPipeline {
         }
         drsLastAdjustNanos = adjustNow;
 
-        int minScale = cachedMsrMinScale;
+        int minScale = Math.min(cachedMsrMinScale, cachedRenderScale);
         int step = cachedMsrScaleStep;
         int tempMinFps = cachedMsrTemporalMinFps;
 

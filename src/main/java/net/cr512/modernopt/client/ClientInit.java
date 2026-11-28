@@ -10,6 +10,7 @@ import net.cr512.modernopt.FpsLogger;
 import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.config.UpscalerType;
+import net.cr512.modernopt.compat.ShadowMapResolution;
 import net.cr512.modernopt.render.GpuProfiler;
 import net.cr512.modernopt.render.RenderPipeline;
 import net.minecraft.client.KeyMapping;
@@ -40,6 +41,11 @@ public final class ClientInit {
 
     public static KeyMapping cycleUpscalerKey() {
         return CYCLE_UPSCALER;
+    }
+
+    @SubscribeEvent
+    public static void onClientTick(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
+        ShadowMapResolution.tick();
     }
 
     @SubscribeEvent

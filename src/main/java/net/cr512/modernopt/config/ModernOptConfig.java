@@ -113,7 +113,8 @@ public final class ModernOptConfig {
                         "Requires the world to be rendered off-screen; ignored in Fabulous mode.")
                 .defineEnum("msaa", MsaaLevel.OFF);
         SSAA = b.comment("Render the world at 2x width and height, then downsample.",
-                        "Takes priority over render scale and MSAA.")
+                        "Takes priority over render scale and MSAA.",
+                        "Ignored while an Iris shader pack is active (the pack owns the post chain).")
                 .define("ssaa", false);
         FXAA = b.comment("Post-process edge smoothing on the final image.").define("fxaa", false);
         FP16_WORLD = b.comment(

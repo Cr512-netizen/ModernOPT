@@ -66,6 +66,10 @@ State suffixes used by the harness:
 | `!mob` | Summons a pig in front of the player for temporal ghosting and flying-entity checks. |
 | `!nomv` | Disables MSR2's per-entity motion vectors for an A/B against camera-only reprojection. |
 | `!swapmv` | Toggles MSR2 motion vectors at pair frame 40 for a same-run A/B. |
+| `!msaaN` | Audit switch: requests MSAA 2/4/8/16. Ignored while an Iris pack is active. |
+| `!ssaa` | Audit switch: requests SSAA. Ignored while an Iris pack is active. |
+| `!fxaa` | Audit switch: enables FXAA for the state. |
+| `!drs` | Audit switch: enables MSR2 dynamic resolution for the state. |
 | `!lanczos3` | Uses the wider Lanczos-3 kernel for FSR 1, MSR and MSR2. |
 | `!nolanczos` | Disables Lanczos for FSR 1/MSR and inside MSR2. |
 
