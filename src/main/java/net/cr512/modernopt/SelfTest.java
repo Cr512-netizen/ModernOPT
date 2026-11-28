@@ -8,6 +8,7 @@ import net.cr512.modernopt.config.ModernOptConfig;
 import net.cr512.modernopt.config.ModernOptSettings;
 import net.cr512.modernopt.config.UpscalerType;
 import net.cr512.modernopt.render.GpuProfiler;
+import net.cr512.modernopt.render.ImageQuality;
 import net.cr512.modernopt.render.RenderPipeline;
 import net.cr512.modernopt.render.RenderScaleMath;
 import net.minecraft.client.Minecraft;
@@ -738,9 +739,10 @@ public final class SelfTest {
             root.put("format", 1);
             root.put("timestamp", java.time.Instant.now().toString());
             root.put("fingerprint", fingerprint(minecraft));
+            Path directory = minecraft.gameDirectory.toPath();
+            root.put("quality", attachImageQuality(directory));
             root.put("states", stateResults);
 
-            Path directory = minecraft.gameDirectory.toPath();
             String name = System.getProperty("modernopt.bench.json", "bench-results.json");
             Path output = Path.of(name);
             if (!output.isAbsolute()) {
@@ -756,6 +758,106 @@ public final class SelfTest {
         } catch (Throwable throwable) {
             ModernOPT.LOG.warn("[BENCH] could not write the JSON report: {}", throwable.toString());
         }
+    }
+
+    /**
+     * Attaches sharpness/quality metrics to every state from its saved end (or converged f60)
+     * screenshot and builds a ranking. The reference is {@code -PbenchReference=...} when given,
+     * otherwise the native {@code OFF-100} screenshot from the same run.
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> attachImageQuality(Path gameDirectory) {
+        Path directory = gameDirectory.resolve("screenshots");
+        Path reference = null;
+        String configured = System.getProperty("modernopt.bench.reference");
+        if (configured != null && !configured.isBlank()) {
+            reference = Path.of(configured);
+            if (!reference.isAbsolute()) {
+                reference = gameDirectory.resolve(reference);
+            }
+        } else {
+            Path nativeShot = directory.resolve("bench-BILINEAR-100!shadow2-end.png");
+            if (!Files.isRegularFile(nativeShot)) {
+                nativeShot = directory.resolve("bench-BILINEAR-100-end.png");
+            }
+            if (!Files.isRegularFile(nativeShot)) {
+                nativeShot = directory.resolve("bench-OFF-100-end.png");
+            }
+            if (Files.isRegularFile(nativeShot)) {
+                reference = nativeShot;
+            }
+        }
+        if (reference != null && !Files.isRegularFile(reference)) {
+            ModernOPT.LOG.warn("[BENCH][QUALITY] reference {} does not exist; sharpness only", reference);
+            reference = null;
+        }
+
+        Map<String, Object> quality = new LinkedHashMap<>();
+        quality.put("reference", reference == null ? "none" : reference.toString());
+        quality.put("roi", "x 8-92%, y 32-82%");
+        List<Map<String, Object>> ranking = new ArrayList<>();
+        for (Map<String, Object> state : stateResults) {
+            String name = String.valueOf(state.get("state"));
+            Path imagePath = directory.resolve("bench-" + name + "-f60.png");
+            if (!Files.isRegularFile(imagePath)) {
+                imagePath = directory.resolve("bench-" + name + "-end.png");
+            }
+            if (!Files.isRegularFile(imagePath)) {
+                continue;
+            }
+            Map<String, Object> metrics = ImageQuality.analyze(imagePath, reference);
+            if (metrics.isEmpty()) {
+                continue;
+            }
+            boolean comparable = reference != null && metrics.containsKey("ssim")
+                    && !name.contains("!pan") && !name.contains("!walk")
+                    && !name.contains("!mob") && !name.contains("!wws")
+                    && !name.contains("!f5") && !name.contains("!sunset");
+            metrics.put("qualityComparable", comparable);
+            Map<String, Object> existing = (Map<String, Object>) state.get("image");
+            if (existing == null) {
+                existing = new LinkedHashMap<>();
+                state.put("image", existing);
+            }
+            existing.putAll(metrics);
+
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("state", name);
+            row.put("upscaler", state.get("upscaler"));
+            row.put("scale", state.get("renderScalePercent"));
+            row.putAll(metrics);
+            ranking.add(row);
+
+            ModernOPT.LOG.info("[BENCH][QUALITY] {} scale={} sharpness={} highFrequency={} "
+                            + "ssim={} mae={} psnr={} sharpnessRatio={}",
+                    name, state.get("renderScalePercent"), metrics.get("sharpness"),
+                    metrics.get("highFrequency"), metrics.getOrDefault("ssim", "-"),
+                    metrics.getOrDefault("qualityMae", "-"),
+                    metrics.getOrDefault("psnr", "-"),
+                    metrics.getOrDefault("sharpnessRatio", "-"));
+        }
+        ranking.sort((a, b) -> {
+            double sa = a.get("ssim") instanceof Number n ? n.doubleValue() : -1.0;
+            double sb = b.get("ssim") instanceof Number n ? n.doubleValue() : -1.0;
+            int bySsim = Double.compare(sb, sa);
+            if (bySsim != 0) {
+                return bySsim;
+            }
+            double ma = a.get("qualityMae") instanceof Number n ? n.doubleValue() : 1.0;
+            double mb = b.get("qualityMae") instanceof Number n ? n.doubleValue() : 1.0;
+            return Double.compare(ma, mb);
+        });
+        quality.put("ranking", ranking);
+        if (!ranking.isEmpty()) {
+            ModernOPT.LOG.info("[BENCH][QUALITY] reference={} ranked by SSIM", quality.get("reference"));
+            for (Map<String, Object> row : ranking) {
+                ModernOPT.LOG.info("[BENCH][QUALITY]   {} | {} | {} % | SSIM {} | MAE {} | sharp {}",
+                        row.get("state"), row.get("upscaler"), row.get("scale"),
+                        row.getOrDefault("ssim", "-"), row.getOrDefault("qualityMae", "-"),
+                        row.get("sharpness"));
+            }
+        }
+        return quality;
     }
 
     private static Map<String, Object> fingerprint(Minecraft minecraft) {

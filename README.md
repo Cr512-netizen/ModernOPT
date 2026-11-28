@@ -254,6 +254,31 @@ remains an optional experimental preset, not the default. The 25 % row is the th
 67 and 75 % trade frame rate for internal detail. The shadow interval change from 1 to 2 is worth
 about 13 % mean FPS here with the block-boundary rebuild rule.
 
+### Upscaler quality
+
+The harness measures every state against a native `BILINEAR-100!shadow2` screenshot from the same
+run. The ROI is the central world area (`x = 8..92 %`, `y = 32..82 %`), so HUD, hand and sky do not
+dominate. Higher sharpness is not automatically better; SSIM/MAE show whether the detail is real.
+
+| Mode | Sharpness | High-frequency | SSIM | MAE | PSNR | Sharpness ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Native reference, 100 % | 0.0309 | 0.0177 | 1.000 | 0.000 | 99.0 | 1.000 |
+| Bilinear, 50 % | 0.0214 | 0.0068 | 0.721 | 0.0382 | 23.19 | 0.691 |
+| Nearest, 50 % | 0.0278 | 0.0174 | 0.700 | 0.0400 | 22.40 | 0.899 |
+| Soft scale, 50 % | 0.0194 | 0.0052 | 0.650 | 0.0495 | 21.40 | 0.629 |
+| FSR 1 + Lanczos-2, 50 % | 0.0247 | 0.0086 | 0.735 | 0.0377 | 22.85 | 0.800 |
+| MSR, 50 % | 0.0241 | 0.0083 | 0.714 | 0.0394 | 22.80 | 0.778 |
+| MSR2 + Lanczos-2, 50 % | 0.0248 | 0.0086 | 0.704 | 0.0412 | 22.36 | 0.803 |
+| MSR2 EASU, 50 % | 0.0240 | 0.0086 | 0.748 | 0.0345 | 23.84 | 0.777 |
+| MSR2 + Lanczos-2, 42 % | 0.0230 | 0.0067 | 0.725 | 0.0379 | 23.53 | 0.742 |
+| MSR2 + Lanczos-2, 67 % | 0.0272 | 0.0110 | 0.736 | 0.0391 | 22.52 | 0.879 |
+
+Nearest-neighbour keeps 90 % of the native gradient but loses the most SSIM after Soft scale: the
+gradient is concentrated on block edges, not on real detail. MSR2 with EASU has the best SSIM and
+MAE among the temporal modes at 50 %; Lanczos-2 is slightly sharper but a little noisier. MSR2 67 %
+gets closest to native sharpness, at the cost of a lower frame rate. The full JSON ranking is under
+`quality.ranking`; see [TESTING.md](TESTING.md#upscaler-quality-metrics).
+
 ### Frame cost
 
 The table below is measured with `-PbenchProfile` and scaled proportionally to the throughput

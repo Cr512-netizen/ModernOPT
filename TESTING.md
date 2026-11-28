@@ -83,6 +83,42 @@ worst frame time, shadow drawn/held counts and force reasons, per-stage GPU time
 The screenshot frame is excluded from the frame-time statistics: writing a 1080p PNG stalls that
 frame for hundreds of milliseconds and would otherwise dominate the 1% low.
 
+## Upscaler quality metrics
+
+Every state's end screenshot (or `f60` for `!conv`) is analysed after the run. The default
+reference is the `BILINEAR-100!shadow2` screenshot from the same run, then `BILINEAR-100`, then
+`OFF-100`; `-PbenchReference=<png>` overrides it. Put the reference state first:
+
+```bash
+./gradlew runBench -PbenchStates=BILINEAR-100!shadow2,BILINEAR-50!shadow2,\
+NEAREST-50!shadow2,SOFT-50!shadow2,FSR1-50!shadow2,MSR-50!shadow2,\
+MSR2-42!shadow2,MSR2-50!shadow2,MSR2-67!shadow2 \
+  -PbenchWarmup=30 -PbenchSample=40
+```
+
+The metrics are computed on a central world ROI (`x = 8..92 %`, `y = 32..82 %`) so the sky,
+status overlay, hotbar and hand do not dominate the result:
+
+| Key | Meaning |
+| --- | --- |
+| `sharpness` | Mean central-difference luma gradient magnitude, 0..1. |
+| `highFrequency` | Mean absolute difference from a 3x3 box blur, 0..1. |
+| `laplacian` | Mean absolute 4-neighbour Laplacian, 0..1. |
+| `contrast` | Luma standard deviation. |
+| `qualityMae`, `qualityRmse` | Error against the native reference, 0..1. |
+| `psnr` | PSNR against the reference, dB. |
+| `ssim` | Mean 8x8-window SSIM against the reference, 0..1. |
+| `sharpnessRatio`, `highFrequencyRatio` | Relative to the reference. |
+
+The log prints a `[BENCH][QUALITY]` line per state and a ranking by SSIM; `bench-results.json`
+contains the same data under `quality.ranking` and each state's `image` object. `qualityComparable`
+is false for motion, whole-window, sunset and third-person states, where the native reference is
+not a valid comparison.
+
+Sharpness alone is not quality: Nearest-neighbour can have a high gradient while looking blocky.
+Use SSIM/MAE together with the sharpness ratio: a good upscaler keeps the ratio near 1 without
+losing much SSIM.
+
 ### Baselines
 
 ```bash
