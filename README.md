@@ -137,46 +137,6 @@ Key points:
 * The status overlay is hidden while the F3 debug screen is open, because both use the top-left
   corner; F3 already reports the frame rate.
 
-## Testing
-
-Verified in a NeoForge dev client with **Sodium 0.8.13**, **Iris 1.8.14-beta.1**, **Kappa v5.3**
-and **Complementary Unbound r5.9.3**: render scale 25-100 %, FSR 1 and FSR 2, correct depth (no
-holes or LODs over the world), HUD and first person hand at native resolution, and no OpenGL
-errors when the window is resized or the shader pipeline is rebuilt.
-
-The 5.3 Kappa validation used a fixed camera day 6000, 1920x1080,
-render distance 12, on an RTX 5060 Ti 16 GB / Ryzen 7 7800X3D:
-
-| Mode | Frame rate |
-| --- | ---: |
-| Native (mod disabled) | 102-103 fps |
-| FSR 2 spatial, 75 % | 177 fps |
-| FSR 2 spatial, 50 % | 234 fps |
-| FSR 2 spatial, 25 % | 377 fps |
-
-The 50 % result is 2.27x native. Native 1:1 crops: FSR 2 spatial at 100 % measured MAE 2.9
-(terrain) and 1.35 (water) against native, within the 2.3-2.5 MAE of a native-vs-native rerun;
-the gradient ratio was 0.985-0.999 on terrain and 0.955-0.966 on water. At 50 %, the terrain
-gradient ratio was 0.599 vs 0.593 for FSR 1-50, and water 0.562 vs 0.558, so spatial FSR 2 is not
-softer than FSR 1. The hand and HUD stayed native, and no temporal grain or ghosting was added.
-
-The 0.3.2 shadow fix was validated with the same camera, Iris 1.8.14-beta.1 and Complementary
-Unbound r5.9.3, render distance 32, 1920x1080 fullscreen. Every state below shows the player
-shadow and the pack's terrain shadows; before the fix, every scaled state lost them:
-
-| Mode | Internal -> output | Frame rate | Player shadow |
-| --- | --- | ---: | --- |
-| Native, mod disabled | 1920x1080 | - | present |
-| FSR 2 spatial, 100 % | 1920x1080 | - | present |
-| FSR 2 spatial, 67 % | 1286x724 -> 1920x1080 | 144 fps | present |
-| FSR 1, 67 % | 1286x724 -> 1920x1080 | - | present |
-| Bilinear, 67 % | 1286x724 -> 1920x1080 | 155 fps | present |
-| FSR 2 spatial, 50 % | 960x540 -> 1920x1080 | 151 fps | present |
-| FSR 2 spatial, 25 % | 480x270 -> 1920x1080 | 247 fps | present |
-
-With shaders off, FSR 2 still uses the temporal path and was checked at 100 % (temporal AA + RCAS)
-and at 50-75 % scale.
-
 ## Configuration
 
 `config/modernopt-client.toml` (created on first launch), or the in-game screen:
