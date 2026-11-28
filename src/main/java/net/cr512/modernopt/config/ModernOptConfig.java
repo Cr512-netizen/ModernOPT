@@ -81,12 +81,11 @@ public final class ModernOptConfig {
                         "fill rate of the whole GUI pass (the text becomes softer).")
                 .defineInRange("hudScalePercent", 100, 50, 100);
         SCALE_WHOLE_WINDOW = b.comment(
-                        "Scale the entire frame instead of only the world render target.",
-                        "The world, HUD, Iris composites and the final presentation all run at the internal",
-                        "resolution and one blit puts the frame on the window. It is the fastest mode, at",
-                        "the cost of a softer HUD and lower resolution screenshots. Off by default: the",
-                        "world-only mode keeps the interface pixel sharp.")
-                .define("scaleWholeWindow", false);
+                        "Whole-window presentation. Since 0.7.6 the whole frame (world, HUD, Iris",
+                        "composites) renders at the internal resolution and the selected upscaler",
+                        "presents it to the window. The key is kept so old config files still load;",
+                        "the value is ignored and the mode is always on.")
+                .define("scaleWholeWindow", true);
         b.pop();
 
         b.comment("Shader pack shadow map.").push("shadows");

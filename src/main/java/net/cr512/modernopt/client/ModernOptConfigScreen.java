@@ -185,13 +185,6 @@ public class ModernOptConfigScreen extends Screen {
                             ModernOptSettings.refresh();
                         }));
 
-        addLeft(CycleButton.onOffBuilder(ModernOptSettings.scaleWholeWindow())
-                .create(0, 0, COLUMN_WIDTH, 20, Component.translatable("modernopt.option.scaleWholeWindow"),
-                        (button, value) -> {
-                            ModernOptConfig.SCALE_WHOLE_WINDOW.set(value);
-                            ModernOptSettings.refresh();
-                        }));
-
         addLeft(new IntSlider(0, 0, COLUMN_WIDTH, 20,
                 Component.translatable("modernopt.option.softness"), 0, 100,
                 ModernOptSettings.softness(),

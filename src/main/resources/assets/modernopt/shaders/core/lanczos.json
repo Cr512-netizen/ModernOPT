@@ -3,8 +3,7 @@
     "fragment": "modernopt:lanczos",
     "samplers": [
         { "name": "InputSampler" },
-        { "name": "DepthSampler" },
-        { "name": "LanczosTable" }
+        { "name": "DepthSampler" }
     ],
     "uniforms": [
         { "name": "InputSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] },

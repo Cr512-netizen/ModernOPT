@@ -183,6 +183,8 @@ public final class RenderPipeline {
     private static int cachedSoftness = 35;
     private static boolean cachedScaleWholeWindow;
     private static boolean wholeWindowActive;
+    /** Native-resolution output of the whole-window upscaler, presented at the end of the frame. */
+    private static TextureTarget wholeWindowOutput;
 
     // MSR2 cached settings
     private static boolean cachedMsrEnabled = false;
@@ -528,6 +530,7 @@ public final class RenderPipeline {
         // Never let the window-size override leak from a frame that was skipped or aborted:
         // otherwise the next frame reads the *scaled* width back and halves the target again.
         windowScaled = false;
+        wholeWindowActive = false;
         frameWorldTarget = null;
         // A previous frame may have been aborted between the field swap and its restore (screen
         // change, exception, cancelled renderLevel). Start from the real target every time.
@@ -577,8 +580,7 @@ public final class RenderPipeline {
         }
         updateMovingResolution(minecraft);
 
-        if (cachedScaleWholeWindow) {
-            beginWholeWindowFrame(minecraft);
+        if (cachedScaleWholeWindow && beginWholeWindowFrame(minecraft)) {
             return;
         }
         restoreWindowSizedMainTarget(minecraft);
@@ -889,7 +891,7 @@ public final class RenderPipeline {
         cachedFsrEasuSharpness = ModernOptSettings.fsrEasuSharpness();
         cachedFsrRcasSharpness = ModernOptSettings.fsrRcasSharpness();
         cachedSoftness = ModernOptSettings.softness();
-        cachedScaleWholeWindow = ModernOptSettings.scaleWholeWindow();
+        cachedScaleWholeWindow = true;
 
         // MSR2
         cachedMsrEnabled = cachedUpscaler == UpscalerType.MSR2;
@@ -928,7 +930,9 @@ public final class RenderPipeline {
      * pass; the hand pass gets the untouched matrix.</p>
      */
     public static Matrix4f jitterProjection(Matrix4f projection, Camera camera) {
-        if (!msrThisFrame && !msr2ThisFrame || scaled == null) {
+        RenderTarget source = wholeWindowActive
+                ? Minecraft.getInstance().getMainRenderTarget() : scaled;
+        if (!msrThisFrame && !msr2ThisFrame || source == null) {
             return projection;
         }
 
@@ -965,8 +969,8 @@ public final class RenderPipeline {
         jitterIndex = (jitterIndex + 1) & 63; // 64-sample R2 sequence
         float offsetX = R2_JITTER[index][0];
         float offsetY = R2_JITTER[index][1];
-        jitterX = 2.0F * offsetX / scaled.width;
-        jitterY = 2.0F * offsetY / scaled.height;
+        jitterX = 2.0F * offsetX / source.width;
+        jitterY = 2.0F * offsetY / source.height;
 
         tempMatrix.set(projection);
         // clip.x += jitter * clip.w is equivalent to row0 += jitter * row3; for a perspective
@@ -1552,13 +1556,11 @@ public final class RenderPipeline {
         msrActiveThisFrame = temporal;
 
         if (wholeWindowActive) {
-            // Nothing to reconstruct into the window target: the scaled target already holds the
-            // whole frame and Minecraft#run's final blit upscales it. Keep the window size
-            // override alive so the HUD lays out in the same GUI units as the world.
+            // The whole frame (world + hand + HUD) is still being drawn into the small main
+            // target. Reconstruction is deferred to endWholeWindowFrame(), after the HUD has
+            // been submitted, so the selected upscaler sees the complete frame instead of being
+            // bypassed by a plain window blit.
             worldActive = false;
-            msrThisFrame = false;
-            poseCaptured = false;
-            msr2ThisFrame = false;
             restoreProjection(jittered);
             GpuProfiler.end(GpuProfiler.UPSCALE);
             return;
@@ -1596,7 +1598,7 @@ public final class RenderPipeline {
             }
             if (temporal) {
                 try {
-                    reconstructMsr(main);
+                    reconstructMsr(main, world);
                     msrFailureCount = 0;
                 } catch (Throwable throwable) {
                     resetHistory();
@@ -1616,7 +1618,7 @@ public final class RenderPipeline {
                 }
             } else if (msr2ActiveThisFrame) {
                 try {
-                    reconstructMsr2(main);
+                    reconstructMsr2(main, world);
                     msrFailureCount = 0; // reuse: reset failure counter on success
                 } catch (Throwable throwable) {
                     msrShaderFailure = true;
@@ -1669,7 +1671,7 @@ public final class RenderPipeline {
      * history, then RCAS (and optionally FXAA). Runs in the output resolution for the whole
      * temporal stage, so the history is not limited by the internal resolution.
      */
-    private static void reconstructMsr(RenderTarget main) {
+    private static void reconstructMsr(RenderTarget main, RenderTarget source) {
         ShaderLibrary library = shaders;
         if (library == null || library.temporal == null) {
             throw new IllegalStateException("temporal shader is not available");
@@ -1682,12 +1684,12 @@ public final class RenderPipeline {
 
         int outWidth = main.width;
         int outHeight = main.height;
-        int sourceWidth = scaled.width;
-        int sourceHeight = scaled.height;
-        int sourceTexture = scaled.getColorTextureId();
-        int depthTexture = scaled.getDepthTextureId();
+        int sourceWidth = source.width;
+        int sourceHeight = source.height;
+        int sourceTexture = source.getColorTextureId();
+        int depthTexture = source.getDepthTextureId();
         boolean depthValid = true;
-        if (irisThisFrame) {
+        if (irisThisFrame && !wholeWindowActive) {
             int irisDepth = IrisCompat.depthTextureId();
             if (irisDepth > 0) {
                 depthTexture = irisDepth;
@@ -1806,18 +1808,20 @@ public final class RenderPipeline {
         int sourceHeight = source.height;
 
         float softness = cachedSoftness / 100.0F;
-        float rcasSharpness = cachedFsrRcasSharpness / 100.0F;
+        UpscalerType upscaler = cachedUpscaler;
+        float rcasSharpness = (upscaler == UpscalerType.MSR2
+                ? cachedMsrSharpness : cachedFsrRcasSharpness) / 100.0F;
         boolean fxaa = cachedFxaa;
         ShaderLibrary library = shaders;
-        UpscalerType upscaler = cachedUpscaler;
-        // FSR 1 / MSR render an unjittered frame; only the MSR2 temporal prepass de-jitters EASU.
+        // FSR 1 / MSR / MSR2 render an unjittered frame; only the MSR2 temporal prepass de-jitters EASU.
         setUniform2f(library.easu, "Jitter", 0.0F, 0.0F);
         boolean lanczosAvailable = library != null && library.hasLanczos();
-        boolean useLanczos = (upscaler == UpscalerType.FSR1 || upscaler == UpscalerType.MSR)
-                && ModernOptSettings.msr2Lanczos() && lanczosAvailable;
+        boolean useLanczos = (upscaler == UpscalerType.FSR1 || upscaler == UpscalerType.MSR
+                || upscaler == UpscalerType.MSR2) && ModernOptSettings.msr2Lanczos() && lanczosAvailable;
         float lanczosRadius = ModernOptSettings.msr2Lanczos3() ? 3.0F : 2.0F;
         boolean fsr1Path = !cachedSsaa
-                && (upscaler == UpscalerType.FSR1 || upscaler == UpscalerType.MSR);
+                && (upscaler == UpscalerType.FSR1 || upscaler == UpscalerType.MSR
+                    || upscaler == UpscalerType.MSR2);
 
         // At small upscale factors (~1.25x), EASU is slower than bilinear - use simpler filter
         float upscale = (float) outWidth / (float) sourceWidth;
@@ -2005,15 +2009,15 @@ public final class RenderPipeline {
      * Whole-window mode: the frame renders straight into the real main target, resized to the
      * internal resolution, and is presented to the window by {@link #endWholeWindowFrame()}.
      */
-    private static void beginWholeWindowFrame(Minecraft minecraft) {
+    private static boolean beginWholeWindowFrame(Minecraft minecraft) {
         int windowWidth = minecraft.getWindow().getWidth();
         int windowHeight = minecraft.getWindow().getHeight();
         if (windowWidth <= 0 || windowHeight <= 0) {
-            return;
+            return false;
         }
         RenderTarget main = minecraft.getMainRenderTarget();
         if (main == null) {
-            return;
+            return false;
         }
         int effectiveScale = effectiveRenderScale();
         logMovingResolution(effectiveScale);
@@ -2021,11 +2025,13 @@ public final class RenderPipeline {
                 cachedSsaa, RenderSystem.maxSupportedTextureSize());
         if (size[0] >= windowWidth || size[1] >= windowHeight) {
             restoreWindowSizedMainTarget(minecraft);
-            return;
+            return false;
         }
-        if (main.width != size[0] || main.height != size[1]) {
+        boolean resized = main.width != size[0] || main.height != size[1];
+        if (resized) {
             main.resize(size[0], size[1], Minecraft.ON_OSX);
             resetHistory();
+            resetMsr2History();
             ModernOPT.LOG.info("[ModernOPT] whole-window scaling: main target {}x{} -> {}x{}",
                     windowWidth, windowHeight, size[0], size[1]);
         }
@@ -2034,13 +2040,44 @@ public final class RenderPipeline {
         realWindowHeight = windowHeight;
         windowScaled = true;
         wholeWindowActive = true;
+        worldActive = true;
+        frameWorldTarget = main;
+        lastFrameScaled = true;
+        irisThisFrame = IrisCompat.isShaderPackInUse();
+        if (!ensureShaders(minecraft)) {
+            wholeWindowActive = false;
+            frameWorldTarget = null;
+            restoreWindowSizedMainTarget(minecraft);
+            return false;
+        }
+        if (cachedMsrEnabled && computeAvailable && msrComputeProgram == null && !msrComputeFailed
+                && minecraft.getResourceManager() instanceof ResourceProvider resources) {
+            loadMsrCompute(resources);
+        }
+        if (cachedUpscaler != lastUpscaler || cachedRenderScale != lastUpscalerPercent
+                || cachedSsaa != lastUpscalerSsaa) {
+            ModernOPT.LOG.info("[ModernOPT] whole-window upscaler {} at {}% (Lanczos {})",
+                    cachedUpscaler, cachedRenderScale,
+                    ModernOptSettings.msr2Lanczos() ? "on" : "off");
+            resetHistory();
+            resetMsr2History();
+            rememberUpscalerSettings(cachedUpscaler);
+        }
+        msr2ThisFrame = false;
+        msrThisFrame = false;
+        msr2ActiveThisFrame = false;
+        motionFrameIndex++;
+        // The whole frame includes the HUD and menus. Running the temporal history on that
+        // composite makes GUI text flicker and blurs the world, so MSR/MSR2 use their spatial
+        // Lanczos + RCAS path here. Temporal history remains available in the world-only path
+        // (native 100 % and SSAA).
         // The main target is smaller than the window. Bind it with setViewport=true here: when a
         // GUI screen is open, vanilla does not rebind it before drawing the world behind the menu,
         // leaving a window-sized viewport on a small framebuffer and cropping the world to a corner.
         main.bindWrite(true);
         // Iris cancels vanilla's hand pass; draw it ourselves like in the scaled mode.
         deferredHandThisFrame = true;
-        resetHistory();
+        return true;
     }
 
     /** Puts the main target back to the real window size when whole-window scaling is off. */
@@ -2066,8 +2103,9 @@ public final class RenderPipeline {
 
     /**
      * Ends a whole-window frame and presents the complete small frame into the real window just
-     * before the back buffer is swapped. Using our own blit keeps the result independent of the
-     * window-size override and of vanilla's final blit.
+     * before the back buffer is swapped. The selected upscaler runs here, after the HUD has been
+     * submitted, so whole-window mode is visually the same upscaler chain as the normal path
+     * instead of a plain bilinear blit.
      */
     public static void endWholeWindowFrame() {
         Minecraft minecraft = Minecraft.getInstance();
@@ -2075,38 +2113,100 @@ public final class RenderPipeline {
         // resized while a small main target was active.
         restoreMainTarget();
         frameWorldTarget = null;
-        wholeWindowActive = false;
         windowScaled = false;
-        int windowWidth = minecraft.getWindow().getWidth();
-        int windowHeight = minecraft.getWindow().getHeight();
+        // Keep wholeWindowActive set while the reconstruction runs: it tells the temporal paths
+        // to use the small main target's own depth instead of Iris' depth texture, which may
+        // still be window-sized in this mode.
+        int windowWidth = realWindowWidth > 0 ? realWindowWidth : minecraft.getWindow().getWidth();
+        int windowHeight = realWindowHeight > 0 ? realWindowHeight : minecraft.getWindow().getHeight();
         RenderTarget main = minecraft.getMainRenderTarget();
         boolean smallMain = main != null && windowWidth > 0 && windowHeight > 0
                 && (main.width != windowWidth || main.height != windowHeight);
-        // A frame can end without the world pass having run (loading screen, menu, a mod cancelling
-        // renderLevel). The main target is still small from whole-window mode then, so present it
-        // anyway and always drop the window override - otherwise the GUI is laid out for the wrong
-        // resolution and only a corner of the frame reaches the window.
         if (!smallMain) {
+            wholeWindowActive = false;
+            msrThisFrame = false;
+            msr2ThisFrame = false;
+            poseCaptured = false;
+            msr2ActiveThisFrame = false;
             return;
         }
         realWindowWidth = windowWidth;
         realWindowHeight = windowHeight;
-        main.unbindWrite();
+
+        boolean presented = false;
+        TextureTarget output = ensureWholeWindowOutput(windowWidth, windowHeight);
+        if (output != null && ensureShaders(minecraft) && shaders != null && shaders.isValid()) {
+            try {
+                boolean temporal = msrThisFrame && poseCaptured && !msrUnsupported;
+                if (temporal) {
+                    reconstructMsr(output, main);
+                } else if (msr2ThisFrame) {
+                    reconstructMsr2(output, main);
+                } else {
+                    reconstructSpatial(output, main);
+                }
+                output.unbindWrite();
+                presentWholeWindow(output.getColorTextureId(), output.width, output.height,
+                        windowWidth, windowHeight);
+                presented = true;
+            } catch (Throwable throwable) {
+                ModernOPT.LOG.error("[ModernOPT] whole-window reconstruction failed, "
+                        + "falling back to a plain blit", throwable);
+                shaderFailure = true;
+            }
+        }
+        if (!presented) {
+            main.unbindWrite();
+            if (shaders != null && shaders.isValid()) {
+                presentWholeWindow(main.getColorTextureId(), main.width, main.height,
+                        windowWidth, windowHeight);
+            } else {
+                main.blitToScreen(windowWidth, windowHeight, true);
+            }
+        }
+        msrThisFrame = false;
+        msr2ThisFrame = false;
+        poseCaptured = false;
+        msr2ActiveThisFrame = false;
+        wholeWindowActive = false;
+    }
+
+    /** Draws the finished native-resolution whole-window image into the default framebuffer. */
+    private static void presentWholeWindow(int sourceTexture, int sourceWidth, int sourceHeight,
+            int windowWidth, int windowHeight) {
         org.lwjgl.opengl.GL30C.glBindFramebuffer(org.lwjgl.opengl.GL30C.GL_FRAMEBUFFER, 0);
-        // Raw GL here: RenderTarget#blitToScreen's GlStateManager viewport call is intercepted
-        // by other mods and can end up leaving the small size behind, which presents the frame
-        // into a corner of the window with the rest black.
-        org.lwjgl.opengl.GL11C.glViewport(0, 0, realWindowWidth, realWindowHeight);
+        org.lwjgl.opengl.GL11C.glViewport(0, 0, windowWidth, windowHeight);
         org.lwjgl.opengl.GL11C.glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
         org.lwjgl.opengl.GL11C.glClear(org.lwjgl.opengl.GL11C.GL_COLOR_BUFFER_BIT
                 | org.lwjgl.opengl.GL11C.GL_DEPTH_BUFFER_BIT);
-        if (ensureShaders(minecraft) && shaders != null && shaders.isValid()) {
+        if (shaders != null && shaders.isValid()) {
             ShaderLibrary.beginPassState();
-            ShaderLibrary.drawBlit(shaders.blit, main.getColorTextureId(), main.width, main.height,
-                    realWindowWidth, realWindowHeight);
+            ShaderLibrary.drawBlit(shaders.blit, sourceTexture, sourceWidth, sourceHeight,
+                    windowWidth, windowHeight);
             ShaderLibrary.endPassState();
-        } else {
-            main.blitToScreen(realWindowWidth, realWindowHeight, true);
+        }
+    }
+
+    private static TextureTarget ensureWholeWindowOutput(int width, int height) {
+        try {
+            if (wholeWindowOutput == null) {
+                wholeWindowOutput = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+                wholeWindowOutput.setFilterMode(org.lwjgl.opengl.GL11C.GL_LINEAR);
+            } else if (wholeWindowOutput.width != width || wholeWindowOutput.height != height) {
+                wholeWindowOutput.resize(width, height, Minecraft.ON_OSX);
+                wholeWindowOutput.setFilterMode(org.lwjgl.opengl.GL11C.GL_LINEAR);
+                resetHistory();
+                resetMsr2History();
+            }
+            return wholeWindowOutput;
+        } catch (Throwable throwable) {
+            ModernOPT.LOG.warn("[ModernOPT] cannot allocate the {}x{} whole-window output target",
+                    width, height, throwable);
+            if (wholeWindowOutput != null) {
+                wholeWindowOutput.destroyBuffers();
+                wholeWindowOutput = null;
+            }
+            return null;
         }
     }
 
@@ -2162,6 +2262,11 @@ public final class RenderPipeline {
      * screenshot would capture a half-rendered, low-resolution image.
      */
     public static RenderTarget completedFrameTarget(RenderTarget requested) {
+        if (wholeWindowActive && wholeWindowOutput != null) {
+            // F2 and the benchmark must capture the upscaled frame that is actually presented,
+            // not the small intermediate main target.
+            return wholeWindowOutput;
+        }
         if (!worldActive || requested == null || frameWorldTarget == null) {
             return requested;
         }
@@ -2692,7 +2797,7 @@ public final class RenderPipeline {
 
     
 
-    private static void reconstructMsr2(RenderTarget main) {
+    private static void reconstructMsr2(RenderTarget main, RenderTarget source) {
         ShaderLibrary library = shaders;
         if (library == null || !library.hasMsr()) {
             throw new IllegalStateException("MSR shaders not available");
@@ -2708,10 +2813,10 @@ public final class RenderPipeline {
             ensureMSR2HistoryTargets(outWidth, outHeight);
         }
 
-        int sourceWidth = scaled.width;
-        int sourceHeight = scaled.height;
-        int sourceTexture = scaled.getColorTextureId();
-        int depthTexture = scaled.getDepthTextureId();
+        int sourceWidth = source.width;
+        int sourceHeight = source.height;
+        int sourceTexture = source.getColorTextureId();
+        int depthTexture = source.getDepthTextureId();
 
         // MSR never runs reconstructMsr(), which is where the shared inverse projection is
         // normally built. Compute it here, otherwise reprojection silently uses a stale
@@ -2724,9 +2829,11 @@ public final class RenderPipeline {
             msrHistoryValid = false;
         }
 
-        // Iris owns the scene depth buffer. It is at source resolution (the whole Iris pipeline
-        // is sized from the redirected main target), so it can be sampled with input UVs.
-        if (irisThisFrame) {
+        // Iris owns the scene depth buffer. In the normal path it is at source resolution (the
+        // whole Iris pipeline is sized from the redirected main target), so it can be sampled
+        // with input UVs. In whole-window mode the small main target already carries the correct
+        // world depth; the pack's depth texture may still be window-sized, so use main instead.
+        if (irisThisFrame && !wholeWindowActive) {
             int irisDepth = IrisCompat.depthTextureId();
             if (irisDepth > 0) {
                 depthTexture = irisDepth;
@@ -2744,7 +2851,7 @@ public final class RenderPipeline {
             // The output-resolution history path needs compute images and the motion-vector
             // buffer. Keep the old spatial reconstruction as a safe fallback instead of
             // feeding a source-resolution history into the output-resolution spatial pass.
-            reconstructSpatial(main, scaled);
+            reconstructSpatial(main, source);
             return;
         }
 

@@ -811,7 +811,7 @@ public final class SelfTest {
             }
             boolean comparable = reference != null && metrics.containsKey("ssim")
                     && !name.contains("!pan") && !name.contains("!walk")
-                    && !name.contains("!mob") && !name.contains("!wws")
+                    && !name.contains("!mob")
                     && !name.contains("!f5") && !name.contains("!sunset");
             metrics.put("qualityComparable", comparable);
             Map<String, Object> existing = (Map<String, Object>) state.get("image");
@@ -1034,7 +1034,18 @@ public final class SelfTest {
         if (passthrough) {
             return "native";
         }
-        return RenderPipeline.internalWidth() + "x" + RenderPipeline.internalHeight();
+        int width = RenderPipeline.internalWidth();
+        int height = RenderPipeline.internalHeight();
+        if (width > 0 && height > 0) {
+            return width + "x" + height;
+        }
+        // The state log runs between frames, after the whole-window target was presented and
+        // wholeWindowActive was cleared. Derive the expected size from the configured scale.
+        Minecraft minecraft = Minecraft.getInstance();
+        double scale = ModernOptSettings.renderScalePercent() / 100.0;
+        width = Math.max(1, (int) Math.round(minecraft.getWindow().getWidth() * scale));
+        height = Math.max(1, (int) Math.round(minecraft.getWindow().getHeight() * scale));
+        return width + "x" + height;
     }
 
     private static void applyState(int index) {

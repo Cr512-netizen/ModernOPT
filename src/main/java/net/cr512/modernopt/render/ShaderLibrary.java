@@ -220,7 +220,6 @@ public final class ShaderLibrary {
 
         shader.setSampler("InputSampler", source);
         shader.setSampler("DepthSampler", depth);
-        shader.setSampler("LanczosTable", RenderPipeline.ensureLanczosTable());
         Uniform inputSize = shader.getUniform("InputSize");
         if (inputSize != null) {
             inputSize.set((float) sourceWidth, (float) sourceHeight);

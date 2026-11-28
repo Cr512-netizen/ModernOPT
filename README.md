@@ -2,10 +2,11 @@
 
 Render scale, upscalers and anti-aliasing for **Minecraft 1.21.1 / NeoForge**.
 
-A small, self-contained render-scaling implementation: the world is rendered into
-an off-screen target at a lower (or higher) internal resolution, and a reconstruction filter
-brings it back to the window resolution. The HUD, chat and every screen stay at native
-resolution.
+A small, self-contained render-scaling implementation: the whole frame (world, hand, HUD,
+chat and menus) is rendered into an off-screen target at a lower (or higher) internal resolution,
+and the selected reconstruction filter brings it back to the window resolution. Whole-window
+presentation is always on since 0.7.6; the upscaler is applied to the finished frame, not just to
+the world pass.
 
 ## Features
 
@@ -21,7 +22,7 @@ resolution.
 | SSAA | On / Off | Renders the world at 2x resolution and downsamples with a 2x2 box filter. |
 | FXAA | On / Off | Post-process edge smoothing on the final native-resolution image. |
 | FP16 world target | On / Off | Render the pre-upscale image into RGBA16F (HDR) instead of RGBA8. |
-| Scale whole window | On / Off | Render the whole frame (world, HUD, presentation) at the internal resolution, including the HUD and the presentation. |
+| Whole-window | Always on | Render the world, hand, HUD, chat and menus at the internal resolution, then present the finished frame through the selected upscaler. |
 | Shadow map resolution | 512, 1024, 2048, 4096 | Absolute size of the Iris shader pack's shadow map, independent of the render scale. |
 | Status overlay | On / Off | FPS, internal resolution, active filter, MSAA level, shadow held ratio and interval. |
 
@@ -51,6 +52,12 @@ pack's output and upscales it. MSAA is also forced off in MSR mode and that is l
 `MSR2` is the newest upscaler in ModernOPT. It uses camera reconstruction for the static world and
 per-entity screen-space motion vectors for moving entities, with an output-resolution history and
 an RCAS sharpen pass.
+
+**Whole-window note (0.7.6):** whole-window presentation is always on and includes the HUD, chat
+and menus in the same small frame. Running the temporal history on that composite blurs GUI
+elements and the world, so in whole-window MSR2 uses its **spatial Lanczos + RCAS** path instead.
+The temporal history and motion-vector path described below remain available in the world-only
+fallback used at native 100 % and SSAA, and are kept for a future split world/HUD presentation.
 
 Key properties:
 - History is **RGBA16F colour + R16_UINT depth**, allocated at the **output resolution**. The
@@ -140,24 +147,22 @@ the pack rendered.
 
 ```
 GameRenderer#renderLevel (HEAD)
-  plain modes (bilinear/nearest/soft/FSR 1)
-                                       -> install a minimal colour+depth target in the real
-                                          Minecraft#mainRenderTarget field, bind and clear it
-  advanced modes (MSAA/FP16/SSAA/MSR/MSR2) -> bind the scaled target and redirect
-                                          Minecraft#getMainRenderTarget to it
-   world, entities, particles, weather -> drawn into the internal target
-GameRenderer#render before Gui#render   -> restore the real target / drop the redirect,
-                                          run the upscaler (+ optional FXAA) into the real
-                                          main target, bind it again
-Gui#render                              -> native resolution, untouched
+  whole-window mode -> resize the real main target to the internal size, bind it, and let
+                       Window#getWidth/Height report that size
+   world, entities, particles, hand, HUD, chat and menus -> drawn into the small frame
+Window#updateDisplay (HEAD)
+  -> run the selected upscaler from the small frame into a native output target
+  -> blit that target to the default framebuffer, just before the swap
 ```
+
+At 100 % (and when SSAA needs a larger target) the old world-only path is still used so native
+rendering and SSAA keep working. The whole-window code is the default for every scale below 100 %.
 
 Key points:
 
-* Plain modes do not redirect `Minecraft#getMainRenderTarget()` at all: the field already
-  points at the small target, which removes a getter hook from Sodium's and Iris' hottest
-  path. The HUD keeps its own optional redirect, and advanced modes retain the call-time one
-  because their MSAA/FP16/temporal plumbing is built around the scaled target.
+* Plain modes do not redirect `Minecraft#getMainRenderTarget()` in the world-only fallback: the
+  field already points at the small target. Whole-window mode resizes the real field instead, so
+  every consumer (HUD, screens, Iris, Sodium) sees the same small frame.
 * The fast target is a minimal `TextureTarget` (colour + depth), with no multisampling, HDR
   attachment or history buffers. Advanced modes keep the existing `ScaledRenderTarget`.
 * The world target is a real `RenderTarget` (colour + depth texture), so anything that samples
@@ -277,32 +282,36 @@ outside the native 3x3 neighbourhood.
 
 | Mode | Sharpness | SSIM | MAE | Sharpness ratio | Chroma MAE | Overshoot |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Native reference, 100 % | 0.0234 | 1.000 | 0.000 | 1.000 | 0.000 | 0.000 |
-| Bilinear, 50 % | 0.0157 | 0.801 | 0.0190 | 0.671 | 0.0104 | 0.0110 |
-| FSR 1 EASU, 50 % | 0.0176 | 0.775 | 0.0201 | 0.749 | 0.0109 | 0.0173 |
-| FSR 1 + Lanczos-2, 50 % | 0.0190 | 0.806 | 0.0193 | 0.810 | 0.0104 | 0.0109 |
-| FSR 1 + Lanczos-3, 50 % | 0.0206 | 0.803 | 0.0201 | 0.880 | 0.0104 | 0.0150 |
-| MSR2 EASU, 50 % | 0.0177 | 0.776 | 0.0200 | 0.756 | 0.0109 | 0.0167 |
-| MSR2 + Lanczos-2, 50 % | 0.0192 | 0.806 | 0.0193 | 0.817 | 0.0104 | 0.0109 |
-| MSR2 + Lanczos-3, 50 % | 0.0204 | 0.804 | 0.0198 | 0.868 | 0.0104 | 0.0145 |
-| MSR2 + Lanczos-2, 67 % | 0.0212 | 0.862 | 0.0154 | 0.902 | 0.0083 | 0.0041 |
-| MSR2 + Lanczos-3, 67 % | 0.0223 | 0.860 | 0.0159 | 0.949 | 0.0083 | 0.0068 |
-| MSR2 + Lanczos-2, 77 % | 0.0217 | 0.885 | 0.0137 | 0.927 | 0.0072 | 0.0027 |
-| MSR2 + Lanczos-3, 77 % | 0.0227 | 0.883 | 0.0141 | 0.969 | 0.0072 | 0.0052 |
+| Native reference, 100 % | 0.0233 | 1.000 | 0.000 | 1.000 | 0.000 | 0.000 |
+| Bilinear, 50 % | 0.0156 | 0.801 | 0.0189 | 0.669 | 0.0104 | 0.0110 |
+| FSR 1 EASU, 50 % | 0.0174 | 0.774 | 0.0201 | 0.751 | 0.0109 | 0.0172 |
+| FSR 1 + Lanczos-2, 50 % | 0.0188 | 0.806 | 0.0189 | 0.807 | 0.0106 | 0.0108 |
+| FSR 1 + Lanczos-3, 50 % | 0.0205 | 0.803 | 0.0199 | 0.880 | 0.0106 | 0.0151 |
+| MSR2 EASU, 50 % | 0.0175 | 0.774 | 0.0206 | 0.751 | 0.0112 | 0.0173 |
+| MSR2 + Lanczos-2, 50 % | 0.0189 | 0.806 | 0.0198 | 0.811 | 0.0107 | 0.0109 |
+| MSR2 + Lanczos-3, 50 % | 0.0205 | 0.803 | 0.0205 | 0.882 | 0.0107 | 0.0151 |
+| MSR2 + Lanczos-2, 67 % | 0.0209 | 0.862 | 0.0160 | 0.896 | 0.0086 | 0.0041 |
+| MSR2 + Lanczos-3, 67 % | 0.0223 | 0.859 | 0.0167 | 0.960 | 0.0086 | 0.0075 |
+| MSR2 + Lanczos-2, 77 % | 0.0215 | 0.885 | 0.0143 | 0.923 | 0.0075 | 0.0027 |
+| MSR2 + Lanczos-3, 77 % | 0.0228 | 0.882 | 0.0149 | 0.978 | 0.0075 | 0.0057 |
 
-EASU is clearly softer now: at 50 % it keeps only 75-76 % of the native gradient, while Lanczos-2
-reaches 81-82 % and Lanczos-3 reaches 87-88 %. Lanczos-3 gets to 95 % at 67 % and 97 % at 77 %,
-with a slightly lower SSIM and a small frame-rate cost. Its `overshoot` is lower than EASU's at
-50 % and 67 % and essentially tied at 77 %, so the extra sharpness is not coming from larger halos.
-Lanczos-2 is the best SSIM/MAE choice and the default; Lanczos-3 is the sharper choice. Leave
-Lanczos on unless the pack's own reconstruction already supplies the detail. The full JSON ranking
-is under `quality.ranking`; see [TESTING.md](TESTING.md#upscaler-quality-metrics).
+EASU is clearly softer now: at 50 % it keeps only 75 % of the native gradient, while Lanczos-2
+reaches 81 % and Lanczos-3 reaches 88 %. Lanczos-3 gets to 96 % at 67 % and 98 % at 77 %, with a
+slightly lower SSIM and a small frame-rate cost. Its `overshoot` is lower than EASU's at 50 % and
+67 % and essentially tied at 77 %, so the extra sharpness is not coming from larger halos.
+Lanczos-2 is the best SSIM/MAE choice and the default; Lanczos-3 is the sharper choice.
 
-Against 0.7.3 on the same frozen world, the 50/67/77 % Lanczos states gained **1.1-2.1 % sharpness**
-and **0.09-0.12 % SSIM**; MAE rose by 1.3-2.0 % because the sharper edges no longer sit on top of
-the native edge as softly. The bigger change is in motion: motion-vector dilation, history
-rectification and the luma/chroma/depth-reactive mask target ghosting and silhouette fringes, which
-a static screenshot cannot measure. Use `!pan2` and a moving mob in-game to inspect that part.
+These numbers are measured in whole-window mode (always on since 0.7.6). FSR 1 and MSR2 with the
+same Lanczos radius share the same spatial reconstruction in this mode, so their rows are nearly
+tied; the visible difference between the upscalers is Bilinear vs EASU vs Lanczos-2 vs Lanczos-3.
+MSR2's temporal history and motion vectors are not applied to the whole frame because the HUD and
+menus are part of it (see the MSR2 note above). The full JSON ranking is under `quality.ranking`;
+see [TESTING.md](TESTING.md#upscaler-quality-metrics).
+
+The table is meant for within-run comparisons: use the native reference from the same run. Older
+world-only numbers are not directly comparable because the frame composition changed when
+whole-window became the only presentation mode. The `!pan2` and moving-mob checks remain the way to
+inspect motion; a static screenshot cannot show ghosting or temporal stability.
 
 ### Frame cost
 
@@ -366,23 +375,27 @@ did not apply the option and `F9` can be used to verify the renderer directly.
 camera is moving or looking around (for example 70% -> 60%) and restores it after a short
 stillness period. The percent is rounded to a whole number.
 
-### Scale whole window
+### Whole-window presentation
 
-`renderScale.scaleWholeWindow` (off by default) renders the entire frame at the internal
-resolution: the world, the hand, the HUD and Iris' composite chain all run at the scaled size. The
-real main render target is resized to the internal resolution, so vanilla's own present blit
-stretches it to the window - no extra copy pass. This is the standard full-frame approach.
+Since 0.7.6 the entire frame is rendered at the internal resolution: the world, the hand, the
+HUD, chat, menus and Iris' composite chain all run at the scaled size. The real main render target
+is resized to the internal resolution, so vanilla's GUI layout and mouse coordinates stay
+consistent. At the end of the frame ModernOPT runs the selected upscaler from that small frame into
+a native-resolution output target and presents it to the window; a plain bilinear blit is only the
+fallback when shaders are unavailable.
 
-This mode was verified functionally (world, hand, HUD and Iris composite at the internal size, then
-one present blit) and is included in the benchmark state list with the `!wws` suffix. Its throughput
-must be measured with the same harness as every other row; older numbers from a different scene are
-not reproduced here.
+This is the only presentation mode now. `renderScale.scaleWholeWindow` is kept so old config files
+load, but its value is ignored and the mode is always on. `!wws` is still accepted by the benchmark
+for old state lists but is no longer needed.
 
-Two things had to be handled for this mode: Iris cancels vanilla's hand pass, so the hand is drawn
-by ModernOPT (as in the scaled mode), and the viewport repair now also covers the small main
-target (a window-sized viewport leaking onto it produced floating geometry fragments).
+The whole frame includes the HUD, so temporal history is not run on it: MSR and MSR2 use their
+spatial Lanczos + RCAS path in this mode. The world ROI used by the quality metrics excludes the
+HUD. World-only presentation is no longer exposed as an option, which keeps every screen and the
+benchmark on the same path.
 
-World-only mode keeps the HUD pixel sharp and stays the default.
+Two implementation details: Iris cancels vanilla's hand pass, so the hand is drawn by ModernOPT
+into the small frame, and the viewport repair also covers the small main target (a window-sized
+viewport leaking onto it produced floating geometry fragments).
 
 ### Shadow map resolution
 

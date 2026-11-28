@@ -1,9 +1,8 @@
 ﻿#version 150
 
 // Generic Lanczos reconstruction for the spatial upscalers. Params.x is the kernel radius
-// (2.0 = Lanczos-2, 3.0 = Lanczos-3). The polyphase weights come from the same 129x12 table as
-// the MSR2 compute path, so both use an identical kernel and no transcendental functions run per
-// pixel.
+// (2.0 = Lanczos-2, 3.0 = Lanczos-3). The kernel is evaluated on the source texel grid with
+// texelFetch, so it does not depend on the source texture filter.
 //
 // Luma is reconstructed with the signed Lanczos kernel. Chroma uses a plain bilinear fetch:
 // chroma detail is low-frequency, and a signed kernel on colour-difference channels is what
@@ -11,13 +10,24 @@
 // small budget, so real edge contrast survives but large halos do not.
 uniform sampler2D InputSampler;
 uniform sampler2D DepthSampler;
-uniform sampler2D LanczosTable;
 uniform vec2 InputSize;
 uniform vec4 Params;
 uniform float DepthValid;
 
 in vec2 texCoord;
 out vec4 fragColor;
+
+float lanczosWeight(float x, float radius) {
+    x = abs(x);
+    if (x < 1.0e-5) {
+        return 1.0;
+    }
+    if (x >= radius) {
+        return 0.0;
+    }
+    float px = 3.14159265359 * x;
+    return radius * sin(px) * sin(px / radius) / (px * px);
+}
 
 vec3 rgbToYCoCg(vec3 rgb) {
     return vec3(
@@ -38,27 +48,24 @@ vec2 sampleBilinearChroma(vec2 uv) {
 
 void main() {
     float radius = max(Params.x, 2.0);
-    int layer = radius >= 2.5 ? 1 : 0;
     vec2 source = texCoord * InputSize - 0.5;
     vec2 base = floor(source);
-    vec2 fraction = clamp(source - base, vec2(0.0), vec2(1.0));
-    int phaseX = int(fraction.x * 128.0 + 0.5);
-    int phaseY = int(fraction.y * 128.0 + 0.5);
+    vec2 fraction = source - base;
     ivec2 sourceSize = ivec2(InputSize);
     ivec2 basePixel = ivec2(base);
 
     float weightsX[6];
     float weightsY[6];
     for (int i = 0; i < 6; i++) {
-        weightsX[i] = texelFetch(LanczosTable, ivec2(phaseX, i + layer * 6), 0).r;
-        weightsY[i] = texelFetch(LanczosTable, ivec2(phaseY, i + layer * 6), 0).r;
+        weightsX[i] = lanczosWeight(float(i - 2) - fraction.x, radius);
+        weightsY[i] = lanczosWeight(float(i - 2) - fraction.y, radius);
     }
 
     float centerDepth = texture(DepthSampler, texCoord).r;
     float depthTolerance = max(0.0025, centerDepth * 0.02);
     // Depth guidance is a quality option for the wider Lanczos-3 kernel. Lanczos-2 is the
     // balanced/default path and skips the extra depth fetches entirely.
-    bool useDepth = DepthValid > 0.5 && layer == 1;
+    bool useDepth = DepthValid > 0.5 && radius >= 2.5;
     if (useDepth) {
         // A four-neighbour depth check decides whether this pixel is near a silhouette.
         // Fetching depth for all 36 colour taps on every pixel costs far more than the filter

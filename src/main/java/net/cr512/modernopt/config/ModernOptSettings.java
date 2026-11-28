@@ -67,7 +67,7 @@ public final class ModernOptSettings {
         shadowUpdateInterval = ModernOptConfig.SHADOW_UPDATE_INTERVAL.get();
         fp16World = ModernOptConfig.FP16_WORLD.get();
         hudScalePercent = ModernOptConfig.HUD_SCALE_PERCENT.get();
-        scaleWholeWindow = ModernOptConfig.SCALE_WHOLE_WINDOW.get();
+        scaleWholeWindow = true;
 
         // MSR2 is selected by the upscaler dropdown; the old boolean is kept only so existing
         // config files do not fail validation. It no longer overrides another upscaler.
@@ -164,7 +164,7 @@ public final class ModernOptSettings {
 
     /** Scale the whole frame (world + HUD + presentation) instead of only the world target. */
     public static boolean scaleWholeWindow() {
-        return scaleWholeWindow;
+        return true;
     }
 
     // MSR2 getters
