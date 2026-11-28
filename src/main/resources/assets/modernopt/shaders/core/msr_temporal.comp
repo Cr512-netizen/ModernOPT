@@ -192,11 +192,12 @@ vec3 sampleCurrentLanczos(vec2 uv, float centerDepth) {
     float lumaMin = 1.0e20;
     float lumaMax = -1.0e20;
 
-    // Depth guidance is only needed near a silhouette. Checking the four nearest depth texels
-    // once costs five fetches; fetching depth for all 36 colour taps would cost seven times more
-    // on every pixel, including the large flat areas where the weights are identical to 1.0.
+    // Depth guidance is a quality option for the wider Lanczos-3 kernel. Lanczos-2 is the
+    // balanced/default path and skips the extra depth fetches entirely, which keeps its frame
+    // cost close to the pre-0.7.4 shader. When enabled, checking the four nearest depth texels
+    // once is much cheaper than fetching depth for all 36 colour taps on flat terrain.
     float depthTolerance = max(0.0025, centerDepth * 0.02);
-    bool useDepth = DepthValid > 0.5;
+    bool useDepth = DepthValid > 0.5 && radius3;
     if (useDepth) {
         ivec2 p = basePixel;
         float d0 = texelFetch(CurrentDepth, clampPixel(p + ivec2(-1, 0), sourceSize), 0).r;
@@ -400,12 +401,20 @@ void main() {
     float tolerance = 0.0;
     if (valid) {
         // Disocclusion: a large depth change means the history belongs to another surface.
-        // Reconstruct the history colour only from taps on the current surface; a mixed
-        // foreground/background bilinear fetch is the main source of a dark or doubled fringe on
-        // silhouettes.
+        // Fast path first: when the nearest history texel is already on the current surface, a
+        // single bilinear colour fetch is enough. This keeps the static/steady-camera cost equal
+        // to the old path. Only near a depth edge do we pay for the four-tap bilateral
+        // reconstruction that prevents foreground/background colour mixing.
         tolerance = max(DepthThreshold * currentDepth * currentDepth, 0.02);
-        sampleHistoryBilateral(historyUv, currentDepth, tolerance,
-                historyColor, historyDepth, valid);
+        ivec2 historyPixel = clampPixel(ivec2(floor(historyUv * OutputSize)), ivec2(OutputSize));
+        float nearestHistoryDepth = unpackDepth(texelFetch(HistoryDepth, historyPixel, 0).r);
+        if (abs(nearestHistoryDepth - currentDepth) <= tolerance * 0.25) {
+            historyColor = texture(HistoryColor, historyUv).rgb;
+            historyDepth = nearestHistoryDepth;
+        } else {
+            sampleHistoryBilateral(historyUv, currentDepth, tolerance,
+                    historyColor, historyDepth, valid);
+        }
     }
 
     vec3 currentYCoCg = rgbToYCoCg(currentColor);

@@ -83,8 +83,9 @@ Key properties:
   Soft keep their own kernels. Luma uses the signed Lanczos kernel and chroma uses a bilinear
   fetch, which removes coloured fringes on high-contrast edges. The kernel weights come from a
   129-phase polyphase table in a small R32F texture, shared by the compute and spatial paths.
-  Depth guidance rejects taps from a different surface at silhouettes; a cheap depth check
-  disables the per-tap weights on flat terrain, where they are all 1.0.
+  Lanczos-3 adds depth guidance: taps from a different surface are rejected at silhouettes, and a
+  cheap four-neighbour depth check skips the per-tap weights on flat terrain. Lanczos-2 skips
+  those fetches and keeps its frame cost close to the previous release.
 - **History rectification**: the history colour is reconstructed from the four texels of the
   reprojection footprint and each tap is weighted by its depth agreement with the current
   surface. This keeps a foreground/background bilinear blend from passing the depth test as a
@@ -276,26 +277,26 @@ outside the native 3x3 neighbourhood.
 
 | Mode | Sharpness | SSIM | MAE | Sharpness ratio | Chroma MAE | Overshoot |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Native reference, 100 % | 0.0235 | 1.000 | 0.000 | 1.000 | 0.000 | 0.000 |
-| Bilinear, 50 % | 0.0158 | 0.801 | 0.0191 | 0.672 | 0.0105 | 0.0112 |
-| FSR 1 EASU, 50 % | 0.0177 | 0.774 | 0.0201 | 0.750 | 0.0110 | 0.0172 |
-| FSR 1 + Lanczos-2, 50 % | 0.0191 | 0.806 | 0.0194 | 0.810 | 0.0105 | 0.0110 |
-| FSR 1 + Lanczos-3, 50 % | 0.0207 | 0.803 | 0.0202 | 0.881 | 0.0105 | 0.0151 |
-| MSR2 EASU, 50 % | 0.0178 | 0.776 | 0.0201 | 0.757 | 0.0110 | 0.0166 |
-| MSR2 + Lanczos-2, 50 % | 0.0193 | 0.806 | 0.0194 | 0.818 | 0.0105 | 0.0110 |
-| MSR2 + Lanczos-3, 50 % | 0.0205 | 0.804 | 0.0199 | 0.869 | 0.0105 | 0.0146 |
-| MSR2 + Lanczos-2, 67 % | 0.0212 | 0.862 | 0.0155 | 0.902 | 0.0083 | 0.0041 |
-| MSR2 + Lanczos-3, 67 % | 0.0224 | 0.860 | 0.0160 | 0.949 | 0.0084 | 0.0068 |
-| MSR2 + Lanczos-2, 77 % | 0.0218 | 0.884 | 0.0138 | 0.927 | 0.0073 | 0.0027 |
-| MSR2 + Lanczos-3, 77 % | 0.0228 | 0.883 | 0.0142 | 0.968 | 0.0073 | 0.0052 |
+| Native reference, 100 % | 0.0234 | 1.000 | 0.000 | 1.000 | 0.000 | 0.000 |
+| Bilinear, 50 % | 0.0157 | 0.801 | 0.0190 | 0.671 | 0.0104 | 0.0110 |
+| FSR 1 EASU, 50 % | 0.0176 | 0.775 | 0.0201 | 0.749 | 0.0109 | 0.0173 |
+| FSR 1 + Lanczos-2, 50 % | 0.0190 | 0.806 | 0.0193 | 0.810 | 0.0104 | 0.0109 |
+| FSR 1 + Lanczos-3, 50 % | 0.0206 | 0.803 | 0.0201 | 0.880 | 0.0104 | 0.0150 |
+| MSR2 EASU, 50 % | 0.0177 | 0.776 | 0.0200 | 0.756 | 0.0109 | 0.0167 |
+| MSR2 + Lanczos-2, 50 % | 0.0192 | 0.806 | 0.0193 | 0.817 | 0.0104 | 0.0109 |
+| MSR2 + Lanczos-3, 50 % | 0.0204 | 0.804 | 0.0198 | 0.868 | 0.0104 | 0.0145 |
+| MSR2 + Lanczos-2, 67 % | 0.0212 | 0.862 | 0.0154 | 0.902 | 0.0083 | 0.0041 |
+| MSR2 + Lanczos-3, 67 % | 0.0223 | 0.860 | 0.0159 | 0.949 | 0.0083 | 0.0068 |
+| MSR2 + Lanczos-2, 77 % | 0.0217 | 0.885 | 0.0137 | 0.927 | 0.0072 | 0.0027 |
+| MSR2 + Lanczos-3, 77 % | 0.0227 | 0.883 | 0.0141 | 0.969 | 0.0072 | 0.0052 |
 
 EASU is clearly softer now: at 50 % it keeps only 75-76 % of the native gradient, while Lanczos-2
 reaches 81-82 % and Lanczos-3 reaches 87-88 %. Lanczos-3 gets to 95 % at 67 % and 97 % at 77 %,
-with a slightly lower SSIM and a small frame-rate cost. Its `overshoot` is still lower than EASU's
-at every scale in this run, so the extra sharpness is not coming from larger halos. Lanczos-2 is the
-best SSIM/MAE choice; Lanczos-3 is the sharper choice. Leave Lanczos on unless the pack's own
-reconstruction already supplies the detail. The full JSON ranking is under `quality.ranking`; see
-[TESTING.md](TESTING.md#upscaler-quality-metrics).
+with a slightly lower SSIM and a small frame-rate cost. Its `overshoot` is lower than EASU's at
+50 % and 67 % and essentially tied at 77 %, so the extra sharpness is not coming from larger halos.
+Lanczos-2 is the best SSIM/MAE choice and the default; Lanczos-3 is the sharper choice. Leave
+Lanczos on unless the pack's own reconstruction already supplies the detail. The full JSON ranking
+is under `quality.ranking`; see [TESTING.md](TESTING.md#upscaler-quality-metrics).
 
 Against 0.7.3 on the same frozen world, the 50/67/77 % Lanczos states gained **1.1-2.1 % sharpness**
 and **0.09-0.12 % SSIM**; MAE rose by 1.3-2.0 % because the sharper edges no longer sit on top of

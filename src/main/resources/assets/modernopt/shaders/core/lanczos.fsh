@@ -56,7 +56,9 @@ void main() {
 
     float centerDepth = texture(DepthSampler, texCoord).r;
     float depthTolerance = max(0.0025, centerDepth * 0.02);
-    bool useDepth = DepthValid > 0.5;
+    // Depth guidance is a quality option for the wider Lanczos-3 kernel. Lanczos-2 is the
+    // balanced/default path and skips the extra depth fetches entirely.
+    bool useDepth = DepthValid > 0.5 && layer == 1;
     if (useDepth) {
         // A four-neighbour depth check decides whether this pixel is near a silhouette.
         // Fetching depth for all 36 colour taps on every pixel costs far more than the filter
