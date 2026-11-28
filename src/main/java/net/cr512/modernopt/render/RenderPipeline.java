@@ -183,9 +183,14 @@ public final class RenderPipeline {
     private static int cachedSoftness = 35;
     private static boolean cachedScaleWholeWindow;
     private static boolean wholeWindowActive;
+    /** True when whole-window uses the split world/UI path with full temporal upscaling. */
+    private static boolean wholeWindowTemporalSplit;
+    /** Small world target for the current whole-window frame; the UI layer is separate. */
+    private static RenderTarget wholeWindowWorldTarget;
     /** Native-resolution output of the whole-window upscaler, presented at the end of the frame. */
     private static TextureTarget wholeWindowOutput;
     private static boolean loggedWholeWindowFallback;
+    private static boolean loggedWholeWindowMsr2;
 
     // MSR2 cached settings
     private static boolean cachedMsrEnabled = false;
@@ -532,6 +537,8 @@ public final class RenderPipeline {
         // otherwise the next frame reads the *scaled* width back and halves the target again.
         windowScaled = false;
         wholeWindowActive = false;
+        wholeWindowTemporalSplit = false;
+        wholeWindowWorldTarget = null;
         frameWorldTarget = null;
         // A previous frame may have been aborted between the field swap and its restore (screen
         // change, exception, cancelled renderLevel). Start from the real target every time.
@@ -1011,6 +1018,8 @@ public final class RenderPipeline {
 
     private static RenderTarget hudTarget;
     private static boolean hudActive;
+    /** True when the last whole-window HUD pass left a valid UI layer to composite. */
+    private static boolean wholeWindowUiReady;
 
     /** True while the HUD is being rendered into the downscaled GUI target. */
     public static boolean hudActive() {
@@ -1033,11 +1042,45 @@ public final class RenderPipeline {
      */
     public static void beginHudFrame(Minecraft minecraft) {
         hudActive = false;
-        if (wholeWindowActive) {
-            // The HUD is already rendered at the internal resolution in this mode.
+        wholeWindowUiReady = false;
+        if (!ModernOptSettings.enabled()) {
             return;
         }
-        if (!ModernOptSettings.enabled()) {
+        if (wholeWindowActive) {
+            if (!wholeWindowTemporalSplit) {
+                // Old whole-frame path: the HUD is drawn into the world target and upscaled with
+                // it by the spatial chain.
+                return;
+            }
+            // Split path: the world keeps its MSR2 history, the HUD/menus are rendered here with
+            // a transparent background and composited over the native world output at the end.
+            RenderTarget world = minecraft.getMainRenderTarget();
+            if (world == null || world.width <= 0 || world.height <= 0) {
+                return;
+            }
+            int width = world.width;
+            int height = world.height;
+            try {
+                if (hudTarget == null) {
+                    hudTarget = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+                }
+                if (hudTarget.width != width || hudTarget.height != height) {
+                    hudTarget.resize(width, height, Minecraft.ON_OSX);
+                }
+                hudTarget.setFilterMode(GL11C.GL_LINEAR);
+            } catch (Throwable throwable) {
+                ModernOPT.LOG.warn("[ModernOPT] cannot allocate the {}x{} whole-window UI target",
+                        width, height, throwable);
+                hudTarget = null;
+                return;
+            }
+            hudTarget.bindWrite(true);
+            GlStateManager._colorMask(true, true, true, true);
+            GlStateManager._depthMask(true);
+            GlStateManager._clearColor(0.0F, 0.0F, 0.0F, 0.0F);
+            GlStateManager._clear(GL11C.GL_COLOR_BUFFER_BIT | GL11C.GL_DEPTH_BUFFER_BIT, true);
+            hudActive = true;
+            GpuProfiler.begin(GpuProfiler.HUD);
             return;
         }
         int percent = Math.max(50, Math.min(100, ModernOptSettings.hudScalePercent()));
@@ -1073,6 +1116,16 @@ public final class RenderPipeline {
 
     /** Composites the downscaled HUD over the world in the real main target. */
     public static void endHudFrame(Minecraft minecraft) {
+        if (wholeWindowActive) {
+            // Keep the split UI layer for endWholeWindowFrame(); the old whole-frame path draws
+            // the HUD directly into the world target and has nothing to save here.
+            if (wholeWindowTemporalSplit && hudActive) {
+                hudActive = false;
+                wholeWindowUiReady = hudTarget != null;
+                GpuProfiler.end(GpuProfiler.HUD);
+            }
+            return;
+        }
         if (!hudActive) {
             return;
         }
@@ -1690,7 +1743,7 @@ public final class RenderPipeline {
         int sourceTexture = source.getColorTextureId();
         int depthTexture = source.getDepthTextureId();
         boolean depthValid = true;
-        if (irisThisFrame && !wholeWindowActive) {
+        if (irisThisFrame) {
             int irisDepth = IrisCompat.depthTextureId();
             if (irisDepth > 0) {
                 depthTexture = irisDepth;
@@ -2043,6 +2096,7 @@ public final class RenderPipeline {
         wholeWindowActive = true;
         worldActive = true;
         frameWorldTarget = main;
+        wholeWindowWorldTarget = main;
         lastFrameScaled = true;
         irisThisFrame = IrisCompat.isShaderPackInUse();
         if (!ensureShaders(minecraft)) {
@@ -2062,16 +2116,30 @@ public final class RenderPipeline {
                     ModernOptSettings.msr2Lanczos() ? "on" : "off");
             resetHistory();
             resetMsr2History();
+            loggedWholeWindowMsr2 = false;
             rememberUpscalerSettings(cachedUpscaler);
         }
-        msr2ThisFrame = false;
+        wholeWindowTemporalSplit = cachedMsrEnabled && irisThisFrame;
+        if (irisThisFrame != lastIris) {
+            lastIris = irisThisFrame;
+            resetHistory();
+            resetMsr2History();
+            loggedWholeWindowMsr2 = false;
+        }
+        msr2ThisFrame = wholeWindowTemporalSplit;
         msrThisFrame = false;
         msr2ActiveThisFrame = false;
-        motionFrameIndex++;
-        // The whole frame includes the HUD and menus. Running the temporal history on that
-        // composite makes GUI text flicker and blurs the world, so MSR/MSR2 use their spatial
-        // Lanczos + RCAS path here. Temporal history remains available in the world-only path
-        // (native 100 % and SSAA).
+        wholeWindowUiReady = false;
+        if (wholeWindowTemporalSplit) {
+            ensureMSR2HistoryTargets(windowWidth, windowHeight);
+            motionFrameIndex++;
+            if (ModernOptSettings.msr2MotionVectors() && motionVectors != null) {
+                motionVectors.beginFrame(motionFrameIndex, main.width, main.height);
+            }
+        }
+        // With an Iris pack the world keeps the full MSR2 temporal path and the HUD gets its own
+        // UI layer. Without a pack the old whole-frame spatial path is used: it is simpler and
+        // avoids a second full-screen layer for a mode that has no pack post-processing.
         // The main target is smaller than the window. Bind it with setViewport=true here: when a
         // GUI screen is open, vanilla does not rebind it before drawing the world behind the menu,
         // leaving a window-sized viewport on a small framebuffer and cropping the world to a corner.
@@ -2115,16 +2183,17 @@ public final class RenderPipeline {
         restoreMainTarget();
         frameWorldTarget = null;
         windowScaled = false;
-        // Keep wholeWindowActive set while the reconstruction runs: it tells the temporal paths
-        // to use the small main target's own depth instead of Iris' depth texture, which may
-        // still be window-sized in this mode.
+        // Keep wholeWindowActive set while the reconstruction runs: the source is the small world
+        // target and the UI layer is still pending composite.
         int windowWidth = realWindowWidth > 0 ? realWindowWidth : minecraft.getWindow().getWidth();
         int windowHeight = realWindowHeight > 0 ? realWindowHeight : minecraft.getWindow().getHeight();
-        RenderTarget main = minecraft.getMainRenderTarget();
+        RenderTarget main = wholeWindowWorldTarget != null
+                ? wholeWindowWorldTarget : minecraft.getMainRenderTarget();
         boolean smallMain = main != null && windowWidth > 0 && windowHeight > 0
                 && (main.width != windowWidth || main.height != windowHeight);
         if (!smallMain) {
             wholeWindowActive = false;
+            wholeWindowWorldTarget = null;
             msrThisFrame = false;
             msr2ThisFrame = false;
             poseCaptured = false;
@@ -2137,6 +2206,7 @@ public final class RenderPipeline {
         boolean presented = false;
         TextureTarget output = ensureWholeWindowOutput(windowWidth, windowHeight);
         if (output != null && ensureShaders(minecraft) && shaders != null && shaders.isValid()) {
+            boolean reconstructed = false;
             try {
                 boolean temporal = msrThisFrame && poseCaptured && !msrUnsupported;
                 if (temporal) {
@@ -2146,15 +2216,26 @@ public final class RenderPipeline {
                 } else {
                     reconstructSpatial(output, main);
                 }
+                reconstructed = true;
+            } catch (Throwable throwable) {
+                ModernOPT.LOG.error("[ModernOPT] whole-window MSR reconstruction failed, "
+                        + "falling back to spatial", throwable);
+                shaderFailure = true;
+                try {
+                    reconstructSpatial(output, main);
+                    reconstructed = true;
+                } catch (Throwable fallbackFailure) {
+                    ModernOPT.LOG.error("[ModernOPT] whole-window spatial fallback also failed",
+                            fallbackFailure);
+                }
+            }
+            if (reconstructed) {
+                compositeWholeWindowUi(output);
                 output.unbindWrite();
                 presentWholeWindow(output.getColorTextureId(), output.width, output.height,
                         windowWidth, windowHeight);
                 presented = true;
                 loggedWholeWindowFallback = false;
-            } catch (Throwable throwable) {
-                ModernOPT.LOG.error("[ModernOPT] whole-window reconstruction failed, "
-                        + "falling back to a plain blit", throwable);
-                shaderFailure = true;
             }
         }
         if (!presented) {
@@ -2175,7 +2256,29 @@ public final class RenderPipeline {
         msr2ThisFrame = false;
         poseCaptured = false;
         msr2ActiveThisFrame = false;
+        wholeWindowUiReady = false;
+        wholeWindowWorldTarget = null;
         wholeWindowActive = false;
+    }
+
+    /**
+     * Composites the small UI layer over the native-resolution world output. The UI target was
+     * filled by beginHudFrame()/endHudFrame() and has a transparent background, so only HUD and
+     * menu pixels affect the result.
+     */
+    private static void compositeWholeWindowUi(TextureTarget output) {
+        if (!wholeWindowUiReady || hudTarget == null || shaders == null || !shaders.isValid()) {
+            return;
+        }
+        output.bindWrite(true);
+        ShaderLibrary.beginPassState();
+        GlStateManager._enableBlend();
+        GlStateManager._blendFuncSeparate(GL11C.GL_SRC_ALPHA, GL11C.GL_ONE_MINUS_SRC_ALPHA,
+                GL11C.GL_ONE, GL11C.GL_ONE_MINUS_SRC_ALPHA);
+        ShaderLibrary.drawBlit(shaders.blit, hudTarget.getColorTextureId(),
+                hudTarget.width, hudTarget.height, output.width, output.height);
+        GlStateManager._disableBlend();
+        ShaderLibrary.endPassState();
     }
 
     /** Draws the finished native-resolution whole-window image into the default framebuffer. */
@@ -2840,7 +2943,7 @@ public final class RenderPipeline {
         // whole Iris pipeline is sized from the redirected main target), so it can be sampled
         // with input UVs. In whole-window mode the small main target already carries the correct
         // world depth; the pack's depth texture may still be window-sized, so use main instead.
-        if (irisThisFrame && !wholeWindowActive) {
+        if (irisThisFrame) {
             int irisDepth = IrisCompat.depthTextureId();
             if (irisDepth > 0) {
                 depthTexture = irisDepth;
@@ -2854,6 +2957,13 @@ public final class RenderPipeline {
         boolean temporalWorthIt = upscale > 1.11F;
         boolean useCompute = temporalWorthIt && computeAvailable
                 && msrComputeProgram != null;
+        if (wholeWindowActive && temporalWorthIt && useCompute && !loggedWholeWindowMsr2) {
+            loggedWholeWindowMsr2 = true;
+            ModernOPT.LOG.info("[ModernOPT] MSR2 temporal active in whole-window "
+                            + "({}x{} -> {}x{}, Iris depth {}, motion vectors {})",
+                    sourceWidth, sourceHeight, outWidth, outHeight,
+                    irisThisFrame, ModernOptSettings.msr2MotionVectors());
+        }
         if (temporalWorthIt && !useCompute) {
             // The output-resolution history path needs compute images and the motion-vector
             // buffer. Keep the old spatial reconstruction as a safe fallback instead of

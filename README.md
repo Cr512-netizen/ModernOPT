@@ -53,11 +53,11 @@ pack's output and upscales it. MSAA is also forced off in MSR mode and that is l
 per-entity screen-space motion vectors for moving entities, with an output-resolution history and
 an RCAS sharpen pass.
 
-**Whole-window note (0.7.6):** whole-window presentation is on by default and includes the HUD,
-chat and menus in the same small frame. Running the temporal history on that composite blurs GUI
-elements and the world, so in whole-window MSR2 uses its **spatial Lanczos + RCAS** path instead.
-Turn `renderScale.scaleWholeWindow` off for world-only scaling to get the temporal history and
-motion-vector path described below; that mode keeps the HUD native and is sharper on block edges.
+**Whole-window note (0.8.0):** with an Iris shader pack, whole-window uses two layers. The world
+(including the hand and the pack composite) renders into a small world target and keeps the **full
+MSR2 temporal path**; HUD/chat/menus render into a separate transparent UI target at the same
+internal size. At the end of the frame MSR2 upscales the world to native resolution and the UI is
+composited over it. Without a pack, whole-window uses the simpler whole-frame spatial path.
 
 Key properties:
 - History is **RGBA16F colour + R16_UINT depth**, allocated at the **output resolution**. The
@@ -301,11 +301,12 @@ slightly lower SSIM and a small frame-rate cost. Its `overshoot` is lower than E
 67 % and essentially tied at 77 %, so the extra sharpness is not coming from larger halos.
 Lanczos-2 is the best SSIM/MAE choice and the default; Lanczos-3 is the sharper choice.
 
-These numbers are measured in whole-window mode (the default since 0.7.6). FSR 1 and MSR2 with the
-same Lanczos radius share the same spatial reconstruction in this mode, so their rows are nearly
-tied; the visible difference between the upscalers is Bilinear vs EASU vs Lanczos-2 vs Lanczos-3.
-Turn whole-window off to get MSR2's temporal history and motion-vector path. The full JSON ranking
-is under `quality.ranking`; see [TESTING.md](TESTING.md#upscaler-quality-metrics).
+These numbers are measured in whole-window mode without a shader pack. FSR 1 and MSR2 with the
+same Lanczos radius share the same spatial reconstruction there, so their rows are nearly tied.
+With an Iris pack, MSR2 whole-window switches to the split world/UI path and runs its temporal
+history: SSIM/MAE generally improve and sharpness is slightly lower than the spatial rows below.
+The full JSON ranking is under `quality.ranking`; see
+[TESTING.md](TESTING.md#upscaler-quality-metrics).
 
 The table is meant for within-run comparisons: use the native reference from the same run. Older
 world-only numbers are not directly comparable because the frame composition changes when whole-window
@@ -376,24 +377,27 @@ stillness period. The percent is rounded to a whole number.
 
 ### Whole-window presentation
 
-Since 0.7.6 whole-window presentation is available as the default mode: the world, the hand, the
-HUD, chat, menus and Iris' composite chain all run at the scaled size. The real main render target
-is resized to the internal resolution, so vanilla's GUI layout and mouse coordinates stay
-consistent. At the end of the frame ModernOPT runs the selected upscaler from that small frame into
-a native-resolution output target and presents it to the window; a plain bilinear blit is only the
-fallback when shaders are unavailable.
+Since 0.8.0 whole-window presentation is the default mode. With an Iris shader pack it splits the
+frame into two layers:
 
-`renderScale.scaleWholeWindow` is on by default. Turn it off for world-only scaling: the HUD stays
-pixel-sharp, the world uses the normal scaled target, and MSR2 keeps its temporal history and
-motion-vector path. That world-only mode is the sharper choice for block edges with MSR2; whole-window
-is the choice when the interface should scale together with the world.
+* **World layer**: the world, hand, weather and Iris' composite render into a small target. MSR2
+  runs its full temporal history and per-entity motion-vector path from this target into a
+  native-resolution world output.
+* **UI layer**: HUD, chat, menus and the status overlay render into a separate target at the same
+  internal size. It is composited over the native world output with alpha, so the interface scales
+  with the world but never enters the temporal history.
 
-The whole frame includes the HUD, so temporal history is not run on it: MSR and MSR2 use their
-spatial Lanczos + RCAS path in whole-window mode. The world ROI used by the quality metrics excludes
-the HUD.
+Without a shader pack the simpler whole-frame spatial path is used: one small target, the selected
+upscaler, one present. That keeps the no-pack case cheap and avoids the extra UI layer.
+
+`renderScale.scaleWholeWindow` is on by default; turn it off for the classic world-only layout where
+the HUD stays pixel-sharp and is not composited.
+
+If the world reconstruction fails, ModernOPT falls back to spatial Lanczos and still composites the
+UI; if the UI target cannot be created, the world is presented without it and a warning is logged.
 
 Two implementation details: Iris cancels vanilla's hand pass, so the hand is drawn by ModernOPT
-into the small frame, and the viewport repair also covers the small main target (a window-sized
+into the world target, and the viewport repair also covers the small main target (a window-sized
 viewport leaking onto it produced floating geometry fragments).
 
 ### Shadow map resolution

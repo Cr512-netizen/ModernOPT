@@ -1086,7 +1086,13 @@ public final class SelfTest {
         } else if (name.contains("!hdr")) {
             ModernOptConfig.FP16_WORLD.set(true);
         }
-        ModernOptConfig.SCALE_WHOLE_WINDOW.set(name.contains("!wws"));
+        if (name.contains("!wws")) {
+            ModernOptConfig.SCALE_WHOLE_WINDOW.set(true);
+        } else if (name.contains("!wwo")) {
+            ModernOptConfig.SCALE_WHOLE_WINDOW.set(false);
+        }
+        // Without either suffix the configured value is left alone, so a whole-window run can be
+        // described once in the config and used for every state.
         ModernOptConfig.MSR2_LANCZOS.set(!name.contains("!nolanczos"));
         ModernOptConfig.MSR2_LANCZOS3.set(name.contains("!lanczos3"));
         ModernOptConfig.MSR2_MOTION_VECTORS.set(!name.contains("!nomv"));
@@ -1105,6 +1111,12 @@ public final class SelfTest {
             benchPanDegreesPerTick = degrees > 0 ? degrees : 2.0F;
         } else {
             benchPanDegreesPerTick = 0.0F;
+        }
+        if (benchPanDegreesPerTick != 0.0F && Minecraft.getInstance().player != null) {
+            // Start every pan state from the same yaw so screenshots from different states end at
+            // the same camera angle and can be compared directly.
+            Minecraft.getInstance().player.setYRot(90.0F);
+            Minecraft.getInstance().player.setXRot(0.0F);
         }
         int walkIndex = name.indexOf("!walk");
         if (walkIndex >= 0) {

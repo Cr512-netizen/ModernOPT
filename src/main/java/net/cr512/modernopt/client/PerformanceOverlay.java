@@ -33,12 +33,16 @@ public final class PerformanceOverlay {
         int internalWidth = RenderPipeline.internalWidth();
         int internalHeight = RenderPipeline.internalHeight();
         boolean wholeWindow = RenderPipeline.wholeWindowActive();
+        // GUI coordinates are still the internal frame; only the displayed numbers should name
+        // the real window when whole-window is active.
+        int layoutWidth = minecraft.getWindow().getWidth();
+        int layoutHeight = minecraft.getWindow().getHeight();
         int windowWidth = wholeWindow
                 ? Math.max(RenderPipeline.realWindowWidth(), 1)
-                : minecraft.getWindow().getWidth();
+                : layoutWidth;
         int windowHeight = wholeWindow
                 ? Math.max(RenderPipeline.realWindowHeight(), 1)
-                : minecraft.getWindow().getHeight();
+                : layoutHeight;
         int samples = RenderPipeline.activeSamples();
 
         StringBuilder builder = new StringBuilder(96);
@@ -75,11 +79,11 @@ public final class PerformanceOverlay {
         // The caller runs after the HUD has been submitted, so a flush here is cheap and makes
         // the line independent of whatever the HUD left in the shared buffer source.
         String text = builder.toString();
-        int maxWidth = Math.max(16, windowWidth - 8);
+        int maxWidth = Math.max(16, layoutWidth - 8);
         if (minecraft.font.width(text) > maxWidth) {
             text = minecraft.font.plainSubstrByWidth(text, maxWidth - minecraft.font.width("...")) + "...";
         }
-        int right = Math.min(6 + minecraft.font.width(text), windowWidth - 2);
+        int right = Math.min(6 + minecraft.font.width(text), layoutWidth - 2);
         graphics.flush();
         graphics.fill(2, 2, right, 16, 0x8F000000);
         graphics.drawString(minecraft.font, text, 4, 4, 0xFFFFFFFF, true);
